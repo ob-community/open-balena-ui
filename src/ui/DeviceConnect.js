@@ -31,7 +31,7 @@ export const DeviceConnect = (props) => {
   // record is passed via props when accessed from dashboards
   const record = useRecordContext() || props.record;
   const [loaded, setLoaded] = React.useState(false);
-  const [username, setUsername] = React.useState('');
+  const [userId, setUserId] = React.useState();
   const [containers, setContainers] = React.useState({ choices: [], services: [], links: [] });
   const [iframeUrl, setIframeUrl] = React.useState('');
   const dataProvider = useDataProvider();
@@ -50,7 +50,7 @@ export const DeviceConnect = (props) => {
           return window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey).then((privateKeyEncoded) => {
             const privateKey = window.btoa(String.fromCharCode.apply(null, new Uint8Array(privateKeyEncoded)));
             const publicKeySsh = sshpk
-              .parseKey(`-----BEGIN PUBLIC KEY-----\n${publicKey}\n-----END PUBLIC KEY-----`, 'pem', username)
+              .parseKey(`-----BEGIN PUBLIC KEY-----\n${publicKey}\n-----END PUBLIC KEY-----`, 'pem')
               .toString('ssh');
             const privateKeySsh = sshpk
               .parsePrivateKey(`-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`, 'pem')
@@ -63,40 +63,35 @@ export const DeviceConnect = (props) => {
 
   const upsertUserPublicKey = (publicKeySsh) => {
     const keyTitle = 'open-balena-remote';
-    return dataProvider
-      .getList('user', {
-        pagination: { page: 1, perPage: 1000 },
-        sort: { field: 'id', order: 'ASC' },
-        filter: { username: username },
-      })
-      .then((user) => {
-        return dataProvider
-          .getList('user-has-public key', {
-            pagination: { page: 1, perPage: 1000 },
-            sort: { field: 'id', order: 'ASC' },
-            filter: { user: user.data[0].id, title: keyTitle },
-          })
-          .then((remoteKey) => {
-            if (remoteKey.data.length > 0) {
-              return dataProvider.update('user-has-public key', {
-                id: remoteKey.data[0].id,
-                data: { 'user': user.data[0].id, 'title': keyTitle, 'public key': publicKeySsh },
-              });
-            } else {
-              return dataProvider.create('user-has-public key', {
-                data: { 'user': user.data[0].id, 'title': keyTitle, 'public key': publicKeySsh },
-              });
-            }
-          });
-      });
+      return dataProvider
+        .getList('user-has-public key', {
+          pagination: { page: 1, perPage: 1000 },
+          sort: { field: 'id', order: 'ASC' },
+          filter: { user: userId, title: keyTitle },
+        })
+        .then((remoteKey) => {
+          if (remoteKey.data.length > 0) {
+            return dataProvider.update('user-has-public key', {
+              id: remoteKey.data[0].id,
+              data: { 'user': userId, 'title': keyTitle, 'public key': publicKeySsh },
+            });
+          } else {
+            return dataProvider.create('user-has-public key', {
+              data: { 'user': userId, 'title': keyTitle, 'public key': publicKeySsh },
+            });
+          }
+        });
   };
 
   const handleSubmit = (url) => {
     if (url !== '' && url !== 'default') {
       genRsaKeys().then((rsaKeys) => {
         upsertUserPublicKey(rsaKeys.publicKeySsh).then(() => {
-          url += `&username=${username}&privateKey=${encodeURIComponent(rsaKeys.privateKeySsh)}`;
-          setIframeUrl(url);
+          dataProvider.getOne('user', { id: userId }).then((user) => {
+            console.log('user', user);
+            url += `&username=${user.data.username}&privateKey=${encodeURIComponent(rsaKeys.privateKeySsh)}`;
+            setIframeUrl(url);
+          });
         });
       });
     }
@@ -108,7 +103,7 @@ export const DeviceConnect = (props) => {
 
       let session = authProvider.getSession();
 
-      setUsername(session.object.username);
+      setUserId(session.object.id);
 
       let containerChoices = [{ id: 0, name: 'host' }];
       let containerServices = [[{ id: 0, name: 'SSH' }]];

@@ -83,7 +83,7 @@ jobs:
           provenance: false
           file: ./Dockerfile
           push: false
-          tags: ${{ steps.vtl.outputs.docker_dtag || format('{0}:{1}', replace(github.event.pull_request.head.repo.full_name, '/', '-'), github.event.pull_request.number) }}
+          tags: ${{ steps.vtl.outputs.docker_dtag || (github.event.pull_request.head.repo.full_name + ':' + github.event.pull_request.number) }}
           labels: ${{ steps.vtl.outputs.oci_labels || 'org.opencontainers.image.title=open-balena-ui' }}
 
   # Build and push the docker container to Docker Hub for everything **except PRs**

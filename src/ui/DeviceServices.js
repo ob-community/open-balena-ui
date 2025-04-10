@@ -26,9 +26,14 @@ export const DeviceServices = (props) => {
   const record = useRecordContext();
   const theme = useTheme();
 
+  const [isExecutingCommand, setIsExecutingCommand] = React.useState(false);
+
   const invokeSupervisor = (imageInstall, command) => {
     const session = authProvider.getSession();
     const { device } = props;
+
+    setIsExecutingCommand(true);
+
     return fetch(
       `${environment.REACT_APP_OPEN_BALENA_API_URL}/supervisor/v2/applications/${device['belongs to-application']}/${command}-service`,
       {
@@ -45,17 +50,22 @@ export const DeviceServices = (props) => {
         if (response.status < 200 || response.status >= 300) {
           throw new Error(response.statusText);
         }
+
         return response.body
           .getReader()
           .read()
           .then((streamData) => {
             const result = utf8decode(streamData.value);
-            if (result === 'OK') notify(`Successfully executed command ${command} on device ${device['device name']}`, {type: 'success'});
+            if (result === 'OK')
+              notify(`Successfully executed command ${command} on device ${device['device name']}`, {
+                type: 'success',
+              });
           });
       })
       .catch(() => {
         notify(`Error: Could not execute command ${command} on device ${device['device name']}`, { type: 'error' });
-      });
+      })
+      .finally(() => setIsExecutingCommand(false));
   };
 
   return (
@@ -66,14 +76,18 @@ export const DeviceServices = (props) => {
       filter={record['is running-release'] ? { 'is provided by-release': record['is running-release'] } : {}}
     >
       <Datagrid bulkActionButtons={false}>
-        <WithRecord render={(service) => {
-          const color =
-            service.status === 'Running' ? theme.palette.success.light :
-            service.status === 'Error' ? theme.palette.error.light :
-              theme.palette.warning.light;
+        <WithRecord
+          render={(service) => {
+            const color =
+              service.status === 'Running'
+                ? theme.palette.success.light
+                : service.status === 'Error'
+                  ? theme.palette.error.light
+                  : theme.palette.warning.light;
 
-          return <TripOriginIcon sx={{ color }} />;
-        }}/>
+            return <TripOriginIcon sx={{ color }} />;
+          }}
+        />
 
         <ReferenceField label='Image' source='installs-image' reference='image' target='id' link={false}>
           <ReferenceField
@@ -94,31 +108,40 @@ export const DeviceServices = (props) => {
         </ReferenceField>
 
         <FunctionField
-          render={(record) => (
-            <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
-              <Button
-                onClick={() => invokeSupervisor(record, 'start')}
-                variant={'text'}
-                sx={{ p: '4px', m: '4px', minWidth: 0 }}
-              >
-                <PlayArrowIcon />
-              </Button>
-              <Button
-                onClick={() => invokeSupervisor(record, 'stop')}
-                variant={'text'}
-                sx={{ p: '4px', m: '4px', minWidth: 0 }}
-              >
-                <StopIcon />
-              </Button>
-              <Button
-                onClick={() => invokeSupervisor(record, 'restart')}
-                variant={'text'}
-                sx={{ p: '4px', m: '4px', minWidth: 0 }}
-              >
-                <RestartAltIcon />
-              </Button>
-            </Toolbar>
-          )}
+          render={(record) => {
+            const isRunning = record.status?.toLowerCase() === 'running';
+
+            return (
+              <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
+                <Button
+                  onClick={() => invokeSupervisor(record, 'start')}
+                  disabled={isRunning || isExecutingCommand}
+                  variant={'text'}
+                  sx={{ p: '4px', m: '4px', minWidth: 0 }}
+                >
+                  <PlayArrowIcon />
+                </Button>
+
+                <Button
+                  onClick={() => invokeSupervisor(record, 'stop')}
+                  disabled={!isRunning || isExecutingCommand}
+                  variant={'text'}
+                  sx={{ p: '4px', m: '4px', minWidth: 0 }}
+                >
+                  <StopIcon />
+                </Button>
+
+                <Button
+                  onClick={() => invokeSupervisor(record, 'restart')}
+                  disabled={isExecutingCommand}
+                  variant={'text'}
+                  sx={{ p: '4px', m: '4px', minWidth: 0 }}
+                >
+                  <RestartAltIcon />
+                </Button>
+              </Toolbar>
+            );
+          }}
         />
       </Datagrid>
     </ReferenceManyField>

@@ -6,6 +6,31 @@ import React from 'react';
 const CopyChip = ({ style, title, label, placement = 'top' }) => {
   const [copied, setCopied] = React.useState(false);
 
+  const isImage = React.useMemo(() => {
+    if (title?.startsWith('data:image')) {
+      return true;
+    }
+
+    if (title?.startsWith('http')) {
+      const extensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'];
+      return extensions.some((ext) => title?.endsWith(ext));
+    }
+
+    return false;
+  }, [title]);
+
+  const tooltipContent = React.useMemo(() => {
+    if (isImage) {
+      return <img src={title} style={{ width: '100%', maxWidth: '150px' }} />;
+    }
+
+    if (title != label) {
+      return title;
+    }
+
+    return '';
+  }, [isImage, label, title]);
+
   if (!label) {
     return null;
   }
@@ -24,7 +49,14 @@ const CopyChip = ({ style, title, label, placement = 'top' }) => {
         },
       }}
     >
-      <Tooltip title={title === label ? '' : title} placement={placement} arrow={true}>
+      <Tooltip
+        title={tooltipContent}
+        placement={placement}
+        arrow={true}
+        classes={{
+          tooltip: isImage && 'isImage',
+        }}
+      >
         <Box
           sx={{
             padding: '2px 6px',

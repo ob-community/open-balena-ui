@@ -1,5 +1,5 @@
-import { LinearProgress, createTheme, css } from '@mui/material';
 import React from 'react';
+import { LinearProgress, createTheme, css } from '@mui/material';
 
 const buttonBase = {
   defaultProps: {
@@ -534,6 +534,18 @@ const customTheme = createTheme({
 
           'tr.MuiTableRow-hover:hover': {
             backgroundColor: 'rgba(51, 219, 238, 0.07)' + '!important',
+          },
+        },
+      },
+    },
+
+    MuiTooltip: {
+      styleOverrides: {
+        tooltip: {
+          '&.isImage': {
+            background: '#fff',
+            border: '1px solid rgba(97, 97, 97, 0.9)',
+            textAlign: 'center',
           },
         },
       },

@@ -138,6 +138,7 @@ const ControlsWidget = () => {
                       title: 'Shutdown Device',
                       message: 'Are you sure you want to shut down this device?',
                       confirmText: 'Shutdown',
+                      destructive: true,
                       onConfirm: () => invokeSupervisor(record, 'shutdown'),
                     });
                   }}

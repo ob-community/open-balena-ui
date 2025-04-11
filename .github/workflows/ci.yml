@@ -12,7 +12,7 @@ on:
       - 'dependabot/**'
 
 env:
-  IMAGE_NAME: ob-community/open-balena-ui
+  IMAGE_NAME: harmonidcaputo/open-balena-ui
   BASE_VERSION: '0.1.0' # Where action-vtl starts if there are no existing tags
   NODE_VERSION: 20 # Match the Dockerfile version
 
@@ -85,7 +85,9 @@ jobs:
           provenance: false
           file: ./Dockerfile
           push: false
-          tags: ${{ steps.vtl.outputs.docker_dtag || format('{0}:{1}', github.event.pull_request.head.repo.full_name, github.event.pull_request.number) }}
+          tags:
+            ${{ steps.vtl.outputs.docker_dtag || format('{0}:{1}', github.event.pull_request.head.repo.full_name,
+            github.event.pull_request.number) }}
           labels: ${{ steps.vtl.outputs.oci_labels || 'org.opencontainers.image.title=open-balena-ui' }}
 
   # Build and push the docker container to Docker Hub for everything **except PRs**

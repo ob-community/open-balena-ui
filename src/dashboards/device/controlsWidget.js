@@ -1,8 +1,8 @@
+import React from 'react';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { Box, Button, CardActions, Typography } from '@mui/material';
-import * as React from 'react';
 import {
   EditButton,
   FunctionField,
@@ -15,6 +15,7 @@ import {
 import { OnlineField } from '../../components/device';
 import utf8decode from '../../lib/utf8decode';
 import environment from '../../lib/reactAppEnv';
+import { ConfirmationDialog } from '../../ui/ConfirmationDialog';
 
 const styles = {
   actionCard: {
@@ -35,6 +36,8 @@ const ControlsWidget = () => {
   const authProvider = useAuthProvider();
   const notify = useNotify();
   const record = useRecordContext();
+
+  const [confirmationDialog, setConfirmationDialog] = React.useState(null);
 
   const invokeSupervisor = (device, command) => {
     const session = authProvider.getSession();
@@ -107,21 +110,37 @@ const ControlsWidget = () => {
                 >
                   Blink
                 </Button>
+
                 <Button
                   variant='outlined'
                   size='medium'
-                  onClick={() => invokeSupervisor(record, 'reboot')}
                   startIcon={<RestartAltIcon />}
                   disabled={isOffline}
+                  onClick={() => {
+                    setConfirmationDialog({
+                      title: 'Reboot Device',
+                      message: 'Are you sure you want to reboot this device?',
+                      confirmText: 'Reboot',
+                      onConfirm: () => invokeSupervisor(record, 'reboot'),
+                    });
+                  }}
                 >
                   Reboot
                 </Button>
+
                 <Button
                   variant='outlined'
                   size='medium'
-                  onClick={() => invokeSupervisor(record, 'shutdown')}
                   startIcon={<PowerSettingsNewIcon />}
                   disabled={isOffline}
+                  onClick={() => {
+                    setConfirmationDialog({
+                      title: 'Shutdown Device',
+                      message: 'Are you sure you want to shut down this device?',
+                      confirmText: 'Shutdown',
+                      onConfirm: () => invokeSupervisor(record, 'shutdown'),
+                    });
+                  }}
                 >
                   Shutdown
                 </Button>
@@ -130,6 +149,10 @@ const ControlsWidget = () => {
           }}
         />
       </CardActions>
+
+      {!!confirmationDialog && (
+        <ConfirmationDialog {...confirmationDialog} onClose={() => setConfirmationDialog(null)} />
+      )}
     </>
   );
 };

@@ -76,9 +76,7 @@ export const DeleteReleaseButton = ({ selectedIds, context, ...props }) => {
       <ConfirmationDialog
         open={open}
         title='Delete Release(s)'
-        message='Note: this action will be irreversible'
-        confirmText='Delete'
-        destructive={true}
+        content='Note: this action will be irreversible'
         onConfirm={handleSubmit}
         onClose={() => setOpen(false)}
       />

@@ -45,9 +45,7 @@ export const DeleteApiKeyButton = (props) => {
       <ConfirmationDialog
         open={open}
         title='Delete API Key(s)'
-        message='Note: this action will be irreversible'
-        confirmText='Delete'
-        destructive={true}
+        content='Note: this action will be irreversible'
         onConfirm={handleSubmit}
         onClose={() => setOpen(false)}
       />

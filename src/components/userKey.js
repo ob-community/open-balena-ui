@@ -37,7 +37,7 @@ export const UserKeysList = () => {
 
         <Toolbar>
           <EditButton label='' variant='outlined' size='small' />
-          <DeleteButton label='' variant='outlined' size='small' />
+          <DeleteButton mutationMode='optimistic' label='' variant='outlined' size='small' />
         </Toolbar>
       </Datagrid>
     </List>

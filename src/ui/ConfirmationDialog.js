@@ -1,7 +1,16 @@
-import { Box, Button, CircularProgress, Dialog, DialogContent, DialogTitle } from '@mui/material';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+} from '@mui/material';
 import React from 'react';
 
-export const ConfirmationDialog = ({ open = true, title, message, onClose, onConfirm, confirmText, destructive }) => {
+export const ConfirmationDialog = ({ open = true, title, content, onClose, onConfirm, confirmButtonText }) => {
   const [isLoading, setIsLoading] = React.useState(false);
 
   return (
@@ -9,37 +18,30 @@ export const ConfirmationDialog = ({ open = true, title, message, onClose, onCon
       <DialogTitle>{title}</DialogTitle>
 
       <DialogContent>
-        {!!message && <p style={{ marginTop: '0' }}>{message}</p>}
+        <DialogContentText>{content}</DialogContentText>
+      </DialogContent>
 
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            marginTop: 4,
+      <DialogActions className='custom'>
+        <Button variant='outlined' onClick={onClose} disabled={isLoading}>
+          Cancel
+        </Button>
+
+        <Button
+          variant='contained'
+          disabled={isLoading}
+          onClick={async () => {
+            try {
+              setIsLoading(true);
+              await onConfirm?.();
+            } finally {
+              onClose?.();
+              setIsLoading(false);
+            }
           }}
         >
-          <Button variant='outlined' onClick={onClose} disabled={isLoading}>
-            Cancel
-          </Button>
-
-          <Button
-            variant='contained'
-            color={destructive ? 'error' : 'primary'}
-            disabled={isLoading}
-            onClick={async () => {
-              try {
-                setIsLoading(true);
-                await onConfirm?.();
-              } finally {
-                onClose?.();
-                setIsLoading(false);
-              }
-            }}
-          >
-            {isLoading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : confirmText || 'Confirm'}
-          </Button>
-        </Box>
-      </DialogContent>
+          {isLoading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : confirmButtonText || 'Confirm'}
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 };

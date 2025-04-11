@@ -39,9 +39,7 @@ export const DeleteUserButton = (props) => {
       <ConfirmationDialog
         open={open}
         title='Delete User(s)'
-        message='Note: this action will be irreversible'
-        confirmText='Delete'
-        destructive={true}
+        content='Note: this action will be irreversible'
         onConfirm={handleSubmit}
         onClose={() => setOpen(false)}
       />

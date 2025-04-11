@@ -45,7 +45,7 @@ export const FleetEnvVarList = () => {
 
         <Toolbar>
           <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton label='' size='small' variant='outlined' />
+          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
         </Toolbar>
       </Datagrid>
     </List>
@@ -79,13 +79,17 @@ export const FleetEnvVarCreate = () => {
               <TextInput
                 label='Name'
                 source='name'
-                validate={[required(), unique({
-                  filter: {
-                    application: formData.application,
-                  },
-                  message: uniqueIssueMessage
-                })]}
-                size='large' />
+                validate={[
+                  required(),
+                  unique({
+                    filter: {
+                      application: formData.application,
+                    },
+                    message: uniqueIssueMessage,
+                  }),
+                ]}
+                size='large'
+              />
             )}
           </FormDataConsumer>
           <TextInput label='Value' source='value' validate={required()} size='large' />

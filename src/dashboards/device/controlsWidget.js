@@ -119,8 +119,7 @@ const ControlsWidget = () => {
                   onClick={() => {
                     setConfirmationDialog({
                       title: 'Reboot Device',
-                      message: 'Are you sure you want to reboot this device?',
-                      confirmText: 'Reboot',
+                      content: 'Are you sure you want to reboot this device?',
                       onConfirm: () => invokeSupervisor(record, 'reboot'),
                     });
                   }}
@@ -136,9 +135,7 @@ const ControlsWidget = () => {
                   onClick={() => {
                     setConfirmationDialog({
                       title: 'Shutdown Device',
-                      message: 'Are you sure you want to shut down this device?',
-                      confirmText: 'Shutdown',
-                      destructive: true,
+                      content: 'Are you sure you want to shut down this device?',
                       onConfirm: () => invokeSupervisor(record, 'shutdown'),
                     });
                   }}

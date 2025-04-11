@@ -56,7 +56,7 @@ export const DeviceTypeList = () => {
 
         <Toolbar>
           <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton label='' size='small' variant='outlined' />
+          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
         </Toolbar>
       </Datagrid>
     </List>

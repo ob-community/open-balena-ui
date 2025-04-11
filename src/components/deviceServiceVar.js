@@ -31,13 +31,10 @@ export const DeviceServiceVarList = () => {
   try {
     const showContext = useShowContext();
 
-    const { data, isLoading, isError } = useGetManyReference (
-      'service install',
-      {
-        target: 'device',
-        id: showContext.record.id
-      }
-    )
+    const { data, isLoading, isError } = useGetManyReference('service install', {
+      target: 'device',
+      id: showContext.record.id,
+    });
 
     const serviceInstallIds = data?.map((x) => x.id) || [];
 
@@ -86,7 +83,7 @@ export const DeviceServiceVarList = () => {
 
         <Toolbar>
           <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton label='' size='small' variant='outlined' />
+          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
         </Toolbar>
       </Datagrid>
     </List>

@@ -1,9 +1,9 @@
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
+import { Button } from '@mui/material';
 import React from 'react';
 import { useNotify, useRecordContext, useRedirect } from 'react-admin';
-import { Form } from 'react-final-form';
 import { useDeleteFleet, useDeleteFleetBulk } from '../lib/fleet';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 export const DeleteFleetButton = (props) => {
   const [open, setOpen] = React.useState(false);
@@ -35,24 +35,14 @@ export const DeleteFleetButton = (props) => {
       >
         <DeleteIcon sx={{ mr: '4px' }} size={props.size} /> {props.children}
       </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby='form-dialog-title'>
-        <DialogTitle id='form-dialog-title'> Delete Fleet(s) </DialogTitle>
-        <DialogContent>
-          Note: this action will be irreversible
-          <br />
-          <br />
-          <Form
-            onSubmit={handleSubmit}
-            render={({ handleSubmit, form, submitting, pristine, values }) => (
-              <form onSubmit={handleSubmit}>
-                <Button variant='contained' color='primary' type='submit' disabled={submitting}>
-                  Confirm Delete
-                </Button>
-              </form>
-            )}
-          />
-        </DialogContent>
-      </Dialog>
+
+      <ConfirmationDialog
+        open={open}
+        title='Delete Fleet(s)'
+        content='Note: this action will be irreversible'
+        onConfirm={handleSubmit}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 };

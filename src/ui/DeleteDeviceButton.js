@@ -1,9 +1,9 @@
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Button, Dialog, DialogContent, DialogTitle, Tooltip } from '@mui/material';
+import { Button, Tooltip } from '@mui/material';
 import React from 'react';
 import { useNotify, useRecordContext, useUnselectAll, useRefresh } from 'react-admin';
-import { Form } from 'react-final-form';
 import { useDeleteDevice, useDeleteDeviceBulk } from '../lib/device';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 export const DeleteDeviceButton = (props) => {
   const [open, setOpen] = React.useState(false);
@@ -44,24 +44,13 @@ export const DeleteDeviceButton = (props) => {
         </Button>
       </Tooltip>
 
-      <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby='form-dialog-title'>
-        <DialogTitle id='form-dialog-title'> Delete Device(s) </DialogTitle>
-        <DialogContent>
-          Note: this action will be irreversible
-          <br />
-          <br />
-          <Form
-            onSubmit={handleSubmit}
-            render={({ handleSubmit, form, submitting, pristine, values }) => (
-              <form onSubmit={handleSubmit}>
-                <Button variant='contained' color='primary' type='submit' disabled={submitting}>
-                  Confirm Delete
-                </Button>
-              </form>
-            )}
-          />
-        </DialogContent>
-      </Dialog>
+      <ConfirmationDialog
+        open={open}
+        title='Delete Device(s)'
+        content='Note: this action will be irreversible'
+        onConfirm={handleSubmit}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 };

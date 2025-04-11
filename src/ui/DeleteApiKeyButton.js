@@ -1,9 +1,9 @@
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
+import { Button } from '@mui/material';
 import React from 'react';
 import { useNotify, useRecordContext, useUnselectAll, useRefresh } from 'react-admin';
-import { Form } from 'react-final-form';
 import { useDeleteApiKey, useDeleteApiKeyBulk } from '../lib/apiKey';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 export const DeleteApiKeyButton = (props) => {
   const [open, setOpen] = React.useState(false);
@@ -41,24 +41,14 @@ export const DeleteApiKeyButton = (props) => {
       >
         <DeleteIcon sx={{ mr: '4px' }} size={props.size} /> {props.children}
       </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby='form-dialog-title'>
-        <DialogTitle id='form-dialog-title'> Delete API Key(s) </DialogTitle>
-        <DialogContent>
-          Note: this action will be irreversible
-          <br />
-          <br />
-          <Form
-            onSubmit={handleSubmit}
-            render={({ handleSubmit, form, submitting, pristine, values }) => (
-              <form onSubmit={handleSubmit}>
-                <Button variant='contained' color='primary' type='submit' disabled={submitting}>
-                  Confirm Delete
-                </Button>
-              </form>
-            )}
-          />
-        </DialogContent>
-      </Dialog>
+
+      <ConfirmationDialog
+        open={open}
+        title='Delete API Key(s)'
+        content='Note: this action will be irreversible'
+        onConfirm={handleSubmit}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 };

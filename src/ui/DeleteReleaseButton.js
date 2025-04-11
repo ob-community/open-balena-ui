@@ -1,11 +1,11 @@
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
+import { Button } from '@mui/material';
 import React from 'react';
 import { useNotify, useRecordContext, useRedirect } from 'react-admin';
-import { Form } from 'react-final-form';
 import { useDeleteRelease, useDeleteReleaseBulk } from '../lib/release';
 import versions from '../versions';
 import environment from '../lib/reactAppEnv';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
@@ -72,24 +72,14 @@ export const DeleteReleaseButton = ({ selectedIds, context, ...props }) => {
       >
         <DeleteIcon sx={{ mr: '4px' }} size={props.size} /> {props.children}
       </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby='form-dialog-title'>
-        <DialogTitle id='form-dialog-title'> Delete Release(s) </DialogTitle>
-        <DialogContent>
-          Note: this action will be irreversible
-          <br />
-          <br />
-          <Form
-            onSubmit={handleSubmit}
-            render={({ handleSubmit, form, submitting, pristine, values }) => (
-              <form onSubmit={handleSubmit}>
-                <Button variant='contained' color='primary' type='submit' disabled={submitting}>
-                  Confirm Delete
-                </Button>
-              </form>
-            )}
-          />
-        </DialogContent>
-      </Dialog>
+
+      <ConfirmationDialog
+        open={open}
+        title='Delete Release(s)'
+        content='Note: this action will be irreversible'
+        onConfirm={handleSubmit}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 };

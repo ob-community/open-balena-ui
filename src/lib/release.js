@@ -19,7 +19,10 @@ export function useDeleteRelease() {
       },
     ];
 
-    let relatedDirectLookups = [{ remoteResource: 'release tag', remoteField: 'release', localField: 'id' }];
+    let relatedDirectLookups = [
+      { remoteResource: 'release tag', remoteField: 'release', localField: 'id' },
+      { remoteResource: 'release asset', remoteField: 'release', localField: 'id' },
+    ];
     await deleteAllRelated(dataProvider, release, relatedIndirectLookups, relatedDirectLookups);
     await dataProvider.delete('release', { id: release['id'] });
     return Promise.resolve();

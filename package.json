@@ -1,6 +1,6 @@
 {
   "name": "open-balena-ui",
-  "version": "0.3.7",
+  "version": "dcaputo-add-release-asset-deletion",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.13.3",

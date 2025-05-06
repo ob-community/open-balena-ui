@@ -1,6 +1,6 @@
 {
   "name": "open-balena-ui",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.13.3",

@@ -35,7 +35,7 @@
     "react-final-form": "^6.5.9",
     "react-hook-form": "^7.53.0",
     "react-password-checklist": "^1.8.0",
-    "react-router": "^6.26.1",
+    "react-router": "^7.6.3",
     "react-router-dom": "^6.26.1",
     "regenerator-runtime": "^0.14.0",
     "semver": "^7.6.3",

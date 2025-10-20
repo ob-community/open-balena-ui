@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist/server",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "jsx": "preserve"
+  },
+  "include": ["server/**/*", "types/**/*.d.ts", "types.d.ts"]
+}

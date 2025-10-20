@@ -14,7 +14,7 @@ on:
 env:
   IMAGE_NAME: obcommunity/open-balena-ui
   BASE_VERSION: '0.1.0' # Where action-vtl starts if there are no existing tags
-  NODE_VERSION: 20 # Match the Dockerfile version
+  NODE_VERSION: 24 # Match the Dockerfile version
 
 jobs:
   # Sanity checks: Lint, test, and build the project
@@ -24,12 +24,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 
@@ -99,7 +99,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 

@@ -1,0 +1,3 @@
+interface RequestInit {
+  insecureHTTPParser?: boolean;
+}

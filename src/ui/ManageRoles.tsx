@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box } from '@mui/material';
-import { AutocompleteArrayInput, Identifier, Loading, RaRecord, useGetList, useRecordContext } from 'react-admin';
+import { Identifier, Loading, RaRecord, useGetList, useRecordContext } from 'react-admin';
 import { useFormContext } from 'react-hook-form';
+import GenericTransferList, { TransferListOption } from '../components/genericTransferList';
 
 interface RoleRecord extends RaRecord {
   name: string;
@@ -20,6 +21,7 @@ interface ManageRolesProps {
 export const ManageRoles: React.FC<ManageRolesProps> = ({ source, reference, target }) => {
   const record = useRecordContext<RaRecord>();
   const { setValue } = useFormContext();
+  const [selection, setSelection] = React.useState<Identifier[]>([]);
 
   const { data: roleRecords = [], isLoading: rolesLoading } = useGetList<RoleRecord>('role', {
     pagination: { page: 1, perPage: 1000 },
@@ -43,6 +45,7 @@ export const ManageRoles: React.FC<ManageRolesProps> = ({ source, reference, tar
 
   React.useEffect(() => {
     initializedRef.current = false;
+    setSelection([]);
   }, [record?.id]);
 
   const selectedIds = React.useMemo<Identifier[]>(
@@ -52,12 +55,24 @@ export const ManageRoles: React.FC<ManageRolesProps> = ({ source, reference, tar
 
   React.useEffect(() => {
     if (!initializedRef.current && !rolesLoading && !assignmentsLoading) {
+      setSelection(selectedIds);
       setValue(source, selectedIds, { shouldDirty: false });
       initializedRef.current = true;
     }
   }, [assignmentsLoading, rolesLoading, selectedIds, setValue, source]);
 
-  const roleChoices = React.useMemo(() => roleRecords.map((role) => ({ id: role.id, name: role.name })), [roleRecords]);
+  const roleOptions = React.useMemo<TransferListOption[]>(
+    () => roleRecords.map((role) => ({ id: role.id, label: role.name })),
+    [roleRecords],
+  );
+
+  const handleSelectionChange = React.useCallback(
+    (nextIds: Identifier[]) => {
+      setSelection(nextIds);
+      setValue(source, nextIds, { shouldDirty: true });
+    },
+    [setValue, source],
+  );
 
   if (rolesLoading || assignmentsLoading) {
     return <Loading />;
@@ -67,13 +82,14 @@ export const ManageRoles: React.FC<ManageRolesProps> = ({ source, reference, tar
     <Box sx={{ width: 800, maxWidth: '100%' }}>
       <strong style={{ margin: '40px 0 10px', display: 'block' }}>Roles</strong>
 
-      <AutocompleteArrayInput
-        source={source}
-        choices={roleChoices}
-        label='Select roles'
-        fullWidth
-        defaultValue={[]}
-        sx={{ maxWidth: 360 }}
+      <GenericTransferList
+        options={roleOptions}
+        value={selection}
+        onChange={handleSelectionChange}
+        availableLabel='Available'
+        selectedLabel='Selected'
+        listWidth={320}
+        listHeight={360}
       />
     </Box>
   );

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box } from '@mui/material';
-import { AutocompleteArrayInput, Identifier, Loading, RaRecord, useGetList, useRecordContext } from 'react-admin';
+import { Identifier, Loading, RaRecord, useGetList, useRecordContext } from 'react-admin';
 import { useFormContext } from 'react-hook-form';
+import GenericTransferList, { TransferListOption } from '../components/genericTransferList';
 
 interface OrganizationRecord extends RaRecord {
   name: string;
@@ -20,6 +21,7 @@ interface ManageOrganizationsProps {
 export const ManageOrganizations: React.FC<ManageOrganizationsProps> = ({ source, reference, target }) => {
   const record = useRecordContext<RaRecord>();
   const { setValue } = useFormContext();
+  const [selection, setSelection] = React.useState<Identifier[]>([]);
 
   const { data: organizationRecords = [], isLoading: organizationsLoading } = useGetList<OrganizationRecord>(
     'organization',
@@ -46,6 +48,7 @@ export const ManageOrganizations: React.FC<ManageOrganizationsProps> = ({ source
 
   React.useEffect(() => {
     initializedRef.current = false;
+    setSelection([]);
   }, [record?.id]);
 
   const selectedIds = React.useMemo<Identifier[]>(
@@ -58,14 +61,23 @@ export const ManageOrganizations: React.FC<ManageOrganizationsProps> = ({ source
 
   React.useEffect(() => {
     if (!initializedRef.current && !organizationsLoading && !membershipsLoading) {
+      setSelection(selectedIds);
       setValue(source, selectedIds, { shouldDirty: false });
       initializedRef.current = true;
     }
   }, [membershipsLoading, organizationsLoading, selectedIds, setValue, source]);
 
-  const organizationChoices = React.useMemo(
-    () => organizationRecords.map((organization) => ({ id: organization.id, name: organization.name })),
+  const organizationOptions = React.useMemo<TransferListOption[]>(
+    () => organizationRecords.map((organization) => ({ id: organization.id, label: organization.name })),
     [organizationRecords],
+  );
+
+  const handleSelectionChange = React.useCallback(
+    (nextIds: Identifier[]) => {
+      setSelection(nextIds);
+      setValue(source, nextIds, { shouldDirty: true });
+    },
+    [setValue, source],
   );
 
   if (organizationsLoading || membershipsLoading) {
@@ -76,13 +88,14 @@ export const ManageOrganizations: React.FC<ManageOrganizationsProps> = ({ source
     <Box sx={{ width: 800, maxWidth: '100%' }}>
       <strong style={{ margin: '40px 0 10px', display: 'block' }}>Organizations</strong>
 
-      <AutocompleteArrayInput
-        source={source}
-        choices={organizationChoices}
-        label='Select organizations'
-        fullWidth
-        defaultValue={[]}
-        sx={{ maxWidth: 360 }}
+      <GenericTransferList
+        options={organizationOptions}
+        value={selection}
+        onChange={handleSelectionChange}
+        availableLabel='Available'
+        selectedLabel='Selected'
+        listWidth={320}
+        listHeight={360}
       />
     </Box>
   );

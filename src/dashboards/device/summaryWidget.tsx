@@ -10,10 +10,17 @@ import {
   useRecordContext,
   RecordContextProvider,
 } from 'react-admin';
-import { styled, Box, Tooltip } from '@mui/material';
+import { styled, Box, Tooltip, Chip } from '@mui/material';
 import dateFormat from 'dateformat';
 import SemVerChip from '../../ui/SemVerChip';
 import React from 'react';
+import { resolveDeviceTargetRelease } from '../../lib/targetRelease';
+import TargetReleaseIcon from '../../ui/TargetReleaseIcon';
+import versions from '../../versions';
+import environment from '../../lib/reactAppEnv';
+import TargetReleaseTooltip from '../../ui/TargetReleaseTooltip';
+
+const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 const TargetRelease = () => {
   const record = useRecordContext();
@@ -39,21 +46,36 @@ const TargetRelease = () => {
     return <p>ERROR</p>;
   }
 
-  const resolvedTargetRelease = record['should be running-release'] ?? fleet?.['should be running-release'];
+  const { targetReleaseId, origin } = resolveDeviceTargetRelease({
+    record,
+    fleetRecord: fleet,
+    pinField: isPinnedOnRelease,
+  });
 
-  if (!resolvedTargetRelease) {
-    return null;
+  const targetField = '__targetReleaseId';
+
+  if (targetReleaseId === undefined) {
+    return (
+      <TargetReleaseTooltip origin={origin} fallbackDetail='Tracking latest release'>
+        <Chip
+          icon={<TargetReleaseIcon origin={origin} fontSize='small' />}
+          label='Latest'
+          size='small'
+          variant='outlined'
+        />
+      </TargetReleaseTooltip>
+    );
   }
 
   const augmentedRecord =
-    resolvedTargetRelease !== record['should be running-release']
-      ? { ...record, ['should be running-release']: resolvedTargetRelease }
-      : record;
+    targetReleaseId !== record[targetField] ? { ...record, [targetField]: targetReleaseId } : record;
 
   return (
     <RecordContextProvider value={augmentedRecord}>
-      <ReferenceField source='should be running-release' reference='release' target='id'>
-        <SemVerChip />
+      <ReferenceField source={targetField} reference='release' target='id' link={false}>
+        <TargetReleaseTooltip origin={origin}>
+          <SemVerChip icon={<TargetReleaseIcon origin={origin} fontSize='small' />} withTooltip={false} />
+        </TargetReleaseTooltip>
       </ReferenceField>
     </RecordContextProvider>
   );

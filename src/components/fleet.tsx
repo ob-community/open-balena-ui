@@ -21,13 +21,54 @@ import {
   minLength,
   required,
   useUnique,
+  RecordContextProvider,
 } from 'react-admin';
+import { Chip } from '@mui/material';
+import SwitchAccessShortcutIcon from '@mui/icons-material/SwitchAccessShortcut';
 import { useParams } from 'react-router';
 import { v4 as uuidv4 } from 'uuid';
 import { useCreateFleet } from '../lib/fleet';
 import DeleteFleetButton from '../ui/DeleteFleetButton';
 import Row from '../ui/Row';
 import SemVerChip, { getSemver } from '../ui/SemVerChip';
+import versions from '../versions';
+import environment from '../lib/reactAppEnv';
+import { resolveFleetTargetRelease } from '../lib/targetRelease';
+import TargetReleaseIcon from '../ui/TargetReleaseIcon';
+import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
+
+const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+
+const FleetTargetReleaseCell: React.FC<{ record: Record<string, any> }> = ({ record }) => {
+  if (!record) {
+    return null;
+  }
+
+  const { targetReleaseId, origin } = resolveFleetTargetRelease({ record, pinField: isPinnedOnRelease });
+  const targetField = '__targetReleaseId';
+  const chipIcon = <TargetReleaseIcon origin={origin} fontSize='small' />;
+
+  if (targetReleaseId === undefined) {
+    return (
+      <TargetReleaseTooltip origin={origin} fallbackDetail='Tracking latest release'>
+        <Chip icon={chipIcon} label='Latest' size='small' variant='outlined' />
+      </TargetReleaseTooltip>
+    );
+  }
+
+  const augmentedRecord =
+    targetReleaseId !== record[targetField] ? { ...record, [targetField]: targetReleaseId } : record;
+
+  return (
+    <RecordContextProvider value={augmentedRecord}>
+      <ReferenceField source={targetField} reference='release' target='id' link={false}>
+        <TargetReleaseTooltip origin={origin}>
+          <SemVerChip icon={chipIcon} withTooltip={false} />
+        </TargetReleaseTooltip>
+      </ReferenceField>
+    </RecordContextProvider>
+  );
+};
 
 const CustomBulkActionButtons = (props) => (
   <React.Fragment>
@@ -65,9 +106,7 @@ export const FleetList = () => {
           <TextField source='slug' />
         </ReferenceField>
 
-        <ReferenceField label='Target Rel.' source='should be running-release' reference='release' target='id'>
-          <SemVerChip />
-        </ReferenceField>
+        <FunctionField label='Target Rel.' render={(record) => <FleetTargetReleaseCell record={record} />} />
 
         <BooleanField label='Host' source='is host' />
 
@@ -169,29 +208,13 @@ export const FleetCreate = (props) => {
         <br />
 
         <Row>
-          <BooleanInput
-            label='Track Latest Release'
-            source='should track latest release'
-            defaultValue={1}
-          />
+          <BooleanInput label='Track Latest Release' source='should track latest release' defaultValue={1} />
 
-          <BooleanInput
-            label='Host'
-            source='is host'
-            defaultValue={0}
-          />
+          <BooleanInput label='Host' source='is host' defaultValue={0} />
 
-          <BooleanInput
-            label='Archived'
-            source='is archived'
-            defaultValue={0}
-          />
+          <BooleanInput label='Archived' source='is archived' defaultValue={0} />
 
-          <BooleanInput
-            label='Public'
-            source='is public'
-            defaultValue={0}
-          />
+          <BooleanInput label='Public' source='is public' defaultValue={0} />
         </Row>
       </SimpleForm>
     </Create>
@@ -285,7 +308,15 @@ export const FleetEdit = () => {
         <br />
 
         <Row>
-          <BooleanInput label='Track Latest Release' source='should track latest release' />
+          <BooleanInput
+            label={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <SwitchAccessShortcutIcon fontSize='small' />
+                Track Latest Release
+              </span>
+            }
+            source='should track latest release'
+          />
           <BooleanInput label='Host' source='is host' />
           <BooleanInput label='Archived' source='is archived' />
           <BooleanInput label='Public' source='is public' />

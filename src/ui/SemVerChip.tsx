@@ -27,9 +27,15 @@ export function getSemver(record: RaRecord | Record<string, any>): string {
 interface SemVerChipProps extends Omit<ChipProps, 'label'> {
   record?: RaRecord | Record<string, any> | null;
   showBlankOnNull?: boolean;
+  withTooltip?: boolean;
 }
 
-const SemVerChip: React.FC<SemVerChipProps> = ({ record: recordProp, showBlankOnNull = false, ...rest }) => {
+const SemVerChip: React.FC<SemVerChipProps> = ({
+  record: recordProp,
+  showBlankOnNull = false,
+  withTooltip = true,
+  ...rest
+}) => {
   const contextRecord = useRecordContext<RaRecord | Record<string, any>>();
   const record = recordProp ?? contextRecord;
 
@@ -39,10 +45,15 @@ const SemVerChip: React.FC<SemVerChipProps> = ({ record: recordProp, showBlankOn
 
   const semver = getSemver(record);
   const commit = record['commit'] ?? 'unknown commit';
+  const chip = <Chip label={semver} size='small' {...rest} />;
+
+  if (!withTooltip) {
+    return chip;
+  }
 
   return (
     <Tooltip title={commit} placement='top' arrow={true}>
-      <Chip label={semver} size='small' {...rest} />
+      {chip}
     </Tooltip>
   );
 };

@@ -37,10 +37,13 @@ import DeviceServicesButton from '../ui/DeviceServicesButton';
 import Row from '../ui/Row';
 import SelectOperatingSystem from '../ui/SelectOperatingSystem';
 import SemVerChip, { getSemver } from '../ui/SemVerChip';
-import SemVerTextField from '../ui/SemVerTextField';
 import versions from '../versions';
 import environment from '../lib/reactAppEnv';
+import { resolveDeviceTargetRelease } from '../lib/targetRelease';
+import TargetReleaseIcon from '../ui/TargetReleaseIcon';
+import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 
+// Get the proper field name for isPinnedOnRelease based on API version
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 export const OnlineField = (props) => {
@@ -109,48 +112,65 @@ const ReleaseFieldContent = ({ record, source, theme }: ReleaseFieldContentProps
     return <p>ERROR</p>;
   }
 
-  const resolvedTargetRelease =
-    record[isPinnedOnRelease] ?? record['should be running-release'] ?? fleet?.['should be running-release'];
+  const { targetReleaseId, origin } = resolveDeviceTargetRelease({
+    record,
+    fleetRecord: fleet,
+    pinField: isPinnedOnRelease,
+  });
 
   const augmentedRecord =
-    resolvedTargetRelease !== undefined && resolvedTargetRelease !== record['should be running-release']
-      ? { ...record, ['should be running-release']: resolvedTargetRelease }
+    targetReleaseId !== undefined && targetReleaseId !== record['should be running-release']
+      ? { ...record, ['should be running-release']: targetReleaseId }
       : record;
 
-  const isUpToDate = Boolean(record[source] && record[source] === resolvedTargetRelease);
+  const isTrackingLatest = origin === 'latest';
+  const currentRelease = record[source];
+  const hasTarget = targetReleaseId !== undefined && targetReleaseId !== null;
+  const isTargetMatch =
+    hasTarget && currentRelease !== undefined && currentRelease !== null
+      ? String(currentRelease) === String(targetReleaseId)
+      : false;
+
+  const isUpToDate = hasTarget ? isTargetMatch : isTrackingLatest;
   const isOnline = record['api heartbeat state'] === 'online';
+  const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
 
   return (
     <RecordContextProvider value={augmentedRecord}>
       <ReferenceField label='Current Release' source='is running-release' reference='release' target='id'>
-        <SemVerChip sx={{ position: 'relative', top: '-5px' }} />
+        <SemVerChip icon={chipIcon} sx={{ position: 'relative', top: '-5px' }} withTooltip={false} />
       </ReferenceField>
 
-      {record[source] && resolvedTargetRelease && (
-        <Tooltip
-          placement='top'
-          arrow={true}
-          title={
-            <>
-              Target Release:
-              <ReferenceField reference='release' target='id' source='should be running-release'>
-                <SemVerTextField style={{ marginLeft: '3px', fontSize: '0.7rem' }} />
-              </ReferenceField>
-            </>
-          }
-        >
-          <span
-            style={{
-              position: 'relative',
-              top: '3px',
-              left: '3px',
-              color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
-            }}
-          >
-            {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
-          </span>
-        </Tooltip>
-      )}
+      {record[source] &&
+        (targetReleaseId !== undefined && targetReleaseId !== null ? (
+          <ReferenceField reference='release' target='id' source='should be running-release' link={false}>
+            <TargetReleaseTooltip origin={origin}>
+              <span
+                style={{
+                  position: 'relative',
+                  top: '3px',
+                  left: '3px',
+                  color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
+                }}
+              >
+                {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
+              </span>
+            </TargetReleaseTooltip>
+          </ReferenceField>
+        ) : (
+          <TargetReleaseTooltip origin={origin} fallbackDetail='Tracking latest release'>
+            <span
+              style={{
+                position: 'relative',
+                top: '3px',
+                left: '3px',
+                color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
+              }}
+            >
+              {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
+            </span>
+          </TargetReleaseTooltip>
+        ))}
     </RecordContextProvider>
   );
 };

@@ -8,6 +8,7 @@ import {
   Loading,
   useGetOne,
   useRecordContext,
+  RecordContextProvider,
 } from 'react-admin';
 import { styled, Box, Tooltip } from '@mui/material';
 import dateFormat from 'dateformat';
@@ -19,21 +20,42 @@ const TargetRelease = () => {
 
   if (!record) {
     return null;
-  } else if (!record['should be running-release']) {
-    const { data: fleet, isPending, error } = useGetOne('application', { id: record['belongs to-application'] });
-    if (isPending) {
-      return <p>Loading</p>;
-    }
-    if (error) {
-      return <p>ERROR</p>;
-    }
-    record['should be running-release'] = fleet['should be running-release'];
   }
 
+  const applicationId = record['belongs to-application'];
+  const needsFleetFallback = !record['should be running-release'] && Boolean(applicationId);
+
+  const {
+    data: fleet,
+    isPending,
+    error,
+  } = useGetOne('application', { id: applicationId }, { enabled: needsFleetFallback });
+
+  if (needsFleetFallback && isPending) {
+    return <p>Loading</p>;
+  }
+
+  if (needsFleetFallback && error) {
+    return <p>ERROR</p>;
+  }
+
+  const resolvedTargetRelease = record['should be running-release'] ?? fleet?.['should be running-release'];
+
+  if (!resolvedTargetRelease) {
+    return null;
+  }
+
+  const augmentedRecord =
+    resolvedTargetRelease !== record['should be running-release']
+      ? { ...record, ['should be running-release']: resolvedTargetRelease }
+      : record;
+
   return (
-    <ReferenceField source='should be running-release' reference='release' target='id'>
-      <SemVerChip />
-    </ReferenceField>
+    <RecordContextProvider value={augmentedRecord}>
+      <ReferenceField source='should be running-release' reference='release' target='id'>
+        <SemVerChip />
+      </ReferenceField>
+    </RecordContextProvider>
   );
 };
 

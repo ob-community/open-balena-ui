@@ -1,4 +1,5 @@
 import { Tooltip, useTheme } from '@mui/material';
+import type { Theme } from '@mui/material/styles';
 import { Done, Warning, WarningAmber } from '@mui/icons-material';
 import dateFormat from 'dateformat';
 import * as React from 'react';
@@ -25,6 +26,7 @@ import {
   useRedirect,
   useListContext,
   WithRecord,
+  RecordContextProvider,
 } from 'react-admin';
 import { v4 as uuidv4 } from 'uuid';
 import { useCreateDevice, useModifyDevice, useSetServicesForNewDevice } from '../lib/device';
@@ -75,58 +77,81 @@ export const ReleaseField = (props) => {
   return (
     <FunctionField
       {...props}
-      render={(record, source) => {
-        if (!source) {
-          return null;
-        }
-        const { data: fleet, isPending, error } = useGetOne('application', { id: record['belongs to-application'] });
-        if (isPending) {
-          return <p>Loading</p>;
-        }
-        if (error) {
-          return <p>ERROR</p>;
-        }
-
-        record['should be running-release'] = record[isPinnedOnRelease] || fleet['should be running-release'];
-
-        const isUpToDate = !!(record[source] && record[source] === record['should be running-release']);
-        const isOnline = record['api heartbeat state'] === 'online';
-
-        return (
-          <>
-            <ReferenceField label='Current Release' source='is running-release' reference='release' target='id'>
-              <SemVerChip sx={{ position: 'relative', top: '-5px' }} />
-            </ReferenceField>
-
-            {record[source] && (
-              <Tooltip
-                placement='top'
-                arrow={true}
-                title={
-                  <>
-                    Target Release:
-                    <ReferenceField reference='release' target='id' source='should be running-release'>
-                      <SemVerTextField style={{ marginLeft: '3px', fontSize: '0.7rem' }} />
-                    </ReferenceField>
-                  </>
-                }
-              >
-                <span
-                  style={{
-                    position: 'relative',
-                    top: '3px',
-                    left: '3px',
-                    color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
-                  }}
-                >
-                  {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
-                </span>
-              </Tooltip>
-            )}
-          </>
-        );
-      }}
+      render={(record, source) => <ReleaseFieldContent record={record} source={source} theme={theme} />}
     />
+  );
+};
+
+type ReleaseFieldContentProps = {
+  record: Record<string, any> | null;
+  source?: string;
+  theme: Theme;
+};
+
+const ReleaseFieldContent = ({ record, source, theme }: ReleaseFieldContentProps) => {
+  if (!record || !source) {
+    return null;
+  }
+
+  const applicationId = record['belongs to-application'];
+  const shouldFetchFleet = Boolean(applicationId);
+  const {
+    data: fleet,
+    isPending,
+    error,
+  } = useGetOne('application', { id: applicationId }, { enabled: shouldFetchFleet });
+
+  if (shouldFetchFleet && isPending) {
+    return <p>Loading</p>;
+  }
+
+  if (shouldFetchFleet && error) {
+    return <p>ERROR</p>;
+  }
+
+  const resolvedTargetRelease =
+    record[isPinnedOnRelease] ?? record['should be running-release'] ?? fleet?.['should be running-release'];
+
+  const augmentedRecord =
+    resolvedTargetRelease !== undefined && resolvedTargetRelease !== record['should be running-release']
+      ? { ...record, ['should be running-release']: resolvedTargetRelease }
+      : record;
+
+  const isUpToDate = Boolean(record[source] && record[source] === resolvedTargetRelease);
+  const isOnline = record['api heartbeat state'] === 'online';
+
+  return (
+    <RecordContextProvider value={augmentedRecord}>
+      <ReferenceField label='Current Release' source='is running-release' reference='release' target='id'>
+        <SemVerChip sx={{ position: 'relative', top: '-5px' }} />
+      </ReferenceField>
+
+      {record[source] && resolvedTargetRelease && (
+        <Tooltip
+          placement='top'
+          arrow={true}
+          title={
+            <>
+              Target Release:
+              <ReferenceField reference='release' target='id' source='should be running-release'>
+                <SemVerTextField style={{ marginLeft: '3px', fontSize: '0.7rem' }} />
+              </ReferenceField>
+            </>
+          }
+        >
+          <span
+            style={{
+              position: 'relative',
+              top: '3px',
+              left: '3px',
+              color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
+            }}
+          >
+            {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
+          </span>
+        </Tooltip>
+      )}
+    </RecordContextProvider>
   );
 };
 

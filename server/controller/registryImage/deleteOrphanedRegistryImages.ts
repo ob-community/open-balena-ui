@@ -1,33 +1,43 @@
-const { s3Client, bucketNames } = require('../../util/s3');
+import { bucketNames, listCommonPrefixes } from '../../util/s3/index.js';
 
-module.exports = (databaseImages) =>
-  new Promise((resolve, reject) => {
-    const imageRepositories = `data/docker/registry/v2/repositories/v2/`;
-    const registryImages = [];
-    const objectsStream = s3Client.listObjects(bucketNames.registry, imageRepositories, false);
+const extractRepositoryName = (prefix: string): string | null => {
+  const parts = prefix.split('repositories/v2/');
+  if (parts.length < 2) {
+    return null;
+  }
 
-    objectsStream.on('data', (obj) => {
-      registryImages.push(obj.prefix.split('repositories/v2/')[1].split('/')[0]);
-    });
+  const repositorySegment = parts[1];
+  const [name] = repositorySegment.split('/');
+  return name ?? null;
+};
 
-    objectsStream.on('error', (err) => {
-      reject(err);
-    });
+const listRegistryImages = async (): Promise<string[]> => {
+  const imageRepositories = 'data/docker/registry/v2/repositories/v2/';
+  const registryImages = new Set<string>();
+  const prefixes = await listCommonPrefixes(bucketNames.registry, imageRepositories);
 
-    objectsStream.on('end', () => {
-      const orphanedImages = registryImages.filter((x) => !databaseImages.includes(x));
-      const imagesToDelete = databaseImages.filter((x) => !registryImages.includes(x));
-      resolve({ orphanedImages, imagesToDelete });
+  for (const prefix of prefixes) {
+    const name = extractRepositoryName(prefix);
+    if (name) {
+      registryImages.add(name);
+    }
+  }
 
-      /*
-    s3Client.removeObjects(bucketNames.registry, objectsList, (err) => {
-      if (err) {
-        reject (err);
-      }
-      else {
-        resolve();
-      }
-    });
-    */
-    });
-  });
+  return [...registryImages];
+};
+
+const deleteOrphanedRegistryImages = async (
+  databaseImages: string[],
+): Promise<{
+  orphanedImages: string[];
+  imagesToDelete: string[];
+}> => {
+  const registryImages = await listRegistryImages();
+
+  const orphanedImages = registryImages.filter((image) => !databaseImages.includes(image));
+  const imagesToDelete = databaseImages.filter((image) => !registryImages.includes(image));
+
+  return { orphanedImages, imagesToDelete };
+};
+
+export default deleteOrphanedRegistryImages;

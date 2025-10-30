@@ -1,41 +1,76 @@
-const express = require('express');
-const router = express.Router();
-const bodyParser = require('body-parser');
-const { authorize, dosProtect } = require('../middleware');
-const { deleteRegistryImage, deleteOrphanedRegistryImages } = require('../controller/registryImage');
+import { json, Router } from 'express';
+import authorize from '../middleware/authorize.js';
+import dosProtect from '../middleware/dosProtect.js';
+import { deleteRegistryImage, deleteOrphanedRegistryImages } from '../controller/registryImage/index.js';
 
-router.use(bodyParser.json());
+interface DeleteRegistryImageRequest {
+  imageLocationHash?: string;
+}
 
-router.post('/deleteRegistryImage', ...dosProtect, authorize, (req, res) => {
-  const { imageLocationHash } = req.body;
+interface DeleteOrphanedRegistryImagesRequest {
+  databaseImages?: string[];
+}
 
-  if (imageLocationHash) {
-    deleteRegistryImage(imageLocationHash)
-      .then(() => {
-        res.status(200).json({ success: true });
-      })
-      .catch((err) => {
-        res.status(400).json({ success: false, message: err.message });
-      });
-  } else {
-    res.status(406).json({ success: false, message: 'Request is lacking imageLocationHash in body context' });
-  }
-});
+interface ErrorResponse {
+  success: false;
+  message: string;
+}
 
-router.post('/deleteOrphanedRegistryImages', ...dosProtect, authorize, (req, res) => {
+interface DeleteRegistryImageSuccessResponse {
+  success: true;
+}
+
+interface DeleteOrphanedRegistryImagesSuccessResponse {
+  success: true;
+  orphanedImages: string[];
+  imagesToDelete: string[];
+}
+
+const router = Router();
+
+router.use(json());
+
+router.post<Record<string, never>, DeleteRegistryImageSuccessResponse | ErrorResponse, DeleteRegistryImageRequest>(
+  '/deleteRegistryImage',
+  ...dosProtect,
+  authorize,
+  async (req, res) => {
+    const { imageLocationHash } = req.body;
+
+    if (!imageLocationHash) {
+      res.status(406).json({ success: false, message: 'Request is lacking imageLocationHash in body context' });
+      return;
+    }
+
+    try {
+      await deleteRegistryImage(imageLocationHash);
+      res.status(200).json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete registry image';
+      res.status(400).json({ success: false, message });
+    }
+  },
+);
+
+router.post<
+  Record<string, never>,
+  DeleteOrphanedRegistryImagesSuccessResponse | ErrorResponse,
+  DeleteOrphanedRegistryImagesRequest
+>('/deleteOrphanedRegistryImages', ...dosProtect, authorize, async (req, res) => {
   const { databaseImages } = req.body;
 
-  if (databaseImages) {
-    deleteOrphanedRegistryImages(databaseImages)
-      .then((tobeDeleted) => {
-        res.status(200).json({ success: true, ...tobeDeleted });
-      })
-      .catch((err) => {
-        res.status(400).json({ success: false, message: err.message });
-      });
-  } else {
+  if (!Array.isArray(databaseImages)) {
     res.status(406).json({ success: false, message: 'Request is lacking databaseImages in body context' });
+    return;
+  }
+
+  try {
+    const summary = await deleteOrphanedRegistryImages(databaseImages);
+    res.status(200).json({ success: true, ...summary });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete orphaned registry images';
+    res.status(400).json({ success: false, message });
   }
 });
 
-module.exports = router;
+export default router;

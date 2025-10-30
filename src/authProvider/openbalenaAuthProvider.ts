@@ -1,42 +1,83 @@
+interface NodeRequestInit extends RequestInit {
+  insecureHTTPParser?: boolean;
+}
+import type { JwtPayload } from 'jwt-decode';
 import { jwtDecode } from 'jwt-decode';
+import type { AuthProvider } from 'react-admin';
 import environment from '../lib/reactAppEnv';
 
-const authProvider = {
-  login: ({ username, password }) => {
-    console.log(`Attempting to fetch ${environment.REACT_APP_OPEN_BALENA_API_URL}/login_`);
-    return fetch(`${environment.REACT_APP_OPEN_BALENA_API_URL}/login_`, {
+interface LoginParams {
+  username: string;
+  password: string;
+}
+
+interface OpenBalenaJwtPayload extends JwtPayload {
+  permissions?: string[];
+  id?: number;
+  [key: string]: unknown;
+}
+
+export interface OpenBalenaSession {
+  jwt: string | null;
+  object: OpenBalenaJwtPayload;
+}
+
+export interface OpenBalenaAuthProvider extends AuthProvider {
+  getSession: () => OpenBalenaSession;
+}
+
+const saveToken = (token: string): void => {
+  localStorage.setItem('auth', token);
+};
+
+const readToken = (): string | null => localStorage.getItem('auth');
+
+const decodeToken = (token: string | null): OpenBalenaJwtPayload => {
+  if (!token) {
+    return {};
+  }
+
+  return jwtDecode<OpenBalenaJwtPayload>(token);
+};
+
+const authProvider: OpenBalenaAuthProvider = {
+  login: async ({ username, password }: LoginParams) => {
+    const requestInit: NodeRequestInit = {
       method: 'POST',
-      body: JSON.stringify({ username: username, password: password }),
+      body: JSON.stringify({ username, password }),
       headers: new Headers({ 'Content-Type': 'application/json' }),
       insecureHTTPParser: true,
-    })
-      .then((response) => {
-        if (response.status < 200 || response.status >= 300) {
-          throw new Error(response.statusText);
-        }
-        return response.body
-          .getReader()
-          .read()
-          .then((streamData) => {
-            let token = new TextDecoder().decode(streamData.value);
-            localStorage.setItem('auth', token);
-          });
-      })
-      .catch(() => {
-        throw new Error(`Error: Could not log in as user ${username}`);
-      });
+    };
+
+    const response = await fetch(`${environment.REACT_APP_OPEN_BALENA_API_URL}/login_`, requestInit);
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(response.statusText);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Unexpected empty response body');
+    }
+
+    const streamData = await reader.read();
+    if (!streamData.value) {
+      throw new Error('Authentication response missing token');
+    }
+
+    const token = new TextDecoder().decode(streamData.value);
+    saveToken(token);
   },
-  checkAuth: (params) => {
-    return localStorage.getItem('auth') ? Promise.resolve() : Promise.reject();
+  checkAuth: () => {
+    return readToken() ? Promise.resolve() : Promise.reject();
   },
-  getPermissions: (params) => {
-    const jwt = localStorage.getItem('auth');
-    return jwt ? Promise.resolve(jwtDecode(jwt).permissions) : Promise.reject();
+  getPermissions: () => {
+    const jwt = readToken();
+    return jwt ? Promise.resolve(decodeToken(jwt).permissions) : Promise.reject();
   },
-  checkError: (error) => {
-    console.log(error);
+  checkError: (error: { status?: number }) => {
     const status = error.status;
-    if (status === 504 || status === 403 || status === 504) {
+    if (status === 504 || status === 403) {
       localStorage.removeItem('auth');
       return Promise.reject();
     }
@@ -47,8 +88,8 @@ const authProvider = {
     return Promise.resolve();
   },
   getSession: () => {
-    const jwt = localStorage.getItem('auth');
-    return { jwt: jwt, object: jwtDecode(jwt) };
+    const jwt = readToken();
+    return { jwt, object: decodeToken(jwt) };
   },
 };
 

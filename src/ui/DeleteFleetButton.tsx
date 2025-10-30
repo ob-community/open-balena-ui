@@ -1,39 +1,55 @@
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Button } from '@mui/material';
-import React from 'react';
-import { useNotify, useRecordContext, useRedirect } from 'react-admin';
+import { Button, ButtonProps } from '@mui/material';
+import React, { useState } from 'react';
+import { Identifier, useNotify, useRecordContext, useRedirect } from 'react-admin';
 import { useDeleteFleet, useDeleteFleetBulk } from '../lib/fleet';
 import { ConfirmationDialog } from './ConfirmationDialog';
 
-export const DeleteFleetButton = (props) => {
-  const [open, setOpen] = React.useState(false);
+interface DeleteFleetButtonProps {
+  selectedIds?: Identifier[];
+  redirect?: string;
+  variant?: ButtonProps['variant'];
+  size?: ButtonProps['size'];
+  sx?: ButtonProps['sx'];
+  children?: React.ReactNode;
+}
+
+export const DeleteFleetButton: React.FC<DeleteFleetButtonProps> = ({
+  selectedIds,
+  redirect: redirectTo = 'list',
+  variant = 'contained',
+  size,
+  sx,
+  children,
+}) => {
+  const [open, setOpen] = useState(false);
   const notify = useNotify();
   const redirect = useRedirect();
   const deleteFleet = useDeleteFleet();
   const deleteFleetBulk = useDeleteFleetBulk();
-  const record = useRecordContext();
+  const record = useRecordContext<Record<string, unknown>>();
 
-  const handleSubmit = async (values) => {
-    if (props.selectedIds) {
-      await deleteFleetBulk(props.selectedIds);
-    } else {
-      await deleteFleet(record);
+  const handleSubmit = async () => {
+    try {
+      if (selectedIds?.length) {
+        await deleteFleetBulk(selectedIds);
+      } else {
+        await deleteFleet(record);
+      }
+      notify('Fleet(s) successfully deleted', { type: 'success' });
+      redirect(redirectTo);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      notify(`Failed to delete fleet(s): ${message}`, { type: 'error' });
     }
     setOpen(false);
-    notify('Fleet(s) successfully deleted', { type: 'success' });
-    redirect(props.redirect);
   };
 
   return (
     <>
-      <Button
-        onClick={() => setOpen(true)}
-        variant={props.variant || 'contained'}
-        color='error'
-        size={props.size}
-        sx={props.sx}
-      >
-        <DeleteIcon sx={{ mr: '4px' }} size={props.size} /> {props.children}
+      <Button onClick={() => setOpen(true)} variant={variant} color='error' size={size} sx={sx}>
+        <DeleteIcon sx={{ mr: '4px' }} fontSize={size === 'small' ? 'small' : size === 'large' ? 'large' : 'medium'} />{' '}
+        {children}
       </Button>
 
       <ConfirmationDialog
@@ -42,6 +58,7 @@ export const DeleteFleetButton = (props) => {
         content='Note: this action will be irreversible'
         onConfirm={handleSubmit}
         onClose={() => setOpen(false)}
+        confirmButtonText='Delete'
       />
     </>
   );

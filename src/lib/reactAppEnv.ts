@@ -1,8 +1,18 @@
+type RuntimeEnv = Record<string, string | boolean | undefined>;
+
+const importMetaEnv: RuntimeEnv =
+  typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' ? (import.meta.env as RuntimeEnv) : {};
+
+const readEnv = (key: string): string | undefined => {
+  const value = importMetaEnv[key];
+  return typeof value === 'string' ? value : undefined;
+};
+
 export default {
-  REACT_APP_OPEN_BALENA_POSTGREST_URL : process?.env?.REACT_APP_OPEN_BALENA_POSTGREST_URL || window.env?.REACT_APP_OPEN_BALENA_POSTGREST_URL,
-  REACT_APP_OPEN_BALENA_REMOTE_URL : process?.env?.REACT_APP_OPEN_BALENA_REMOTE_URL || window.env?.REACT_APP_OPEN_BALENA_REMOTE_URL,
-  REACT_APP_OPEN_BALENA_API_URL : process?.env?.REACT_APP_OPEN_BALENA_API_URL || window.env?.REACT_APP_OPEN_BALENA_API_URL,
-  REACT_APP_OPEN_BALENA_API_VERSION : process?.env?.REACT_APP_OPEN_BALENA_API_VERSION || window.env?.REACT_APP_OPEN_BALENA_API_VERSION,
-  REACT_APP_BANNER_IMAGE : process?.env?.REACT_APP_BANNER_IMAGE || window.env?.REACT_APP_BANNER_IMAGE,
-  REACT_APP_OPEN_BALENA_UI_URL : process?.env?.REACT_APP_OPEN_BALENA_UI_URL || window.env?.REACT_APP_OPEN_BALENA_UI_URL,
-}
+  REACT_APP_OPEN_BALENA_POSTGREST_URL: readEnv('REACT_APP_OPEN_BALENA_POSTGREST_URL'),
+  REACT_APP_OPEN_BALENA_REMOTE_URL: readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL'),
+  REACT_APP_OPEN_BALENA_API_URL: readEnv('REACT_APP_OPEN_BALENA_API_URL'),
+  REACT_APP_OPEN_BALENA_API_VERSION: readEnv('REACT_APP_OPEN_BALENA_API_VERSION'),
+  REACT_APP_BANNER_IMAGE: readEnv('REACT_APP_BANNER_IMAGE'),
+  REACT_APP_OPEN_BALENA_UI_URL: readEnv('REACT_APP_OPEN_BALENA_UI_URL'),
+};

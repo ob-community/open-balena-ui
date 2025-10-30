@@ -1,25 +1,9 @@
-import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
-import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
-import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrowLeft';
-import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArrowRight';
-import { Box } from '@mui/material';
-import { styled } from '@mui/material/styles';
 import React from 'react';
-import { TextInput, useDataProvider, useRecordContext } from 'react-admin';
-import DualListBox from 'react-dual-listbox';
+import { Box } from '@mui/material';
+import { AutocompleteArrayInput, Identifier, Loading, RaRecord, useGetList, useRecordContext } from 'react-admin';
 import { useFormContext } from 'react-hook-form';
 
-const StyledDualListBox = styled(DualListBox)({
-  'fontSize': '12px',
-  '& .rdl-move': {
-    border: 'none',
-  },
-  '& .rdl-control': {
-    fontSize: '12px',
-  },
-});
-
-const decode = {
+const decode: Record<string, string> = {
   'actor eq @__ACTOR_ID': 'self',
   'id eq @__ACTOR_ID': 'self',
   'is_of__actor eq @__ACTOR_ID': 'self',
@@ -56,88 +40,105 @@ const decode = {
     'app accessible',
 };
 
-export const ManagePermissions = (props) => {
-  const [loaded, setLoaded] = React.useState({ all: false, selected: false });
-  const [allPermissions, setAllPermissions] = React.useState([]);
-  const [selectedPermissions, setSelectedPermissions] = React.useState([]);
-  const dataProvider = useDataProvider();
-  const record = useRecordContext();
+interface PermissionRecord extends RaRecord {
+  name: string;
+}
+
+interface PermissionAssignmentRecord extends RaRecord {
+  permission: Identifier;
+}
+
+interface PermissionChoice {
+  id: Identifier;
+  name: string;
+  group?: string;
+}
+
+interface ManagePermissionsProps {
+  source: string;
+  reference: string;
+  target: string;
+}
+
+const mapPermissionToChoice = (record: PermissionRecord): PermissionChoice => {
+  const segments = record.name.split('.');
+  const resource = segments[0] === 'resin' ? segments[1] : segments[0];
+
+  const rawType = segments[0] === 'resin' ? segments[2]?.split('?')[0] : segments[1]?.split('?')[0];
+  const type = rawType && rawType.length > 0 ? rawType : 'full';
+
+  const rawOptions = segments[0] === 'resin' ? segments[2]?.split('?')[1] : segments[1]?.split('?')[1];
+  const decodedOptions = rawOptions ? (decode[rawOptions] ?? rawOptions) : undefined;
+  const label = decodedOptions ? `${type} (${decodedOptions})` : type;
+
+  return {
+    id: record.id,
+    name: label,
+    group: resource,
+  };
+};
+
+export const ManagePermissions: React.FC<ManagePermissionsProps> = ({ source, reference, target }) => {
+  const record = useRecordContext<RaRecord>();
   const { setValue } = useFormContext();
 
-  const onChangeHandler = (arrayOfSelected) => {
-    setSelectedPermissions(arrayOfSelected);
-    setValue(props.source, arrayOfSelected, { shouldDirty: true });
-  };
+  const { data: permissionRecords = [], isLoading: permissionsLoading } = useGetList<PermissionRecord>('permission', {
+    pagination: { page: 1, perPage: 1000 },
+    sort: { field: 'id', order: 'ASC' },
+    filter: {},
+  });
+
+  const { data: assignmentRecords = [], isLoading: assignmentsLoading } = useGetList<PermissionAssignmentRecord>(
+    reference,
+    {
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: 'id', order: 'ASC' },
+      filter: record?.id ? { [target]: record.id } : {},
+    },
+    {
+      enabled: Boolean(record?.id),
+    },
+  );
+
+  const initializedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!loaded.all) {
-      dataProvider
-        .getList('permission', {
-          pagination: { page: 1, perPage: 1000 },
-          sort: { field: 'id', order: 'ASC' },
-          filter: {},
-        })
-        .then((permissions) => {
-          let permissionOpts = [];
-          permissions.data.forEach((x) => {
-            const arr = x.name.split('.');
-            var resource = arr[0] === 'resin' ? arr[1] : arr[0];
-            var type = (arr[0] === 'resin' ? arr[2].split('?')[0] : arr[1] ? arr[1].split('?')[0] : 'full') || 'full';
-            var opts = arr[0] === 'resin' ? arr[2].split('?')[1] : arr[1] ? arr[1].split('?')[1] : undefined;
-            opts = decode[opts] ? decode[opts] : opts;
-            var resourceIdx = permissionOpts.findIndex((x) => x.label === resource);
-            if (resourceIdx === -1) {
-              permissionOpts.push({
-                label: resource,
-                options: [{ label: type + (opts ? ` (${opts})` : ``), value: x.id }],
-              });
-            } else {
-              permissionOpts[resourceIdx].options.push({ label: type + (opts ? ` (${opts})` : ``), value: x.id });
-            }
-          });
-          setAllPermissions(permissionOpts);
-          loaded.all = true;
-          setLoaded(loaded);
-        });
-    }
-    if (!loaded.selected && record) {
-      dataProvider
-        .getList(props.reference, {
-          pagination: { page: 1, perPage: 1000 },
-          sort: { field: 'id', order: 'ASC' },
-          filter: { [props.target]: record.id },
-        })
-        .then((existingMappings) => {
-          const selectedIds = existingMappings.data.map((x) => x.permission);
-          setSelectedPermissions(selectedIds);
-          loaded.selected = true;
-          setLoaded(loaded);
-        });
-    }
-  }, [props, dataProvider, setLoaded, loaded, setAllPermissions, setSelectedPermissions]);
+    initializedRef.current = false;
+  }, [record?.id]);
 
-  if (!(loaded.all && loaded.selected)) return null;
+  const selectedIds = React.useMemo<Identifier[]>(
+    () => assignmentRecords.map((assignment) => assignment.permission).filter((id): id is Identifier => id != null),
+    [assignmentRecords],
+  );
+
+  React.useEffect(() => {
+    if (!initializedRef.current && !permissionsLoading && !assignmentsLoading) {
+      setValue(source, selectedIds, { shouldDirty: false });
+      initializedRef.current = true;
+    }
+  }, [assignmentsLoading, permissionsLoading, selectedIds, setValue, source]);
+
+  const permissionChoices = React.useMemo<PermissionChoice[]>(
+    () => permissionRecords.map(mapPermissionToChoice),
+    [permissionRecords],
+  );
+
+  if (permissionsLoading || assignmentsLoading) {
+    return <Loading />;
+  }
 
   return (
-    <Box sx={{ width: '800px' }}>
+    <Box sx={{ width: 800, maxWidth: '100%' }}>
       <strong style={{ margin: '40px 0 10px', display: 'block' }}>Permissions</strong>
 
-      <StyledDualListBox
-        options={allPermissions}
-        selected={selectedPermissions}
-        onChange={onChangeHandler}
-        showHeaderLabels
-        icons={{
-          moveToAvailable: <KeyboardArrowLeftIcon />,
-          moveAllToAvailable: <KeyboardDoubleArrowLeftIcon />,
-          moveToSelected: <KeyboardArrowRightIcon />,
-          moveAllToSelected: <KeyboardDoubleArrowRightIcon />,
-        }}
-      />
-      <TextInput
-        source={props.source}
-        defaultValue={selectedPermissions}
-        style={{ display: 'none' }}
+      <AutocompleteArrayInput
+        source={source}
+        choices={permissionChoices}
+        groupBy={(choice: PermissionChoice) => choice.group ?? 'Other'}
+        label='Select permissions'
+        fullWidth
+        defaultValue={[]}
+        sx={{ maxWidth: 360 }}
       />
     </Box>
   );

@@ -1,5 +1,9 @@
-require('dotenv').config();
+import dotenv from 'dotenv';
 
-module.exports = {
-  registry: process.env.OPEN_BALENA_S3_REGISTRY_BUCKET || 'registry-data',
+dotenv.config();
+
+const bucketNames = {
+  registry: process.env.OPEN_BALENA_S3_REGISTRY_BUCKET ?? 'registry-data',
 };
+
+export default bucketNames;

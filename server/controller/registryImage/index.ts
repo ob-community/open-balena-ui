@@ -1,4 +1,9 @@
-module.exports = {
-  deleteRegistryImage: require('./deleteRegistryImage'),
-  deleteOrphanedRegistryImages: require('./deleteOrphanedRegistryImages'),
+import deleteRegistryImage from './deleteRegistryImage.js';
+import deleteOrphanedRegistryImages from './deleteOrphanedRegistryImages.js';
+
+export { deleteRegistryImage, deleteOrphanedRegistryImages };
+
+export default {
+  deleteRegistryImage,
+  deleteOrphanedRegistryImages,
 };

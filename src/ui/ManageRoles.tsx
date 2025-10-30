@@ -1,90 +1,79 @@
-import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
-import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
-import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrowLeft';
-import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArrowRight';
-import { Box } from '@mui/material';
-import { styled } from '@mui/material/styles';
 import React from 'react';
-import { TextInput, useDataProvider, useRecordContext } from 'react-admin';
-import DualListBox from 'react-dual-listbox';
+import { Box } from '@mui/material';
+import { AutocompleteArrayInput, Identifier, Loading, RaRecord, useGetList, useRecordContext } from 'react-admin';
 import { useFormContext } from 'react-hook-form';
 
-const StyledDualListBox = styled(DualListBox)({
-  'fontSize': '12px',
-  '& .rdl-move': {
-    border: 'none',
-  },
-  '& .rdl-control': {
-    fontSize: '12px',
-  },
-});
+interface RoleRecord extends RaRecord {
+  name: string;
+}
 
-export const ManageRoles = (props) => {
-  const [loaded, setLoaded] = React.useState({ all: false, selected: false });
-  const [allRoles, setAllRoles] = React.useState([]);
-  const [selectedRoles, setSelectedRoles] = React.useState([]);
-  const dataProvider = useDataProvider();
-  const record = useRecordContext();
+interface RoleAssignmentRecord extends RaRecord {
+  role: Identifier;
+}
+
+interface ManageRolesProps {
+  source: string;
+  reference: string;
+  target: string;
+}
+
+export const ManageRoles: React.FC<ManageRolesProps> = ({ source, reference, target }) => {
+  const record = useRecordContext<RaRecord>();
   const { setValue } = useFormContext();
 
-  const onChangeHandler = (arrayOfSelected) => {
-    setSelectedRoles(arrayOfSelected);
-    setValue(props.source, arrayOfSelected, { shouldDirty: true });
-  };
+  const { data: roleRecords = [], isLoading: rolesLoading } = useGetList<RoleRecord>('role', {
+    pagination: { page: 1, perPage: 1000 },
+    sort: { field: 'id', order: 'ASC' },
+    filter: {},
+  });
+
+  const { data: assignmentRecords = [], isLoading: assignmentsLoading } = useGetList<RoleAssignmentRecord>(
+    reference,
+    {
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: 'id', order: 'ASC' },
+      filter: record?.id ? { [target]: record.id } : {},
+    },
+    {
+      enabled: Boolean(record?.id),
+    },
+  );
+
+  const initializedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!loaded.all) {
-      dataProvider
-        .getList('role', {
-          pagination: { page: 1, perPage: 1000 },
-          sort: { field: 'id', order: 'ASC' },
-          filter: {},
-        })
-        .then((roles) => {
-          const roleOpts = roles.data.map((x) => ({ label: x.name, value: x.id }));
-          setAllRoles(roleOpts);
-          loaded.all = true;
-          setLoaded(loaded);
-        });
-    }
-    if (!loaded.selected && record) {
-      dataProvider
-        .getList(props.reference, {
-          pagination: { page: 1, perPage: 1000 },
-          sort: { field: 'id', order: 'ASC' },
-          filter: { [props.target]: record.id },
-        })
-        .then((existingMappings) => {
-          const selectedIds = existingMappings.data.map((x) => x.role);
-          setSelectedRoles(selectedIds);
-          loaded.selected = true;
-          setLoaded(loaded);
-        });
-    }
-  }, [props, dataProvider, setLoaded, loaded, setAllRoles, setSelectedRoles]);
+    initializedRef.current = false;
+  }, [record?.id]);
 
-  if (!(loaded.all && loaded.selected)) return null;
+  const selectedIds = React.useMemo<Identifier[]>(
+    () => assignmentRecords.map((assignment) => assignment.role).filter((id): id is Identifier => id != null),
+    [assignmentRecords],
+  );
+
+  React.useEffect(() => {
+    if (!initializedRef.current && !rolesLoading && !assignmentsLoading) {
+      setValue(source, selectedIds, { shouldDirty: false });
+      initializedRef.current = true;
+    }
+  }, [assignmentsLoading, rolesLoading, selectedIds, setValue, source]);
+
+  const roleChoices = React.useMemo(() => roleRecords.map((role) => ({ id: role.id, name: role.name })), [roleRecords]);
+
+  if (rolesLoading || assignmentsLoading) {
+    return <Loading />;
+  }
 
   return (
-    <Box sx={{ width: '800px' }}>
+    <Box sx={{ width: 800, maxWidth: '100%' }}>
       <strong style={{ margin: '40px 0 10px', display: 'block' }}>Roles</strong>
 
-      <StyledDualListBox
-        options={allRoles}
-        selected={selectedRoles}
-        onChange={onChangeHandler}
-        showHeaderLabels
-        icons={{
-          moveToAvailable: <KeyboardArrowLeftIcon />,
-          moveAllToAvailable: <KeyboardDoubleArrowLeftIcon />,
-          moveToSelected: <KeyboardArrowRightIcon />,
-          moveAllToSelected: <KeyboardDoubleArrowRightIcon />,
-        }}
-      />
-      <TextInput
-        source={props.source}
-        defaultValue={selectedRoles}
-        style={{ display: 'none' }}
+      <AutocompleteArrayInput
+        source={source}
+        choices={roleChoices}
+        label='Select roles'
+        fullWidth
+        defaultValue={[]}
+        sx={{ maxWidth: 360 }}
       />
     </Box>
   );

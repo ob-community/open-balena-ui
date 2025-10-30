@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { FunctionField } from 'react-admin';
+import type { FunctionFieldProps, RaRecord } from 'react-admin';
 
 const DEFAULT_LIMITCHARS = 60;
 const DEFAULT_TRIMSTR = '…';
@@ -21,24 +22,43 @@ const DEFAULT_TRIMSTR = '…';
  * <TrimField source='field' label='Trimmed Field' limit={40} trimstr='....' />
  *
  */
-export const TrimField = (props) => {
-  const TrimString = (str) => {
-    let retval = str;
-    if (retval && typeof retval === 'string')
-      retval = retval.length > limit ? retval.slice(0, limit) + trimstr : retval;
-    return retval;
-  };
 
-  const { source, text, limit = DEFAULT_LIMITCHARS, trimstr = DEFAULT_TRIMSTR, ...rest } = props;
-  if (!text && !source) throw new Error(`Missing mandatory prop: text or source`);
-  if (isNaN(Number(limit))) throw new Error(`Invalid prop value: limit must be a number`);
+interface TrimFieldProps extends Omit<FunctionFieldProps<RaRecord>, 'render'> {
+  text?: string;
+  limit?: number;
+  trimstr?: string;
+}
+
+export const TrimField: React.FC<TrimFieldProps> = ({
+  source,
+  text,
+  limit = DEFAULT_LIMITCHARS,
+  trimstr = DEFAULT_TRIMSTR,
+  ...rest
+}) => {
+  const trimString = React.useCallback(
+    (value: unknown): string => {
+      if (value == null) {
+        return '';
+      }
+
+      const valueAsString = String(value);
+      return valueAsString.length > limit ? `${valueAsString.slice(0, limit)}${trimstr}` : valueAsString;
+    },
+    [limit, trimstr],
+  );
+
+  if (!text && !source) {
+    throw new Error(`Missing mandatory prop: text or source`);
+  }
+
   return (
     <FunctionField
-      render={(record) => {
-        const data = text || record[source];
-        return TrimString(data, limit);
-      }}
       {...rest}
+      render={(record: RaRecord) => {
+        const data = text ?? (source ? record[source] : undefined);
+        return trimString(data);
+      }}
     />
   );
 };

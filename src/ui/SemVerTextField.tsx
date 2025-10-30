@@ -1,19 +1,31 @@
 import Tooltip from '@mui/material/Tooltip';
-import Typography from '@mui/material/Typography';
+import Typography, { TypographyProps } from '@mui/material/Typography';
 import React from 'react';
-import { useRecordContext, useTranslate } from 'react-admin';
+import { RaRecord, useRecordContext, useTranslate } from 'react-admin';
 import { getStringLength } from '../lib/common';
 import { getSemver } from './SemVerChip';
 
-const SemVerTextField = ({ style, record, emptyText = 'Unknown', emptyCommitText = 'unknown commit' }) => {
+interface SemVerTextFieldProps extends TypographyProps {
+  record?: RaRecord | Record<string, any> | null;
+  emptyText?: string;
+  emptyCommitText?: string;
+  label?: string;
+}
+
+const SemVerTextField: React.FC<SemVerTextFieldProps> = ({
+  record: recordProp,
+  emptyText = 'Unknown',
+  emptyCommitText = 'unknown commit',
+  label,
+  ...rest
+}) => {
   const translate = useTranslate();
-  if (!record) {
-    record = useRecordContext();
-  }
+  const contextRecord = useRecordContext<RaRecord | Record<string, any>>();
+  const record = recordProp ?? contextRecord;
 
   if (!record) {
     return getStringLength(emptyText) > 0 ? (
-      <Typography component='span' variant='body2'>
+      <Typography component='span' variant='body2' {...rest}>
         {translate(emptyText)}
       </Typography>
     ) : null;
@@ -24,7 +36,7 @@ const SemVerTextField = ({ style, record, emptyText = 'Unknown', emptyCommitText
 
   return (
     <Tooltip placement='top' arrow={true} title={commit}>
-      <Typography style={style} component='span' variant='body2'>
+      <Typography component='span' variant='body2' {...rest}>
         {semver}
       </Typography>
     </Tooltip>

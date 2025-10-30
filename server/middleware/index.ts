@@ -1,4 +1,9 @@
-module.exports = {
-  authorize: require('./authorize'),
-  dosProtect: require('./dosProtect'),
+import authorize from './authorize.js';
+import dosProtect from './dosProtect.js';
+
+export { authorize, dosProtect };
+
+export default {
+  authorize,
+  dosProtect,
 };

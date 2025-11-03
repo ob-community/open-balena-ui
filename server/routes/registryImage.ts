@@ -1,7 +1,7 @@
 import { json, Router } from 'express';
-import authorize from '../middleware/authorize.js';
-import dosProtect from '../middleware/dosProtect.js';
-import { deleteRegistryImage, deleteOrphanedRegistryImages } from '../controller/registryImage/index.js';
+import authorize from '../middleware/authorize';
+import dosProtect from '../middleware/dosProtect';
+import { deleteRegistryImage, deleteOrphanedRegistryImages } from '../controller/registryImage';
 
 interface DeleteRegistryImageRequest {
   imageLocationHash?: string;

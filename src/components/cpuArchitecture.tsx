@@ -13,7 +13,7 @@ import {
 } from 'react-admin';
 import Row from '../ui/Row';
 
-export const CpuArchitectureList = () => {
+export const CpuArchitectureList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -28,7 +28,7 @@ export const CpuArchitectureList = () => {
   );
 };
 
-export const CpuArchitectureCreate = () => (
+export const CpuArchitectureCreate: React.FC = () => (
   <Create title='Create CPU Architecture' redirect='list'>
     <SimpleForm>
       <Row>
@@ -38,7 +38,7 @@ export const CpuArchitectureCreate = () => (
   </Create>
 );
 
-export const CpuArchitectureEdit = () => (
+export const CpuArchitectureEdit: React.FC = () => (
   <Edit title='Edit CPU Architecture'>
     <SimpleForm>
       <Row>

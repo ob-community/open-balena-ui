@@ -15,7 +15,7 @@ import {
   required,
 } from 'react-admin';
 
-export const OrganizationList = () => {
+export const OrganizationList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -37,7 +37,7 @@ export const OrganizationList = () => {
   );
 };
 
-export const OrganizationCreate = () => (
+export const OrganizationCreate: React.FC = () => (
   <Create title='Create Org'>
     <SimpleForm>
       <TextInput source='name' validate={required()} size='large' fullWidth={true} />
@@ -46,7 +46,7 @@ export const OrganizationCreate = () => (
   </Create>
 );
 
-export const OrganizationEdit = () => (
+export const OrganizationEdit: React.FC = () => (
   <Edit title='Edit Org'>
     <SimpleForm>
       <TextInput source='name' validate={required()} size='large' fullWidth={true} />

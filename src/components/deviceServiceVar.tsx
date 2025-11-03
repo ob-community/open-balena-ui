@@ -23,7 +23,7 @@ import Row from '../ui/Row';
 import SelectDevice from '../ui/SelectDevice';
 import SelectDeviceService from '../ui/SelectDeviceService';
 
-export const DeviceServiceVarList = () => {
+export const DeviceServiceVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
     title: 'Device Service Vars',
   };
@@ -94,7 +94,7 @@ export const DeviceServiceVarList = () => {
   );
 };
 
-export const DeviceServiceVarCreate = (props) => {
+export const DeviceServiceVarCreate: React.FC = (props) => {
   const createDeviceServiceVar = useCreateDeviceServiceVar();
 
   return (
@@ -127,7 +127,7 @@ export const DeviceServiceVarCreate = (props) => {
   );
 };
 
-export const DeviceServiceVarEdit = () => {
+export const DeviceServiceVarEdit: React.FC = () => {
   const modifyDeviceServiceVar = useModifyDeviceServiceVar();
 
   return (

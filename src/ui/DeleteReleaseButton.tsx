@@ -17,6 +17,7 @@ interface DeleteReleaseButtonProps {
   size?: ButtonProps['size'];
   sx?: ButtonProps['sx'];
   children?: React.ReactNode;
+  color?: ButtonProps['color'];
 }
 
 export const DeleteReleaseButton: React.FC<DeleteReleaseButtonProps> = ({

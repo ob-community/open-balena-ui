@@ -19,7 +19,7 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
-export const UserKeysList = () => {
+export const UserKeysList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -44,7 +44,7 @@ export const UserKeysList = () => {
   );
 };
 
-export const UserKeysCreate = () => (
+export const UserKeysCreate: React.FC = () => (
   <Create title='Create SSH Key' redirect='list'>
     <SimpleForm
       sx={{
@@ -81,7 +81,7 @@ export const UserKeysCreate = () => (
   </Create>
 );
 
-export const UserKeysEdit = () => (
+export const UserKeysEdit: React.FC = () => (
   <Edit title='Edit SSH Key'>
     <SimpleForm
       sx={{

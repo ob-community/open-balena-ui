@@ -23,7 +23,7 @@ import Row from '../ui/Row';
 
 const uniqueIssueMessage = 'This EnvironmentVar is already present for this Fleet';
 
-export const FleetEnvVarList = () => {
+export const FleetEnvVarList: React.FC = () => {
   return (
     <List title='Fleet Environment Variables'>
       <Datagrid size='medium' rowClick={false}>
@@ -52,7 +52,7 @@ export const FleetEnvVarList = () => {
   );
 };
 
-export const FleetEnvVarCreate = () => {
+export const FleetEnvVarCreate: React.FC = () => {
   const unique = useUnique();
   return (
     <Create title='Create Fleet Environment Variable' redirect='list'>
@@ -99,7 +99,7 @@ export const FleetEnvVarCreate = () => {
   );
 };
 
-export const FleetEnvVarEdit = () => (
+export const FleetEnvVarEdit: React.FC = () => (
   <Edit title='Edit Fleet Environment Variable'>
     <SimpleForm>
       <ReferenceInput

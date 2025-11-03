@@ -22,7 +22,7 @@ import TargetReleaseTooltip from '../../ui/TargetReleaseTooltip';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
-const TargetRelease = () => {
+const TargetRelease: React.FC = () => {
   const record = useRecordContext();
 
   if (!record) {
@@ -81,7 +81,7 @@ const TargetRelease = () => {
   );
 };
 
-const SummaryWidget = () => {
+const SummaryWidget: React.FC = () => {
   const record = useRecordContext();
 
   if (!record) {

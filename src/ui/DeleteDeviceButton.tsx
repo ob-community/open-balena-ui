@@ -5,7 +5,7 @@ import { Identifier, useNotify, useRecordContext, useUnselectAll, useRefresh } f
 import { useDeleteDevice, useDeleteDeviceBulk } from '../lib/device';
 import { ConfirmationDialog } from './ConfirmationDialog';
 
-interface DeleteDeviceButtonProps {
+export interface DeleteDeviceButtonProps {
   selectedIds?: Identifier[];
   variant?: ButtonProps['variant'];
   size?: ButtonProps['size'];

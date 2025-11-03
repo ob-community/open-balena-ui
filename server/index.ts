@@ -1,7 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'node:path';
-import registryImageRoutes from './routes/registryImage.js';
+import registryImageRoutes from './routes/registryImage';
 
 dotenv.config();
 

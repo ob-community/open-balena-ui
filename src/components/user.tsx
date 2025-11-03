@@ -17,17 +17,20 @@ import {
   TextInput,
   Toolbar,
   required,
+  ToolbarProps,
+  CreateProps,
+  EditProps,
 } from 'react-admin';
 import { useCreateUser, useModifyUser } from '../lib/user';
 import ChangePasswordButton from '../ui/ChangePasswordButton';
-import DeleteUserButton from '../ui/DeleteUserButton';
+import DeleteUserButton, { DeleteUserButtonProps } from '../ui/DeleteUserButton';
 import ManageOrganizations from '../ui/ManageOrganizations';
 import ManagePermissions from '../ui/ManagePermissions';
 import ManageRoles from '../ui/ManageRoles';
 import Row from '../ui/Row';
 import PasswordChecklist from 'react-password-checklist';
 
-const CustomBulkActionButtons = (props) => (
+const CustomBulkActionButtons: React.FC<DeleteUserButtonProps> = (props) => (
   <React.Fragment>
     <DeleteUserButton variant='contained' size='small' {...props}>
       Delete Selected Users
@@ -35,7 +38,7 @@ const CustomBulkActionButtons = (props) => (
   </React.Fragment>
 );
 
-export const UserList = () => {
+export const UserList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
@@ -67,13 +70,13 @@ export const UserList = () => {
   );
 };
 
-const CustomCreateToolbar = (props) => (
+const CustomCreateToolbar: React.FC<ToolbarProps & { saveDisabled?: boolean }> = (props) => (
   <Toolbar {...props} style={{ justifyContent: 'space-between' }}>
     <SaveButton sx={{ flex: 1 }} disabled={props.saveDisabled} />
   </Toolbar>
 );
 
-export const UserCreate = (props) => {
+export const UserCreate: React.FC<CreateProps> = (props) => {
   const createUser = useCreateUser();
   const [password, setPassword] = React.useState('');
   const [password_valid, setPasswordValid] = React.useState(false);
@@ -115,19 +118,19 @@ export const UserCreate = (props) => {
   );
 };
 
-const CustomToolbar = (props) => {
-  const { alwaysEnableSaveButton = false, ...rest } = props;
-  return (
-    <Toolbar {...rest} style={{ justifyContent: 'space-between' }}>
-      <SaveButton alwaysEnable={alwaysEnableSaveButton} sx={{ flex: 1 }} />
-      <DeleteUserButton variant='contained' size='large' sx={{ flex: 0.3, marginLeft: '40px' }}>
-        Delete
-      </DeleteUserButton>
-    </Toolbar>
-  );
-};
+const CustomToolbar: React.FC<ToolbarProps & { alwaysEnableSaveButton?: boolean }> = ({
+  alwaysEnableSaveButton,
+  ...props
+}) => (
+  <Toolbar {...props} style={{ justifyContent: 'space-between' }}>
+    <SaveButton alwaysEnable={alwaysEnableSaveButton} sx={{ flex: 1 }} />
+    <DeleteUserButton variant='contained' size='large' sx={{ flex: 0.3, marginLeft: '40px' }}>
+      Delete
+    </DeleteUserButton>
+  </Toolbar>
+);
 
-export const UserEdit = (props) => {
+export const UserEdit: React.FC<EditProps> = (props) => {
   const modifyUser = useModifyUser();
 
   return (

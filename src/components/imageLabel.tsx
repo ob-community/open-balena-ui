@@ -20,7 +20,7 @@ import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 import SemVerChip from '../ui/SemVerChip';
 
-export const ImageLabelList = () => {
+export const ImageLabelList: React.FC = () => {
   return (
     <List title='Image Labels'>
       <Datagrid size='medium' rowClick={false}>
@@ -61,7 +61,7 @@ export const ImageLabelList = () => {
   );
 };
 
-export const ImageLabelCreate = () => (
+export const ImageLabelCreate: React.FC = () => (
   <Create title='Create Image Label' redirect='list'>
     <SimpleForm>
       <ReferenceInput
@@ -82,7 +82,7 @@ export const ImageLabelCreate = () => (
   </Create>
 );
 
-export const ImageLabelEdit = () => (
+export const ImageLabelEdit: React.FC = () => (
   <Edit title='Edit Image Label'>
     <SimpleForm>
       <ReferenceInput

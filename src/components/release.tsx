@@ -35,7 +35,7 @@ const BooleanBinaryField: React.FC<BooleanBinaryFieldProps> = ({ source = 'enabl
   />
 );
 
-const TagChipField = (props) => {
+const TagChipField: React.FC = (props) => {
   return (
     <FunctionField
       {...props}
@@ -46,14 +46,14 @@ const TagChipField = (props) => {
   );
 };
 
-export const ReleaseList = (props) => {
+export const ReleaseList: React.FC = (props) => {
   return (
     <List filters={releaseFilters}>
       <Datagrid
         size='medium'
         rowClick={false}
         bulkActionButtons={
-          <DeleteReleaseButton size='small' color='' context={useDataProvider()} {...props}>
+          <DeleteReleaseButton size='small' context={useDataProvider()} {...props}>
             Delete
           </DeleteReleaseButton>
         }

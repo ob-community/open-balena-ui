@@ -1,5 +1,5 @@
-import authorize from './authorize.js';
-import dosProtect from './dosProtect.js';
+import authorize from './authorize';
+import dosProtect from './dosProtect';
 
 export { authorize, dosProtect };
 

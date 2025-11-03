@@ -37,7 +37,7 @@ const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REA
 
 const fleetCardFilters = [<SearchInput source='#app name,is of-class@ilike' alwaysOn />];
 
-export const FleetCards = () => (
+export const FleetCards: React.FC = () => (
   <ResourceContextProvider value='application'>
     <List emptyWhileLoading disableSyncWithLocation filters={fleetCardFilters} title=' '>
       <WithListContext

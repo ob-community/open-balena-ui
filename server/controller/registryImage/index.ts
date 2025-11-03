@@ -1,5 +1,5 @@
-import deleteRegistryImage from './deleteRegistryImage.js';
-import deleteOrphanedRegistryImages from './deleteOrphanedRegistryImages.js';
+import deleteRegistryImage from './deleteRegistryImage';
+import deleteOrphanedRegistryImages from './deleteOrphanedRegistryImages';
 
 export { deleteRegistryImage, deleteOrphanedRegistryImages };
 

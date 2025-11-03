@@ -56,7 +56,7 @@ const deviceTypeAliasVer = versions.resource('deviceTypeAlias', environment.REAC
 
 const App: React.FC = () => <OpenBalenaAdmin />;
 
-const NavigateToDevice = () => {
+const NavigateToDevice: React.FC = () => {
   const { uuid } = useParams<{ uuid?: string }>();
   const targetUuid = uuid ?? '';
   return <Navigate to={`/#/device/0/show?uuid=${targetUuid}`} replace />;

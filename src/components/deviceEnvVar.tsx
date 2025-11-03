@@ -20,7 +20,7 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
-export const DeviceEnvVarList = () => {
+export const DeviceEnvVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
     title: 'Device Environment Vars',
   };
@@ -61,7 +61,7 @@ export const DeviceEnvVarList = () => {
   );
 };
 
-export const DeviceEnvVarCreate = () => (
+export const DeviceEnvVarCreate: React.FC = () => (
   <Create title='Create Device Environment Var' redirect='list'>
     <SimpleForm>
       <ReferenceInput
@@ -82,7 +82,7 @@ export const DeviceEnvVarCreate = () => (
   </Create>
 );
 
-export const DeviceEnvVarEdit = () => (
+export const DeviceEnvVarEdit: React.FC = () => (
   <Edit title='Create Device Environment Var'>
     <SimpleForm>
       <ReferenceInput

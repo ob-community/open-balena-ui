@@ -15,7 +15,7 @@ import {
 import { useModifyRole } from '../lib/role';
 import ManagePermissions from '../ui/ManagePermissions';
 
-export const RoleList = () => {
+export const RoleList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -29,7 +29,7 @@ export const RoleList = () => {
   );
 };
 
-export const RoleCreate = () => (
+export const RoleCreate: React.FC = () => (
   <Create title='Create Role'>
     <SimpleForm>
       <TextInput source='name' validate={required()} size='large' fullWidth={true} />
@@ -37,7 +37,7 @@ export const RoleCreate = () => (
   </Create>
 );
 
-export const RoleEdit = () => {
+export const RoleEdit: React.FC = () => {
   const modifyRole = useModifyRole();
 
   return (

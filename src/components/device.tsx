@@ -27,11 +27,14 @@ import {
   useListContext,
   WithRecord,
   RecordContextProvider,
+  FunctionFieldProps,
+  PaginationProps,
+  ListProps,
 } from 'react-admin';
 import { v4 as uuidv4 } from 'uuid';
 import { useCreateDevice, useModifyDevice, useSetServicesForNewDevice } from '../lib/device';
 import CopyChip from '../ui/CopyChip';
-import DeleteDeviceButton from '../ui/DeleteDeviceButton';
+import DeleteDeviceButton, { DeleteDeviceButtonProps } from '../ui/DeleteDeviceButton';
 import DeviceConnectButton from '../ui/DeviceConnectButton';
 import DeviceServicesButton from '../ui/DeviceServicesButton';
 import Row from '../ui/Row';
@@ -46,7 +49,7 @@ import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 // Get the proper field name for isPinnedOnRelease based on API version
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
-export const OnlineField = (props) => {
+export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
 
   return (
@@ -74,7 +77,7 @@ export const OnlineField = (props) => {
   );
 };
 
-export const ReleaseField = (props) => {
+export const ReleaseField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
 
   return (
@@ -85,13 +88,11 @@ export const ReleaseField = (props) => {
   );
 };
 
-type ReleaseFieldContentProps = {
+const ReleaseFieldContent: React.FC<{
   record: Record<string, any> | null;
   source?: string;
   theme: Theme;
-};
-
-const ReleaseFieldContent = ({ record, source, theme }: ReleaseFieldContentProps) => {
+}> = ({ record, source, theme }) => {
   if (!record || !source) {
     return null;
   }
@@ -177,8 +178,9 @@ const ReleaseFieldContent = ({ record, source, theme }: ReleaseFieldContentProps
 
 const deviceFilters = [<SearchInput source='#uuid,device name,status@ilike' alwaysOn />];
 
-const CustomBulkActionButtons = (props) => {
+const CustomBulkActionButtons: React.FC<DeleteDeviceButtonProps> = (props) => {
   const { selectedIds } = useListContext();
+
   return (
     <React.Fragment>
       <DeleteDeviceButton size='small' selectedIds={selectedIds} {...props}>
@@ -188,11 +190,12 @@ const CustomBulkActionButtons = (props) => {
   );
 };
 
-const ExtendedPagination = ({ rowsPerPageOptions = [5, 10, 25, 50, 100, 250], ...rest }) => (
-  <Pagination rowsPerPageOptions={rowsPerPageOptions} {...rest} />
-);
+const ExtendedPagination: React.FC<PaginationProps> = ({
+  rowsPerPageOptions = [5, 10, 25, 50, 100, 250],
+  ...props
+}) => <Pagination rowsPerPageOptions={rowsPerPageOptions} {...props} />;
 
-export const DeviceList = (props) => {
+export const DeviceList: React.FC<ListProps<any>> = (props) => {
   return (
     <List {...props} filters={deviceFilters} pagination={<ExtendedPagination />}>
       <Datagrid rowClick={false} bulkActionButtons={<CustomBulkActionButtons />} size='medium'>
@@ -242,7 +245,7 @@ export const DeviceList = (props) => {
   );
 };
 
-export const DeviceCreate = (props) => {
+export const DeviceCreate: React.FC = () => {
   const createDevice = useCreateDevice();
   const setServicesForNewDevice = useSetServicesForNewDevice();
   const redirect = useRedirect();
@@ -330,7 +333,7 @@ export const DeviceCreate = (props) => {
   );
 };
 
-export const DeviceEdit = () => {
+export const DeviceEdit: React.FC = () => {
   const modifyDevice = useModifyDevice();
 
   return (

@@ -13,7 +13,7 @@ import {
 } from 'react-admin';
 import Row from '../ui/Row';
 
-export const DeviceManufacturerList = () => {
+export const DeviceManufacturerList: React.FC = () => {
   return (
     <List title='Device Manufacturers'>
       <Datagrid size='medium' rowClick={false}>
@@ -28,7 +28,7 @@ export const DeviceManufacturerList = () => {
   );
 };
 
-export const DeviceManufacturerCreate = () => (
+export const DeviceManufacturerCreate: React.FC = () => (
   <Create title='Create Device Manufacturer' redirect='list'>
     <SimpleForm>
       <Row>
@@ -39,7 +39,7 @@ export const DeviceManufacturerCreate = () => (
   </Create>
 );
 
-export const DeviceManufacturerEdit = () => (
+export const DeviceManufacturerEdit: React.FC = () => (
   <Edit title='Edit Device Manufacturer'>
     <SimpleForm>
       <Row>

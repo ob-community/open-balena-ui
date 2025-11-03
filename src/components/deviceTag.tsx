@@ -65,7 +65,7 @@ export const DeviceTagList = () => {
   );
 };
 
-export const DeviceTagCreate = () => (
+export const DeviceTagCreate: React.FC = () => (
   <Create title='Create Device Tag' redirect='list'>
     <SimpleForm>
       <ReferenceInput
@@ -86,7 +86,7 @@ export const DeviceTagCreate = () => (
   </Create>
 );
 
-export const DeviceTagEdit = () => (
+export const DeviceTagEdit: React.FC = () => (
   <Edit title='Edit Device Tag'>
     <SimpleForm>
       <ReferenceInput

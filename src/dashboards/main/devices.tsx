@@ -30,7 +30,7 @@ import { OnlineField } from '../../components/device';
 
 const deviceCardFilters = [<SearchInput source='#uuid,device name,status@ilike' alwaysOn />];
 
-export const DeviceCards = () => (
+export const DeviceCards: React.FC = () => (
   <ResourceContextProvider value='device'>
     <List emptyWhileLoading disableSyncWithLocation filters={deviceCardFilters} title=' '>
       <WithListContext

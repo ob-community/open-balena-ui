@@ -31,7 +31,7 @@ const BooleanBinaryField: React.FC<BooleanBinaryFieldProps> = ({ source = 'enabl
   />
 );
 
-export const FleetTypeList = () => {
+export const FleetTypeList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -59,7 +59,7 @@ export const FleetTypeList = () => {
   );
 };
 
-export const FleetTypeCreate = () => (
+export const FleetTypeCreate: React.FC = () => (
   <Create title='Create Fleet Type'>
     <SimpleForm>
       <Row>
@@ -70,7 +70,7 @@ export const FleetTypeCreate = () => (
   </Create>
 );
 
-export const FleetTypeEdit = () => (
+export const FleetTypeEdit: React.FC = () => (
   <Edit title='Edit Fleet Type'>
     <SimpleForm>
       <Row>

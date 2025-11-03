@@ -21,7 +21,7 @@ import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 import SemVerChip, { getSemver } from '../ui/SemVerChip';
 
-export const ReleaseTagList = (props) => {
+export const ReleaseTagList: React.FC = () => {
   return (
     <List title='Release Tags'>
       <Datagrid size='medium' rowClick={false}>
@@ -61,7 +61,7 @@ export const ReleaseTagList = (props) => {
   );
 };
 
-export const ReleaseTagCreate = () => {
+export const ReleaseTagCreate: React.FC = () => {
   const processCreate = async (data) => {
     delete data.application;
     return data;
@@ -110,7 +110,7 @@ export const ReleaseTagCreate = () => {
   );
 };
 
-export const ReleaseTagEdit = () => (
+export const ReleaseTagEdit: React.FC = () => (
   <Edit title='Edit Release Tag'>
     <SimpleForm>
       <Row>

@@ -15,7 +15,7 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
-export const ConfigList = () => {
+export const ConfigList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -43,7 +43,7 @@ export const ConfigList = () => {
   );
 };
 
-export const ConfigCreate = () => (
+export const ConfigCreate: React.FC = () => (
   <Create title='Create Config' redirect='list'>
     <SimpleForm>
       <Row>
@@ -59,7 +59,7 @@ export const ConfigCreate = () => (
   </Create>
 );
 
-export const ConfigEdit = () => (
+export const ConfigEdit: React.FC = () => (
   <Edit title='Edit Config'>
     <SimpleForm>
       <Row>

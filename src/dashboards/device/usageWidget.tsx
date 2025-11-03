@@ -1,8 +1,16 @@
 import { Box, LinearProgress, Tooltip } from '@mui/material';
 import * as React from 'react';
-import { useRecordContext } from 'react-admin';
+import { LinearProgressProps, useRecordContext } from 'react-admin';
 
-const LinearProgressWithLabel = (props) => {
+const LinearProgressWithLabel: React.FC<
+  LinearProgressProps & {
+    label?: string;
+    tooltip?: string;
+    value?: number;
+    displayValue?: number;
+    displayUnits?: string;
+  }
+> = (props) => {
   return (
     <Box sx={{ mb: 2.75, mx: '10px', display: 'flex', alignItems: 'center' }} style={props.style}>
       <Box sx={{ flex: 1, minWidth: '3em' }}>{props.label}</Box>
@@ -11,7 +19,7 @@ const LinearProgressWithLabel = (props) => {
       </Box>
       <Box sx={{ flex: 1, minWidth: '3em' }}>
         <Tooltip placement='top' arrow={true} title={props.tooltip}>
-          {props.displayValue ? props.displayValue + props.displayUnits : Math.round(props.value) + '%'}
+          <>{props.displayValue ? props.displayValue + props.displayUnits! : Math.round(props.value!) + '%'}</>
         </Tooltip>
       </Box>
     </Box>
@@ -65,7 +73,7 @@ const UsageWidget = () => {
               isFinite(record['memory usage'] / record['memory total'])
                 ? `Usage: ${record['memory usage']} MB of ${record['memory total']} MB`
                 : ''
-          }
+            }
           />
         </div>
       </Box>

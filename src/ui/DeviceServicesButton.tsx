@@ -1,12 +1,16 @@
 import React from 'react';
-import { Grid, Button, Dialog, DialogTitle, DialogContent } from '@mui/material';
+import { Grid, Button, Dialog, DialogTitle, DialogContent, ButtonProps } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
 import ListIcon from '@mui/icons-material/List';
 import Tooltip from '@mui/material/Tooltip';
 import DeviceServices from './DeviceServices';
 
-export const DeviceServicesButton = (props) => {
+export const DeviceServicesButton: React.FC<ButtonProps & { label?: string; device: any }> = ({
+  label,
+  device,
+  ...props
+}) => {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -14,7 +18,7 @@ export const DeviceServicesButton = (props) => {
       <Tooltip title='Device Services'>
         <Button aria-label='services' onClick={() => setOpen(true)} {...props}>
           <ListIcon />
-          {props.label ? <span style={{ paddingLeft: '4px' }}>{props.label}</span> : ''}
+          {label ? <span style={{ paddingLeft: '4px' }}>{label}</span> : ''}
         </Button>
       </Tooltip>
       <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby='form-dialog-title'>
@@ -29,7 +33,7 @@ export const DeviceServicesButton = (props) => {
           </DialogTitle>
         </DialogTitle>
         <DialogContent>
-          <DeviceServices {...props} />
+          <DeviceServices device={device} />
         </DialogContent>
       </Dialog>
     </>

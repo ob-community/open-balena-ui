@@ -53,7 +53,16 @@ const StyledCustomMenuItem = styled('div')(({ theme }) => ({
   [`& .${classes.openMenuItem}`]: {},
 }));
 
-const CustomMenuItem = ({ handleToggle, sidebarIsOpen, isOpen, name, icon, children, dense, setMenuColors }) => {
+const CustomMenuItem: React.FC<{
+  isOpen?: boolean;
+  dense?: boolean;
+  name: string;
+  icon: React.ReactElement;
+  handleToggle: React.MouseEventHandler<HTMLLIElement> | undefined;
+  sidebarIsOpen?: boolean;
+  setMenuColors?: boolean;
+  children?: React.ReactNode;
+}> = ({ handleToggle, sidebarIsOpen, isOpen, name, icon, children, dense, setMenuColors }) => {
   const translate = useTranslate();
 
   const header = (

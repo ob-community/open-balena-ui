@@ -20,7 +20,7 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
-export const DeviceConfigVarList = () => {
+export const DeviceConfigVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
     title: 'Device Config Vars',
   };
@@ -61,7 +61,7 @@ export const DeviceConfigVarList = () => {
   );
 };
 
-export const DeviceConfigVarCreate = () => (
+export const DeviceConfigVarCreate: React.FC = () => (
   <Create title='Create Device Config Var' redirect='list'>
     <SimpleForm>
       <ReferenceInput
@@ -82,7 +82,7 @@ export const DeviceConfigVarCreate = () => (
   </Create>
 );
 
-export const DeviceConfigVarEdit = () => (
+export const DeviceConfigVarEdit: React.FC = () => (
   <Edit title='Edit Device Config Var'>
     <SimpleForm>
       <ReferenceInput

@@ -1,6 +1,6 @@
 import { DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
-import s3Client from './client.js';
-import bucketNames from './bucketNames.js';
+import s3Client from './client';
+import bucketNames from './bucketNames';
 
 const listObjectKeys = async (bucket: string, prefix: string): Promise<string[]> => {
   const objectKeys: string[] = [];

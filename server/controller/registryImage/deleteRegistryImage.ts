@@ -1,4 +1,4 @@
-import { bucketNames, deleteObjects, listObjectKeys } from '../../util/s3/index.js';
+import { bucketNames, deleteObjects, listObjectKeys } from '../../util/s3';
 
 const deleteRegistryImage = async (imageLocationHash: string): Promise<void> => {
   const imageRepository = `data/docker/registry/v2/repositories/v2/${imageLocationHash}`;

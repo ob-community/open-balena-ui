@@ -5,7 +5,7 @@ import { Identifier, useNotify, useRecordContext, useRedirect } from 'react-admi
 import { useDeleteUser, useDeleteUserBulk } from '../lib/user';
 import { ConfirmationDialog } from './ConfirmationDialog';
 
-interface DeleteUserButtonProps {
+export interface DeleteUserButtonProps {
   selectedIds?: Identifier[];
   redirect?: string;
   variant?: ButtonProps['variant'];

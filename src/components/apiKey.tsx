@@ -32,87 +32,79 @@ import ManagePermissions from '../ui/ManagePermissions';
 import ManageRoles from '../ui/ManageRoles';
 import Row from '../ui/Row';
 
-import type { DataProvider, Identifier, RaRecord } from 'react-admin';
+import type { Identifier, RaRecord } from 'react-admin';
 
 interface ActorFieldProps {
   record: RaRecord<Identifier>;
   label?: string;
 }
 
-interface ActorFieldState {
-  record: {
-    actorName?: string;
-    actorType?: string;
-    actorLink?: string;
-  };
+interface ActorRecord {
+  actorName?: string;
+  actorType?: string;
+  actorLink?: string;
 }
 
-class ActorField extends React.Component<ActorFieldProps, ActorFieldState> {
-  static contextType = DataProviderContext;
-  declare context: DataProvider | undefined;
+const ActorField: React.FC<ActorFieldProps> = ({ record }) => {
+  const dataProvider = React.useContext(DataProviderContext);
+  const [actorRecord, setActorRecord] = React.useState<ActorRecord>({});
 
-  constructor(props: ActorFieldProps) {
-    super(props);
-    this.state = { record: {} };
-  }
+  React.useEffect(() => {
+    const fetchActorData = async () => {
+      if (!dataProvider) {
+        return;
+      }
 
-  async componentDidMount(): Promise<void> {
-    const dataProvider = this.context;
-    if (!dataProvider) {
-      return;
-    }
+      const actorLookups = [
+        { resource: 'user', field: 'actor' },
+        { resource: 'device', field: 'actor' },
+        { resource: 'application', field: 'actor' },
+      ] as const;
 
-    const actorLookups = [
-      { resource: 'user', field: 'actor' },
-      { resource: 'device', field: 'actor' },
-      { resource: 'application', field: 'actor' },
-    ] as const;
+      await Promise.all(
+        actorLookups.map(async (lookup) => {
+          const result = await dataProvider.getList(lookup.resource, {
+            pagination: { page: 1, perPage: 1000 },
+            sort: { field: 'id', order: 'ASC' },
+            filter: { [lookup.field]: record['is of-actor'] },
+          });
 
-    await Promise.all(
-      actorLookups.map(async (lookup) => {
-        const result = await dataProvider.getList(lookup.resource, {
-          pagination: { page: 1, perPage: 1000 },
-          sort: { field: 'id', order: 'ASC' },
-          filter: { [lookup.field]: this.props.record['is of-actor'] },
-        });
+          if (result.data.length > 0) {
+            const [{ username, id, ['app name']: appName, ['device name']: deviceName }] = result.data as Array<
+              Record<string, any>
+            >;
+            const actorName = username ?? appName ?? deviceName ?? 'Unknown';
+            const actorType = username ? 'User' : appName ? 'Fleet' : 'Device';
+            const actorRecordType = username ? 'user' : appName ? 'application' : 'device';
+            const actorLink = `/#/${actorRecordType}/${id}`;
 
-        if (result.data.length > 0) {
-          const [{ username, id, ['app name']: appName, ['device name']: deviceName }] = result.data as Array<
-            Record<string, any>
-          >;
-          const actorName = username ?? appName ?? deviceName ?? 'Unknown';
-          const actorType = username ? 'User' : appName ? 'Fleet' : 'Device';
-          const actorRecordType = username ? 'user' : appName ? 'application' : 'device';
-          const actorLink = `/#/${actorRecordType}/${id}`;
-
-          this.setState({
-            record: {
+            setActorRecord({
               actorName,
               actorType,
               actorLink,
-            },
-          });
-        }
-      }),
-    );
-  }
+            });
+          }
+        }),
+      );
+    };
 
-  generateLabel(): string {
-    const { actorType, actorName } = this.state.record;
+    fetchActorData();
+  }, [dataProvider, record]);
+
+  const generateLabel = (): string => {
+    const { actorType, actorName } = actorRecord;
     if (actorType && actorName) {
       return `${actorType}: ${actorName}`;
     }
     return 'Unassigned';
-  }
+  };
 
-  render(): React.ReactElement {
-    return <Chip label={this.generateLabel()} href={this.state.record.actorLink} component='a' clickable />;
-  }
-}
+  return <Chip label={generateLabel()} href={actorRecord.actorLink} component='a' clickable />;
+};
 
 const apiKeyFilters = [<SearchInput source='#key,name,description@ilike' alwaysOn />];
 
-const CustomBulkActionButtons = (props) => {
+const CustomBulkActionButtons: React.FC = (props) => {
   const { selectedIds } = useListContext();
   return (
     <React.Fragment>
@@ -131,7 +123,7 @@ const ActorFieldWrapper: React.FC<Omit<ActorFieldProps, 'record'>> = (props) => 
   return <ActorField {...props} record={record} />;
 };
 
-export const ApiKeyList = () => {
+export const ApiKeyList: React.FC = () => {
   return (
     <List filters={apiKeyFilters}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
@@ -160,7 +152,7 @@ export const ApiKeyList = () => {
   );
 };
 
-export const ApiKeyCreate = (props) => {
+export const ApiKeyCreate: React.FC = (props) => {
   const generateApiKey = useGenerateApiKey();
   const createApiKey = useCreateApiKey();
   const unique = useUnique();
@@ -232,7 +224,7 @@ const CustomToolbar = (props) => {
   );
 };
 
-export const ApiKeyEdit = () => {
+export const ApiKeyEdit: React.FC = () => {
   const modifyApiKey = useModifyApiKey();
 
   return (

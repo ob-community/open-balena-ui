@@ -24,7 +24,7 @@ import environment from '../lib/reactAppEnv';
 
 const deviceTypeAlias = versions.resource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
-export const DeviceTypeList = () => {
+export const DeviceTypeList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -63,7 +63,7 @@ export const DeviceTypeList = () => {
   );
 };
 
-export const DeviceTypeCreate = () => {
+export const DeviceTypeCreate: React.FC = () => {
   const createDeviceType = useCreateDeviceType();
 
   return (
@@ -103,7 +103,7 @@ export const DeviceTypeCreate = () => {
   );
 };
 
-export const DeviceTypeEdit = () => (
+export const DeviceTypeEdit: React.FC = () => (
   <Edit title='Edit Device Type'>
     <SimpleForm>
       <Row>

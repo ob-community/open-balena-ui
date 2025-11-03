@@ -29,7 +29,7 @@ const styles = {
   },
 };
 
-const Banner = () => {
+const Banner: React.FC = () => {
   return (
     <Card sx={styles.bannerCard}>
       <Box display='flex'>

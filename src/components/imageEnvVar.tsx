@@ -20,7 +20,7 @@ import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 import SemVerChip from '../ui/SemVerChip';
 
-export const ImageEnvVarList = () => {
+export const ImageEnvVarList: React.FC = () => {
   return (
     <List title='Image Environment Vars'>
       <Datagrid size='medium' rowClick={false}>
@@ -61,7 +61,7 @@ export const ImageEnvVarList = () => {
   );
 };
 
-export const ImageEnvVarCreate = () => (
+export const ImageEnvVarCreate: React.FC = () => (
   <Create title='Create Image Environment Var' redirect='list'>
     <SimpleForm>
       <ReferenceInput source='release image' reference='image' target='id'>
@@ -76,7 +76,7 @@ export const ImageEnvVarCreate = () => (
   </Create>
 );
 
-export const ImageEnvVarEdit = () => (
+export const ImageEnvVarEdit: React.FC = () => (
   <Edit title='Edit Image Environment Var'>
     <SimpleForm>
       <ReferenceInput source='release image' reference='image' target='id'>

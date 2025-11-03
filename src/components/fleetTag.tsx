@@ -23,7 +23,7 @@ import Row from '../ui/Row';
 
 const uniqueIssueMessage = 'This Tag is already present for this Fleet';
 
-export const FleetTagList = () => {
+export const FleetTagList: React.FC = () => {
   return (
     <List title='Fleet Tags'>
       <Datagrid size='medium' rowClick={false}>
@@ -52,7 +52,7 @@ export const FleetTagList = () => {
   );
 };
 
-export const FleetTagCreate = () => {
+export const FleetTagCreate: React.FC = () => {
   const unique = useUnique();
   return (
     <Create title='Create Fleet Tag' redirect='list'>
@@ -100,7 +100,7 @@ export const FleetTagCreate = () => {
   );
 };
 
-export const FleetTagEdit = () => (
+export const FleetTagEdit: React.FC = () => (
   <Edit title='Edit Fleet Tag'>
     <SimpleForm>
       <ReferenceInput

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Datagrid, List, ReferenceField, TextField } from 'react-admin';
 
-export const ServiceList = () => {
+export const ServiceList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' bulkActionButtons={false} rowClick={false}>

@@ -20,7 +20,7 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
-export const ServiceLabelList = () => {
+export const ServiceLabelList: React.FC = () => {
   return (
     <List title='Service Labels'>
       <Datagrid size='medium' rowClick={false}>
@@ -49,7 +49,7 @@ export const ServiceLabelList = () => {
   );
 };
 
-export const ServiceLabelCreate = () => (
+export const ServiceLabelCreate: React.FC = () => (
   <Create title='Create Service Label' redirect='list'>
     <SimpleForm>
       <ReferenceInput
@@ -70,7 +70,7 @@ export const ServiceLabelCreate = () => (
   </Create>
 );
 
-export const ServiceLabelEdit = () => (
+export const ServiceLabelEdit: React.FC = () => (
   <Edit title='Edit Service Label'>
     <SimpleForm>
       <ReferenceInput

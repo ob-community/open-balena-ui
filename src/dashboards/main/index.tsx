@@ -15,7 +15,7 @@ const styles: {
   rightCol: { flex: 1, marginLeft: '0.5em', display: 'flex', flexDirection: 'column' },
 };
 
-const Dashboard = () => {
+const Dashboard: React.FC = () => {
   return (
     <>
       <Title title='Dashboard' />

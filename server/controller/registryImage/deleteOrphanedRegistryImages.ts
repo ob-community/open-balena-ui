@@ -1,4 +1,4 @@
-import { bucketNames, listCommonPrefixes } from '../../util/s3/index.js';
+import { bucketNames, listCommonPrefixes } from '../../util/s3';
 
 const extractRepositoryName = (prefix: string): string | null => {
   const parts = prefix.split('repositories/v2/');

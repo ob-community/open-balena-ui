@@ -22,6 +22,8 @@ import {
   required,
   useUnique,
   RecordContextProvider,
+  CreateProps,
+  ToolbarProps,
 } from 'react-admin';
 import { Chip } from '@mui/material';
 import SwitchAccessShortcutIcon from '@mui/icons-material/SwitchAccessShortcut';
@@ -70,7 +72,7 @@ const FleetTargetReleaseCell: React.FC<{ record: Record<string, any> }> = ({ rec
   );
 };
 
-const CustomBulkActionButtons = (props) => (
+const CustomBulkActionButtons: React.FC = (props) => (
   <React.Fragment>
     <DeleteFleetButton size='small' {...props}>
       Delete Selected Fleets
@@ -78,7 +80,7 @@ const CustomBulkActionButtons = (props) => (
   </React.Fragment>
 );
 
-export const FleetList = () => {
+export const FleetList: React.FC = () => {
   return (
     <List>
       <Datagrid
@@ -125,7 +127,7 @@ export const FleetList = () => {
   );
 };
 
-export const FleetCreate = (props) => {
+export const FleetCreate: React.FC<CreateProps> = (props) => {
   let createFleet = useCreateFleet();
   const unique = useUnique();
 
@@ -221,7 +223,7 @@ export const FleetCreate = (props) => {
   );
 };
 
-const CustomToolbar = (props) => (
+const CustomToolbar: React.FC<ToolbarProps> = (props) => (
   <Toolbar {...props} style={{ justifyContent: 'space-between' }}>
     <SaveButton sx={{ flex: 1 }} />
     <DeleteFleetButton size='large' sx={{ marginLeft: '40px' }}>
@@ -230,7 +232,7 @@ const CustomToolbar = (props) => (
   </Toolbar>
 );
 
-export const FleetEdit = () => {
+export const FleetEdit: React.FC = () => {
   const { id: fleetId } = useParams();
 
   return (

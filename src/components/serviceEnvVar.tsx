@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {
   Create,
+  CreateProps,
   Datagrid,
   DeleteButton,
   Edit,
@@ -20,7 +21,7 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
-export const ServiceEnvVarList = () => {
+export const ServiceEnvVarList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -55,7 +56,7 @@ export const ServiceEnvVarList = () => {
   );
 };
 
-export const ServiceEnvVarCreate = (props) => {
+export const ServiceEnvVarCreate: React.FC<CreateProps> = (props) => {
   const processCreate = async (data) => {
     delete data.application;
     return data;
@@ -104,7 +105,7 @@ export const ServiceEnvVarCreate = (props) => {
   );
 };
 
-export const ServiceEnvVarEdit = () => (
+export const ServiceEnvVarEdit: React.FC = () => (
   <Edit title='Edit Service Environment Var'>
     <SimpleForm>
       <Row>

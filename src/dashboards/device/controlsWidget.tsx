@@ -39,7 +39,7 @@ type DeviceRecord = RaRecord & {
   'api heartbeat state'?: string;
 };
 
-const ControlsWidget = () => {
+const ControlsWidget: React.FC = () => {
   const authProvider = useAuthProvider();
   const notify = useNotify();
   const record = useRecordContext<DeviceRecord>();

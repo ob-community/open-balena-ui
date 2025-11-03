@@ -23,7 +23,7 @@ import Row from '../ui/Row';
 
 const uniqueIssueMessage = 'This ConfigVar is already present for this Fleet';
 
-export const FleetConfigVarList = () => {
+export const FleetConfigVarList: React.FC = () => {
   return (
     <List title='Fleet Config Vars'>
       <Datagrid size='medium' rowClick={false}>
@@ -52,7 +52,7 @@ export const FleetConfigVarList = () => {
   );
 };
 
-export const FleetConfigVarCreate = () => {
+export const FleetConfigVarCreate: React.FC = () => {
   const unique = useUnique();
   return (
     <Create title='Create Fleet Config Var' redirect='list'>
@@ -99,7 +99,7 @@ export const FleetConfigVarCreate = () => {
   );
 };
 
-export const FleetConfigVarEdit = () => (
+export const FleetConfigVarEdit: React.FC = () => (
   <Edit title='Edit Fleet Config Var'>
     <SimpleForm>
       <ReferenceInput

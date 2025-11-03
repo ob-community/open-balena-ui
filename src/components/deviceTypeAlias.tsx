@@ -17,7 +17,7 @@ import {
 } from 'react-admin';
 import Row from '../ui/Row';
 
-export const DeviceTypeAliasList = () => {
+export const DeviceTypeAliasList: React.FC = () => {
   return (
     <List title='Device Type Aliases'>
       <Datagrid size='medium' rowClick={false}>
@@ -36,7 +36,7 @@ export const DeviceTypeAliasList = () => {
   );
 };
 
-export const DeviceTypeAliasCreate = () => (
+export const DeviceTypeAliasCreate: React.FC = () => (
   <Create title='Create Device Type Alias' redirect='list'>
     <SimpleForm
       sx={{
@@ -62,7 +62,7 @@ export const DeviceTypeAliasCreate = () => (
   </Create>
 );
 
-export const DeviceTypeAliasEdit = () => (
+export const DeviceTypeAliasEdit: React.FC = () => (
   <Edit title='Edit Device Type Alias'>
     <SimpleForm
       sx={{

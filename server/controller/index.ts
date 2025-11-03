@@ -1,4 +1,4 @@
-import * as registryImage from './registryImage/index.js';
+import * as registryImage from './registryImage';
 
 export { registryImage };
 

@@ -13,7 +13,7 @@ import {
   required,
 } from 'react-admin';
 
-export const PermissionList = () => {
+export const PermissionList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
@@ -28,7 +28,7 @@ export const PermissionList = () => {
   );
 };
 
-export const PermissionCreate = () => (
+export const PermissionCreate: React.FC = () => (
   <Create title='Create Permission'>
     <SimpleForm>
       <TextInput source='name' validate={required()} size='large' fullWidth={true} />
@@ -36,7 +36,7 @@ export const PermissionCreate = () => (
   </Create>
 );
 
-export const PermissionEdit = () => (
+export const PermissionEdit: React.FC = () => (
   <Edit title='Edit Permission'>
     <SimpleForm>
       <TextInput source='name' validate={required()} size='large' fullWidth={true} />

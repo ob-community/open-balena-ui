@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Datagrid, FunctionField, List, ReferenceField, TextField } from 'react-admin';
 import SemVerChip from '../ui/SemVerChip';
 
-export const ImageList = () => {
+export const ImageList: React.FC = () => {
   return (
     <List>
       <Datagrid bulkActionButtons={false} rowClick={false} size='medium'>

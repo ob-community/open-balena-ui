@@ -14,7 +14,7 @@ import DeviceConnectButton from '../../ui/DeviceConnectButton';
 import { OpenInFull } from '@mui/icons-material';
 import SummaryWidget from './summaryWidget';
 
-const DashboardLayout = () => {
+const DashboardLayout: React.FC = () => {
   const record = useRecordContext();
   const theme = useTheme();
 

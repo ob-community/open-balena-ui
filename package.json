@@ -24,8 +24,9 @@
     "express-rate-limit": "^8.1.0",
     "express-slow-down": "^3.0.0",
     "final-form": "^5.0.0",
-    "jwt-decode": "^4.0.0",
     "jose": "^6.1.0",
+    "jwt-decode": "^4.0.0",
+    "micro-key-producer": "^0.8.2",
     "process": "^0.11.10",
     "prop-types": "^15.8.1",
     "query-string": "^9.3.1",
@@ -40,7 +41,7 @@
     "react-router-dom": "^7.9.4",
     "regenerator-runtime": "^0.14.1",
     "semver": "^7.7.3",
-    "micro-key-producer": "^0.8.2",
+    "serialize-javascript": "^7.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -53,10 +54,10 @@
     "@types/query-string": "^6.2.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "@vercel/ncc": "^0.38.3",
     "@vitejs/plugin-react-swc": "^4.1.0",
     "eslint-config-react-app": "^7.0.1",
     "prettier": "^3.6.2",
-    "@vercel/ncc": "^0.38.3",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
     "vite": "^6.4.0"

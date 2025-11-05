@@ -1,10 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist/server",
-    "module": "esnext",
-    "moduleResolution": "node",
-    "noEmit": false,
+    "moduleResolution": "bundler",
     "target": "ES2022",
     "lib": ["ES2022"],
     "jsx": "preserve"

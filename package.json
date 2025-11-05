@@ -56,19 +56,20 @@
     "@vitejs/plugin-react-swc": "^4.1.0",
     "eslint-config-react-app": "^7.0.1",
     "prettier": "^3.6.2",
-    "ts-node": "^10.9.2",
+    "@vercel/ncc": "^0.38.3",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3",
     "vite": "^6.4.0"
   },
   "scripts": {
     "start": "npm run build && npm run serve",
     "serve": "node dist/server/index.js",
-    "serve:dev": "ts-node --esm --project tsconfig.server.json server/index.ts",
+    "serve:dev": "tsx --env-file=.env server/index.ts",
     "dev": "vite --mode devprod",
     "dev:local": "vite --mode local",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
-    "build:server": "tsc -p tsconfig.server.json",
+    "build:server": "ncc build server/index.ts -o dist/server -m",
     "preview": "vite preview --outDir dist/client",
     "typecheck": "tsc --noEmit",
     "prettier": "prettier --write ."

@@ -25,23 +25,35 @@ const readRuntimeEnv = (): RuntimeEnv => {
 const importMetaEnv: RuntimeEnv =
   typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' ? (import.meta.env as RuntimeEnv) : {};
 
-const runtimeInjectedEnv = readRuntimeEnv();
-
 const readEnv = (key: string): string | undefined => {
   const metaValue = importMetaEnv[key];
   if (typeof metaValue === 'string' && metaValue.length > 0) {
     return metaValue;
   }
 
-  const runtimeValue = runtimeInjectedEnv[key];
+  const runtimeValue = readRuntimeEnv()[key];
   return typeof runtimeValue === 'string' && runtimeValue.length > 0 ? runtimeValue : undefined;
 };
 
-export default {
-  REACT_APP_OPEN_BALENA_POSTGREST_URL: readEnv('REACT_APP_OPEN_BALENA_POSTGREST_URL'),
-  REACT_APP_OPEN_BALENA_REMOTE_URL: readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL'),
-  REACT_APP_OPEN_BALENA_API_URL: readEnv('REACT_APP_OPEN_BALENA_API_URL'),
-  REACT_APP_OPEN_BALENA_API_VERSION: readEnv('REACT_APP_OPEN_BALENA_API_VERSION'),
-  REACT_APP_BANNER_IMAGE: readEnv('REACT_APP_BANNER_IMAGE'),
-  REACT_APP_OPEN_BALENA_UI_URL: readEnv('REACT_APP_OPEN_BALENA_UI_URL'),
+const env = {
+  get REACT_APP_OPEN_BALENA_POSTGREST_URL() {
+    return readEnv('REACT_APP_OPEN_BALENA_POSTGREST_URL');
+  },
+  get REACT_APP_OPEN_BALENA_REMOTE_URL() {
+    return readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL');
+  },
+  get REACT_APP_OPEN_BALENA_API_URL() {
+    return readEnv('REACT_APP_OPEN_BALENA_API_URL');
+  },
+  get REACT_APP_OPEN_BALENA_API_VERSION() {
+    return readEnv('REACT_APP_OPEN_BALENA_API_VERSION');
+  },
+  get REACT_APP_BANNER_IMAGE() {
+    return readEnv('REACT_APP_BANNER_IMAGE');
+  },
+  get REACT_APP_OPEN_BALENA_UI_URL() {
+    return readEnv('REACT_APP_OPEN_BALENA_UI_URL');
+  },
 };
+
+export default env;

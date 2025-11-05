@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
+import serialize from 'serialize-javascript';
 import registryImageRoutes from './routes/registryImage';
 
 dotenv.config();
@@ -45,7 +46,7 @@ app.get(/.*/, (_req, res) => {
     return acc;
   }, {});
 
-  const serializedEnv = JSON.stringify(clientEnv).replace(/</g, '\\u003C');
+  const serializedEnv = serialize(clientEnv, { isJSON: true });
   const injection = `<script>window.__OBUI_ENV__ = Object.freeze(${serializedEnv});</script>`;
   res.type('text/html').send(rawHtml.replace(CLIENT_ENV_PLACEHOLDER, injection));
 });

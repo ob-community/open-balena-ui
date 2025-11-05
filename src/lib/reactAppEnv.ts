@@ -1,11 +1,40 @@
-type RuntimeEnv = Record<string, string | boolean | undefined>;
+type RuntimeEnvValue = string | boolean | undefined;
+type RuntimeEnv = Record<string, RuntimeEnvValue>;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __OBUI_ENV__: RuntimeEnv | undefined;
+  interface Window {
+    __OBUI_ENV__?: RuntimeEnv;
+  }
+}
+
+const readRuntimeEnv = (): RuntimeEnv => {
+  if (typeof globalThis === 'undefined') {
+    return {};
+  }
+
+  const candidate = (globalThis as { __OBUI_ENV__?: RuntimeEnv }).__OBUI_ENV__;
+  if (!candidate || typeof candidate !== 'object') {
+    return {};
+  }
+
+  return candidate;
+};
 
 const importMetaEnv: RuntimeEnv =
   typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' ? (import.meta.env as RuntimeEnv) : {};
 
+const runtimeInjectedEnv = readRuntimeEnv();
+
 const readEnv = (key: string): string | undefined => {
-  const value = importMetaEnv[key];
-  return typeof value === 'string' ? value : undefined;
+  const metaValue = importMetaEnv[key];
+  if (typeof metaValue === 'string' && metaValue.length > 0) {
+    return metaValue;
+  }
+
+  const runtimeValue = runtimeInjectedEnv[key];
+  return typeof runtimeValue === 'string' && runtimeValue.length > 0 ? runtimeValue : undefined;
 };
 
 export default {

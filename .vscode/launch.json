@@ -8,32 +8,26 @@
       "url": "http://localhost:3000",
       "webRoot": "${workspaceFolder}/src",
       "sourceMaps": true,
-      "preLaunchTask": "npm: start",
-      "userDataDir": "${workspaceFolder}/.vscode/chrome",
-      "sourceMapPathOverrides": {
-        "webpack:///src/*": "${webRoot}/*"
-      },
-      "env": {
-        "NODE_ENV": "development"
-      }
+      "preLaunchTask": "npm: dev",
+      "userDataDir": "${workspaceFolder}/.vscode/chrome"
     },
     {
-      "name": "Launch React App (devServer)",
+      "name": "Launch React App (local mode)",
       "type": "chrome",
       "request": "launch",
       "url": "http://localhost:3000",
       "webRoot": "${workspaceFolder}",
       "sourceMaps": true,
-      "preLaunchTask": "webpack-dev-server"
+      "preLaunchTask": "npm: dev:local"
     }
   ],
   "tasks": {
     "version": "2.0.0",
     "tasks": [
       {
-        "label": "npm: start",
+        "label": "npm: dev",
         "type": "npm",
-        "script": "start",
+        "script": "dev",
         "isBackground": true,
         "env": {
           "NODE_ENV": "development"
@@ -57,24 +51,10 @@
         }
       },
       {
-        "label": "webpack-dev-server",
+        "label": "npm: dev:local",
         "type": "npm",
-        "script": "devserver",
-        "isBackground": true,
-        "problemMatcher": {
-          "owner": "webpack",
-          "pattern": {
-            "regexp": ".",
-            "file": 1,
-            "location": 2,
-            "message": 3
-          },
-          "background": {
-            "activeOnStart": true,
-            "beginsPattern": "Compiling...",
-            "endsPattern": "Compiled successfully."
-          }
-        }
+        "script": "dev:local",
+        "isBackground": true
       }
     ]
   }

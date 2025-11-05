@@ -30,6 +30,10 @@ There are a number of environment variables used to configure the ui:
 
 - `REACT_APP_BANNER_IMAGE` The URL of a custom banner image to use on the main dashboard.
 
+These variables can be supplied through the standard Vite `.env` files (for example `.env`, `.env.local`, or
+`.env.<mode>` when invoking `vite --mode <mode>`). The active mode is already set for the provided `npm run dev` and
+`npm run dev:local` scripts.
+
 ## Exposing Device Connection Endpoints
 
 Each device has a "Connect" button which uses balena image labels to discover available services on that device. To make
@@ -85,17 +89,30 @@ project which has helm scripts to build a current version of `open-balena`.
 
 ## Installation
 
-Set the required environment variables accordingly, and run `yarn start` from the main project folder. If running
+Ensure you are running Node.js 24 or newer locally to match the production image and CI configuration.
+
+Set the required environment variables accordingly, and run `npm run start` from the main project folder. If running
 locally, you can access `open-balena-ui` via your web browser at `http://localhost:PORT`, and provided the configuration
 environment variables are appropriately pointed to live `open-balena-api` and `open-balena-postgrest` instances, you
 should be up and running.
 
 ## Development
 
-For local development, be sure to set `NODE_ENV` to `development` and use `npm run devserver` to start the server with
-hot module replacement / reloading.
+For local development, the Vite dev server exposes two modes:
+
+- `npm run dev` launches with the `devprod` mode configuration (mirroring hosted settings).
+- `npm run dev:local` loads the `local` mode configuration for working against local services.
+
+When you need a production-like client build, run `npm run build:client` (or `npm run build` to bundle both client and
+server) followed by `npm run serve` to boot the compiled Express server.
 
 ## Credits
 
 - The [ra-data-postgrest](https://github.com/raphiniert-com/ra-data-postgrest) project was instrumental in establishing
   the link to the open-balena database
+
+## Legacy Items
+
+- **Expanded Vite config**: The configuration keeps legacy behavior from the original webpack/CRA setup—explicit aliases
+  and polyfills for the Node-style modules above, plus tailored build/preview settings so the Express server can serve
+  the SPA exactly as before.

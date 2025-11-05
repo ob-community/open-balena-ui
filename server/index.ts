@@ -13,8 +13,7 @@ const app = express();
 
 app.use('/', registryImageRoutes);
 app.use(express.static(CLIENT_DIR));
-app.get('*', express.static(CLIENT_DIR));
-app.get('*', (_req, res) => {
+app.get(/.*/, (_req, res) => {
   res.sendFile(path.join(process.cwd(), CLIENT_DIR, 'index.html'));
 });
 

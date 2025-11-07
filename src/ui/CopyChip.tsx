@@ -1,5 +1,6 @@
 import ContentCopy from '@mui/icons-material/ContentCopy';
-import { Box, Tooltip, TooltipProps } from '@mui/material';
+import { Box, Tooltip, TooltipProps, useTheme } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import React, { CSSProperties, useMemo, useState } from 'react';
 
 interface CopyChipProps {
@@ -11,6 +12,11 @@ interface CopyChipProps {
 
 const CopyChip: React.FC<CopyChipProps> = ({ style, title, label, placement = 'top' }) => {
   const [copied, setCopied] = useState(false);
+  const theme = useTheme();
+
+  const accentColor = theme.palette.mode === 'dark' ? theme.palette.info.light : theme.palette.error.main;
+  const chipBackground = theme.palette.mode === 'dark' ? alpha(accentColor, 0.15) : alpha(accentColor, 0.1);
+  const chipBorder = alpha(accentColor, theme.palette.mode === 'dark' ? 0.3 : 0.2);
 
   const isImage = useMemo(() => {
     if (title?.startsWith('data:image')) {
@@ -67,8 +73,10 @@ const CopyChip: React.FC<CopyChipProps> = ({ style, title, label, placement = 't
           sx={{
             padding: '2px 6px',
             fontFamily: '"Ubuntu Mono", "Courier New", monospace !important',
-            backgroundColor: 'rgb(249, 242, 244)',
-            color: 'rgb(199, 37, 78)',
+            backgroundColor: chipBackground,
+            color: accentColor,
+            border: `1px solid ${chipBorder}`,
+            borderRadius: '4px',
           }}
         >
           {label}
@@ -78,7 +86,7 @@ const CopyChip: React.FC<CopyChipProps> = ({ style, title, label, placement = 't
       <Tooltip title={copied ? 'Copied' : ''} placement='top' arrow={true}>
         <ContentCopy
           className='copy-icon'
-          sx={{ cursor: 'pointer', width: '13px', marginLeft: '4px' }}
+          sx={{ cursor: 'pointer', width: '13px', marginLeft: '4px', color: accentColor }}
           onClick={() => {
             navigator.clipboard.writeText(title);
             setCopied(true);

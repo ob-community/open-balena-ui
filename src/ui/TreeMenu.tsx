@@ -22,45 +22,54 @@ const classes = {
   closed: `${PREFIX}-closed`,
 };
 
-const StyledMenu = styled('div')(({ theme }) => ({
-  'background': theme.palette.text.primary,
-  'position': 'fixed',
-  'left': 0,
-  'top': 0,
-  'bottom': 0,
-  'width': 230,
-  'zIndex': 1101,
+const StyledMenu = styled('div')(({ theme }) => {
+  const isDark = theme.palette.mode === 'dark';
+  const backgroundColor = isDark ? theme.palette.background.paper : theme.palette.text.primary;
+  const primaryText = isDark ? theme.palette.text.primary : '#ffffff';
+  const mutedText = isDark ? theme.palette.text.secondary : 'rgba(255,255,255,0.7)';
+  const hoverColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+  const activeColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.2)';
 
-  'li, a': {
-    'color': 'white',
-    'paddingTop': '12px',
-    'paddingBottom': '12px',
+  return {
+    'background': backgroundColor,
+    'position': 'fixed',
+    'left': 0,
+    'top': 0,
+    'bottom': 0,
+    'width': 230,
+    'zIndex': 1101,
 
-    '&.RaMenuItemLink-active': {
-      'fontWeight': 'bold',
-      'color': 'white',
-      'background': 'rgba(0,0,0,0.2) !important',
+    'li, a': {
+      'color': primaryText,
+      'paddingTop': '12px',
+      'paddingBottom': '12px',
 
-      '.MuiListItemIcon-root': {
-        color: 'white',
+      '&.RaMenuItemLink-active': {
+        'fontWeight': 'bold',
+        'color': primaryText,
+        'background': `${activeColor} !important`,
+
+        '.MuiListItemIcon-root': {
+          color: primaryText,
+        },
+      },
+
+      '&:hover': {
+        background: hoverColor,
       },
     },
 
-    '&:hover': {
-      background: 'rgba(0,0,0,0.05)',
+    '.MuiListItemIcon-root': {
+      color: mutedText,
     },
-  },
 
-  '.MuiListItemIcon-root': {
-    color: 'rgba(255,255,255,0.7)',
-  },
-
-  [`& .${classes.main}`]: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-  },
-}));
+    [`& .${classes.main}`]: {
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'flex-start',
+    },
+  };
+});
 
 interface TreeMenuProps extends HTMLAttributes<HTMLDivElement> {
   className?: string;

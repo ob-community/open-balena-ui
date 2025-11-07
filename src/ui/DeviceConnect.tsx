@@ -252,6 +252,7 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
           sx={{
             'display': 'flex',
             'padding': '5px 15px',
+            'paddingRight': '70px',
             'alignItems': 'center',
             '.MuiFormHelperText-root, .MuiFormLabel-root': {
               display: 'none',

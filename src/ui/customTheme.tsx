@@ -1,5 +1,13 @@
 import React from 'react';
-import { LinearProgress, createTheme, css } from '@mui/material';
+import {
+  LinearProgress,
+  PaletteMode,
+  PaletteOptions,
+  ThemeOptions,
+  createTheme,
+  css,
+  responsiveFontSizes,
+} from '@mui/material';
 
 const buttonBase = {
   defaultProps: {
@@ -60,538 +68,610 @@ const buttonBase = {
       },
     },
   },
-};
+} as const;
 
-const palette = {
+const baseTypography: ThemeOptions['typography'] = {
+  fontFamily:
+    "NeueHansKendrick, system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif",
+} as const;
+
+const createLightPalette = (): PaletteOptions => ({
+  mode: 'light',
+  primary: {
+    main: '#2a506f',
+    light: '#4c7190',
+    contrastText: '#ffffff',
+  },
+  secondary: {
+    main: '#1496e1',
+    light: '#33a7eb',
+    contrastText: '#ffffff',
+  },
+  background: {
+    default: '#f8f9fd',
+    paper: '#ffffff',
+  },
   chip: {
     background: '#c3efff',
     color: '#006387',
   },
   text: {
     primary: '#23445e',
+    secondary: '#4f6b84',
   },
+  divider: '#e2e6f0',
+});
+
+const createDarkPalette = (): PaletteOptions => ({
+  mode: 'dark',
   primary: {
-    main: '#2a506f',
-    contrastText: '#fff',
+    main: '#6eb8ff',
+    light: '#8bcbff',
+    contrastText: '#001422',
   },
   secondary: {
-    main: '#1496e1',
-    contrastText: '#fff',
+    main: '#3fc9ff',
+    light: '#64d6ff',
+    contrastText: '#001422',
   },
-};
+  background: {
+    default: '#0d1a26',
+    paper: '#142737',
+  },
+  chip: {
+    background: '#1e3a52',
+    color: '#a6d7ff',
+  },
+  text: {
+    primary: '#e0f2ff',
+    secondary: '#adc9df',
+  },
+  divider: '#1f3547',
+});
 
-let theme = createTheme({ palette });
+const createCustomTheme = (mode: PaletteMode) => {
+  const palette = mode === 'dark' ? createDarkPalette() : createLightPalette();
 
-const customTheme = createTheme({
-  palette,
-  components: {
-    MuiCssBaseline: {
-      styleOverrides: css`
-        * {
-          font-family:
-            NeueHansKendrick,
-            system-ui,
-            -apple-system,
-            Segoe UI,
-            Roboto,
-            Ubuntu,
-            Cantarell,
-            Noto Sans,
-            sans-serif,
-            BlinkMacSystemFont,
-            'Segoe UI',
-            Roboto,
-            'Helvetica Neue',
-            Arial,
-            'Noto Sans',
-            sans-serif,
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Segoe UI Symbol',
-            'Noto Color Emoji' !important;
-        }
+  let theme = createTheme({
+    palette,
+    typography: baseTypography,
+  });
 
-        html,
-        body {
-          padding: 0;
-          margin: 0;
-          line-height: 1.5;
-          height: 100%;
-          overflow: auto;
-          background-color: white;
-        }
+  const isDark = mode === 'dark';
+  const cardHeaderBackground = isDark ? '#1c3245' : '#f2f4fa';
+  const tableAlternateRow = isDark ? 'rgba(255, 255, 255, 0.04)' : '#f8f9fd';
+  const tableHover = isDark ? 'rgba(110, 184, 255, 0.12)' : 'rgba(51, 219, 238, 0.07)';
+  const toolbarBackground = isDark ? '#0f1f2c' : theme.palette.text.primary;
+  const tooltipImageBackground = isDark ? '#142737' : '#ffffff';
+  const tooltipImageBorder = isDark ? '1px solid rgba(160, 200, 255, 0.35)' : '1px solid rgba(97, 97, 97, 0.9)';
+  const dialogSecondaryHover = isDark ? 'rgba(110, 184, 255, 0.15)' : 'rgba(42, 80, 111, 0.04)';
+  const chipBackground = theme.palette.chip?.background ?? (isDark ? '#1e3a52' : '#c3efff');
+  const chipColor = theme.palette.chip?.color ?? (isDark ? '#a6d7ff' : '#006387');
+  const menuItemSelected =
+    theme.palette.action?.hover ?? (isDark ? 'rgba(110, 184, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)');
 
-        .RaLayout-appFrame {
-          margin-top: 60px !important;
-        }
-
-        #main-content {
-          background: #f8f9fd !important;
-          padding: 15px !important;
-          margin-left: 230px;
-        }
-
-        .RaShow-main,
-        .RaCreate-main,
-        .RaEdit-main {
-          margin-top: 0 !important;
-        }
-
-        .edit-page,
-        .create-page {
-          height: 100%;
-        }
-
-        .RaCreate-main,
-        .RaEdit-main {
-          display: flex;
-          width: 100%;
-          align-items: center !important;
-          justify-content: center !important;
-          height: 100%;
-
-          > div {
-            padding: 30px;
-            max-width: 800px;
-          }
-        }
-
-        .RaList-noResults {
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          height: 100vh;
-        }
-
-        .RaBulkActionsToolbar-toolbar {
-          padding-left: 20px !important;
-          padding-right: 15px !important;
-          align-items: center !important;
-
-          .MuiToolbar-root {
-            min-height: 0 !important;
-            padding: 0 !important;
-          }
-        }
-
-        .RaList-actions {
-          align-items: center !important;
-          padding-left: 2px;
-
-          .MuiToolbar-root {
-            align-items: center !important;
-            padding: 4px !important;
+  theme = createTheme(theme, {
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: css`
+          * {
+            font-family:
+              NeueHansKendrick,
+              system-ui,
+              -apple-system,
+              Segoe UI,
+              Roboto,
+              Ubuntu,
+              Cantarell,
+              Noto Sans,
+              sans-serif,
+              BlinkMacSystemFont,
+              'Segoe UI',
+              Roboto,
+              'Helvetica Neue',
+              Arial,
+              'Noto Sans',
+              sans-serif,
+              'Apple Color Emoji',
+              'Segoe UI Emoji',
+              'Segoe UI Symbol',
+              'Noto Color Emoji' !important;
           }
 
-          & > form {
-            min-height: 0 !important;
-            padding: 0 !important;
-
-            .MuiFormControl-root {
-              margin-top: 0 !important;
-            }
-          }
-        }
-
-        .RaCreate-main,
-        .RaEdit-main {
-          .MuiToolbar-root {
-            min-height: 0 !important;
-            padding: 16px !important;
-            background: none !important;
+          html,
+          body {
+            padding: 0;
+            margin: 0;
+            line-height: 1.5;
+            height: 100%;
+            overflow: auto;
+            background-color: ${theme.palette.background.default};
+            color: ${theme.palette.text.primary};
           }
 
-          .RaToolbar-defaultToolbar {
+          .RaLayout-appFrame {
+            margin-top: 60px !important;
+          }
+
+          #main-content {
+            background: ${theme.palette.background.default} !important;
+            padding: 15px !important;
+            margin-left: 230px;
+          }
+
+          .RaShow-main,
+          .RaCreate-main,
+          .RaEdit-main {
+            margin-top: 0 !important;
+          }
+
+          .edit-page,
+          .create-page {
+            height: 100%;
+          }
+
+          .RaCreate-main,
+          .RaEdit-main {
             display: flex;
-            justify-content: flex-end !important;
+            width: 100%;
+            align-items: center !important;
+            justify-content: center !important;
+            height: 100%;
 
-            button {
-              flex: 1;
-            }
-
-            .ra-delete-button {
-              height: 48px;
-              flex: 0.3;
-              margin-left: 40px;
+            > div {
+              padding: 30px;
+              max-width: 800px;
             }
           }
-        }
 
-        .RaDatagrid-tableWrapper {
-          td {
+          .RaList-noResults {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100vh;
+          }
+
+          .RaBulkActionsToolbar-toolbar {
+            padding-left: 20px !important;
+            padding-right: 15px !important;
+            align-items: center !important;
+
             .MuiToolbar-root {
-              background: none !important;
               min-height: 0 !important;
               padding: 0 !important;
+            }
+          }
+
+          .RaList-actions {
+            align-items: center !important;
+            padding-left: 2px;
+
+            .MuiToolbar-root {
+              align-items: center !important;
+              padding: 4px !important;
+            }
+
+            & > form {
+              min-height: 0 !important;
+              padding: 0 !important;
+
+              .MuiFormControl-root {
+                margin-top: 0 !important;
+              }
+            }
+          }
+
+          .RaCreate-main,
+          .RaEdit-main {
+            .MuiToolbar-root {
+              min-height: 0 !important;
+              padding: 16px !important;
+              background: none !important;
+            }
+
+            .RaToolbar-defaultToolbar {
+              display: flex;
               justify-content: flex-end !important;
 
-              .MuiButtonBase-root {
-                min-width: 0 !important;
-                margin-left: 10px !important;
+              button {
+                flex: 1;
               }
 
-              .MuiButton-icon,
-              button > svg {
-                margin: 0 !important;
+              .ra-delete-button {
+                height: 48px;
+                flex: 0.3;
+                margin-left: 40px;
               }
             }
           }
-        }
 
-        .RaEditButton-root,
-        [class$='RaButton-root'] {
-          .MuiButton-icon {
-            margin: 0 !important;
+          .RaDatagrid-tableWrapper {
+            td {
+              .MuiToolbar-root {
+                background: none !important;
+                min-height: 0 !important;
+                padding: 0 !important;
+                justify-content: flex-end !important;
 
-            svg {
-              top: 0 !important;
+                .MuiButtonBase-root {
+                  min-width: 0 !important;
+                  margin-left: 10px !important;
+                }
+
+                .MuiButton-icon,
+                button > svg {
+                  margin: 0 !important;
+                }
+              }
             }
           }
-        }
 
-        .RaTabbedShowLayout-content {
-          padding: 0 !important;
-          margin-top: 30px !important;
-        }
+          .RaEditButton-root,
+          [class$='RaButton-root'] {
+            .MuiButton-icon {
+              margin: 0 !important;
 
-        .rdl-actions {
-          margin: 0 15px !important;
-
-          button {
-            padding: 5px !important;
-            margin: 0 !important;
-            display: flex;
-            align-items: center;
-            margin-bottom: 1.5px !important;
-            outline: none !important;
+              svg {
+                top: 0 !important;
+              }
+            }
           }
-        }
-      `.styles,
-    },
 
-    MuiAppBar: {
-      styleOverrides: {
-        root: {
-          'background': theme.palette.text.primary,
-          'border': 'none',
-          'borderRadius': '0',
-          'boxShadow': 'none',
-          'height': '60px',
-          'justifyContent': 'center',
+          .RaTabbedShowLayout-content {
+            padding: 0 !important;
+            margin-top: 30px !important;
+          }
 
-          '.RaAppBar-menuButton': {
-            display: 'none',
-          },
+          .rdl-actions {
+            margin: 0 15px !important;
 
-          '#react-admin-title': {
-            textAlign: 'center',
-            fontWeight: 'bold',
-            marginLeft: '230px',
-          },
-
-          '[class$="RaLoadingIndicator-root"]': {
-            position: 'relative',
-            right: '25px',
-          },
-        },
+            button {
+              padding: 5px !important;
+              margin: 0 !important;
+              display: flex;
+              align-items: center;
+              margin-bottom: 1.5px !important;
+              outline: none !important;
+            }
+          }
+        `.styles,
       },
-    },
 
-    MuiCardHeader: {
-      styleOverrides: {
-        root: {
-          backgroundColor: '#f2f4fa',
-        },
-      },
-    },
+      MuiAppBar: {
+        styleOverrides: {
+          root: {
+            'background': toolbarBackground,
+            'color': isDark ? theme.palette.text.primary : '#ffffff',
+            'border': 'none',
+            'borderRadius': '0',
+            'boxShadow': 'none',
+            'height': '60px',
+            'justifyContent': 'flex-start',
+            'padding': 0,
+            'marginLeft': '0 !important',
+            'width': '100% !important',
+            'left': 0,
+            'right': 0,
+            '& .MuiToolbar-root': {
+              paddingLeft: '0 !important',
+              paddingRight: '0 !important',
+              width: '100%',
+            },
 
-    MuiChip: {
-      defaultProps: {
-        size: 'small',
-      },
-      styleOverrides: {
-        root: {
-          'background': theme.palette.chip.background,
-          'border': 'none',
+            '.RaAppBar-menuButton': {
+              display: 'none',
+            },
 
-          '.MuiChip-label, .MuiChip-icon': {
-            'color': theme.palette.chip.color + '!important',
+            '#react-admin-title': {
+              textAlign: 'center',
+              fontWeight: 'bold',
+              marginLeft: '230px',
+              color: isDark ? theme.palette.text.primary : '#ffffff',
+            },
 
-            '&.MuiChip-labelSmall': {
-              padding: '0 12px',
+            '[class$="RaLoadingIndicator-root"]': {
+              position: 'relative',
+              right: '25px',
             },
           },
         },
       },
-    },
 
-    MuiButton: buttonBase,
-
-    MuiLoadingButton: {
-      ...buttonBase,
-
-      defaultProps: {
-        ...buttonBase?.defaultProps,
-        loadingIndicator: <LinearProgress color='inherit' />,
-      },
-
-      styleOverrides: {
-        ...buttonBase?.styleOverrides,
-
-        root: {
-          ...buttonBase?.styleOverrides?.root,
-
-          '.MuiLinearProgress-root': {
-            width: '100%',
-          },
-
-          '.MuiLoadingButton-loadingIndicator': {
-            width: '50%',
+      MuiCardHeader: {
+        styleOverrides: {
+          root: {
+            backgroundColor: cardHeaderBackground,
           },
         },
       },
-    },
 
-    MuiFormHelperText: {
-      styleOverrides: {
-        root: {
-          marginLeft: 0,
-          marginTop: 6,
-          fontSize: 11,
+      MuiChip: {
+        defaultProps: {
+          size: 'small',
+        },
+        styleOverrides: {
+          root: {
+            'background': chipBackground,
+            'border': 'none',
+
+            '.MuiChip-label, .MuiChip-icon': {
+              'color': `${chipColor}!important`,
+
+              '&.MuiChip-labelSmall': {
+                padding: '0 12px',
+              },
+            },
+          },
         },
       },
-    },
 
-    MuiInputLabel: {
-      defaultProps: {
-        variant: 'outlined',
-        disableAnimation: true,
-        shrink: true,
-      },
+      MuiButton: buttonBase,
 
-      styleOverrides: {
-        root: {
-          transform: 'none',
-          fontWeight: 'bold',
-          display: 'block',
-          position: 'unset',
-          lineHeight: 1,
-          fontSize: 14,
-          color: theme.palette.text.primary,
-          marginBottom: 5,
+      MuiLoadingButton: {
+        ...buttonBase,
+        defaultProps: {
+          ...buttonBase.defaultProps,
+          loadingIndicator: React.createElement(LinearProgress, { color: 'inherit' }),
+        },
+        styleOverrides: {
+          ...buttonBase.styleOverrides,
+          root: {
+            ...buttonBase.styleOverrides.root,
+
+            '.MuiLinearProgress-root': {
+              width: '100%',
+            },
+
+            '.MuiLoadingButton-loadingIndicator': {
+              width: '50%',
+            },
+          },
         },
       },
-    },
 
-    MuiTextField: {
-      defaultProps: {
-        color: 'primary',
-        variant: 'outlined',
-      },
-    },
-
-    MuiOutlinedInput: {
-      styleOverrides: {
-        notchedOutline: {
-          borderWidth: '1px !important',
-          borderColor: theme.palette.text.disabled,
+      MuiFormHelperText: {
+        styleOverrides: {
+          root: {
+            marginLeft: 0,
+            marginTop: 6,
+            fontSize: 11,
+          },
         },
+      },
 
-        root: {
-          'borderRadius': 5,
-          'height': 48,
-          'fontSize': 16,
-          'lineHeight': 1,
-          'background': theme.palette.background.default,
-
-          '&.MuiInputBase-multiline': {
-            height: 'auto',
+      MuiInputLabel: {
+        defaultProps: {
+          variant: 'outlined',
+          disableAnimation: true,
+          shrink: true,
+        },
+        styleOverrides: {
+          root: {
+            transform: 'none',
+            fontWeight: 'bold',
+            display: 'block',
+            position: 'unset',
+            lineHeight: 1,
+            fontSize: 14,
+            color: theme.palette.text.primary,
+            marginBottom: 5,
           },
+        },
+      },
 
-          '.MuiInputAdornment-root': {
-            color: theme.palette.text.disabled,
-            marginRight: 4,
+      MuiTextField: {
+        defaultProps: {
+          color: 'primary',
+          variant: 'outlined',
+        },
+      },
+
+      MuiOutlinedInput: {
+        styleOverrides: {
+          notchedOutline: {
+            borderWidth: '1px !important',
+            borderColor: theme.palette.text.disabled,
           },
-
-          '&.Mui-focused .MuiInputAdornment-root': {
-            color: theme.palette.primary.main,
-          },
-
-          'input': {
-            padding: '14px 16px',
-            fontSize: 16,
-            height: 'auto',
-          },
-
-          '&.MuiInputBase-sizeSmall': {
-            'height': 32,
+          root: {
+            'borderRadius': 5,
+            'height': 48,
+            'fontSize': 16,
             'lineHeight': 1,
-            'fontSize': 14,
+            'background': theme.palette.background.paper,
 
-            'input': {
-              padding: '7px 10px',
-              fontSize: 14,
+            '&.MuiInputBase-multiline': {
               height: 'auto',
             },
 
             '.MuiInputAdornment-root': {
-              marginRight: 0,
-
-              svg: {
-                width: 18,
-                height: 18,
-              },
+              color: theme.palette.text.disabled,
+              marginRight: 4,
             },
-          },
 
-          'fieldset legend': {
-            maxWidth: '0.01px !important',
-          },
+            '&.Mui-focused .MuiInputAdornment-root': {
+              color: theme.palette.primary.main,
+            },
 
-          '&.Mui-focused .MuiSelect-iconOutlined': {
-            color: theme.palette.primary.main,
-          },
-        },
-      },
-    },
+            'input': {
+              padding: '14px 16px',
+              fontSize: 16,
+              height: 'auto',
+            },
 
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          background: theme.palette.background.default,
-          borderRadius: 10,
-          boxShadow: 'rgba(0, 0, 0, 0.1) 0px 0px 6px 0px',
-          border: `1px solid ${theme.palette.divider}`,
-          overflow: 'hidden',
-        },
-      },
-    },
+            '&.MuiInputBase-sizeSmall': {
+              'height': 32,
+              'lineHeight': 1,
+              'fontSize': 14,
 
-    MuiSelect: {
-      defaultProps: {
-        size: 'medium',
-      },
-      styleOverrides: {
-        select: {
-          minHeight: 0,
-        },
-      },
-    },
-
-    MuiMenuItem: {
-      defaultProps: {
-        disableRipple: true,
-      },
-      styleOverrides: {
-        root: {
-          '&.Mui-selected': {
-            background: theme.palette.action.hover + ' !important',
-          },
-          '&[role="option"]': {
-            paddingTop: 12,
-            paddingBottom: 12,
-          },
-        },
-      },
-    },
-
-    MuiLink: {
-      styleOverrides: {
-        root: {
-          '&, *': {
-            color: theme.palette.secondary.main + '!important',
-          },
-
-          '&:hover': {
-            textDecoration: 'underline',
-          },
-        },
-      },
-    },
-
-    MuiTable: {
-      defaultProps: {
-        size: 'medium',
-      },
-      styleOverrides: {
-        root: {
-          'borderColor': theme.palette.divider,
-
-          'th': {
-            textTransform: 'uppercase',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            backgroundColor: '#f2f4fa !important',
-          },
-
-          'th, td': {
-            border: 'none',
-          },
-
-          'tbody tr:nth-of-type(even)': {
-            backgroundColor: '#f8f9fd',
-          },
-
-          'tr.MuiTableRow-hover:hover': {
-            backgroundColor: 'rgba(51, 219, 238, 0.07)' + '!important',
-          },
-        },
-      },
-    },
-
-    MuiTooltip: {
-      styleOverrides: {
-        tooltip: {
-          '&.isImage': {
-            background: '#fff',
-            border: '1px solid rgba(97, 97, 97, 0.9)',
-            textAlign: 'center',
-          },
-        },
-      },
-    },
-
-    MuiDialogContent: {
-      styleOverrides: {
-        root: {
-          padding: '0 24px',
-        },
-      },
-    },
-
-    MuiDialogActions: {
-      styleOverrides: {
-        root: {
-          'display': 'flex',
-          'justifyContent': 'space-between',
-          'padding': '30px 24px 20px',
-
-          '&:not(.custom)': {
-            '.MuiButton-root': {
-              '&.MuiButton-containedPrimary': {
-                color: 'white',
+              'input': {
+                padding: '7px 10px',
+                fontSize: 14,
+                height: 'auto',
               },
 
-              '&:first-of-type': {
-                'background': 'none',
-                'border': `1px solid ${theme.palette.primary.light}`,
-                'color': theme.palette.primary.main,
+              '.MuiInputAdornment-root': {
+                marginRight: 0,
 
-                '&:hover': {
-                  background: 'rgba(42, 80, 111, 0.04)',
-                  border: `1px solid ${theme.palette.primary.main}`,
+                svg: {
+                  width: 18,
+                  height: 18,
                 },
               },
+            },
 
-              '.MuiButton-icon': {
-                display: 'none',
+            'fieldset legend': {
+              maxWidth: '0.01px !important',
+            },
+
+            '&.Mui-focused .MuiSelect-iconOutlined': {
+              color: theme.palette.primary.main,
+            },
+          },
+        },
+      },
+
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            background: theme.palette.background.paper,
+            borderRadius: 10,
+            boxShadow: isDark ? 'rgba(0, 0, 0, 0.45) 0px 10px 30px -12px' : 'rgba(0, 0, 0, 0.1) 0px 0px 6px 0px',
+            border: `1px solid ${theme.palette.divider}`,
+            overflow: 'hidden',
+          },
+        },
+      },
+
+      MuiSelect: {
+        defaultProps: {
+          size: 'medium',
+        },
+        styleOverrides: {
+          select: {
+            minHeight: 0,
+          },
+        },
+      },
+
+      MuiMenuItem: {
+        defaultProps: {
+          disableRipple: true,
+        },
+        styleOverrides: {
+          root: {
+            '&.Mui-selected': {
+              background: `${menuItemSelected}!important`,
+            },
+            '&[role="option"]': {
+              paddingTop: 12,
+              paddingBottom: 12,
+            },
+          },
+        },
+      },
+
+      MuiLink: {
+        styleOverrides: {
+          root: {
+            '&, *': {
+              color: `${theme.palette.secondary.main}!important`,
+            },
+            '&:hover': {
+              textDecoration: 'underline',
+            },
+          },
+        },
+      },
+
+      MuiTable: {
+        defaultProps: {
+          size: 'medium',
+        },
+        styleOverrides: {
+          root: {
+            'borderColor': theme.palette.divider,
+
+            'th': {
+              textTransform: 'uppercase',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              backgroundColor: `${cardHeaderBackground}!important`,
+            },
+
+            'th, td': {
+              border: 'none',
+            },
+
+            'tbody tr:nth-of-type(even)': {
+              backgroundColor: tableAlternateRow,
+            },
+
+            'tr.MuiTableRow-hover:hover': {
+              backgroundColor: `${tableHover}!important`,
+            },
+          },
+        },
+      },
+
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            '&.isImage': {
+              background: tooltipImageBackground,
+              border: tooltipImageBorder,
+              textAlign: 'center',
+            },
+          },
+        },
+      },
+
+      MuiDialogContent: {
+        styleOverrides: {
+          root: {
+            padding: '0 24px',
+          },
+        },
+      },
+
+      MuiDialogActions: {
+        styleOverrides: {
+          root: {
+            'display': 'flex',
+            'justifyContent': 'space-between',
+            'padding': '30px 24px 20px',
+
+            '&:not(.custom)': {
+              '.MuiButton-root': {
+                '&.MuiButton-containedPrimary': {
+                  color: isDark ? theme.palette.text.primary : '#ffffff',
+                },
+
+                '&:first-of-type': {
+                  'background': 'none',
+                  'border': `1px solid ${theme.palette.primary.light}`,
+                  'color': theme.palette.primary.main,
+
+                  '&:hover': {
+                    background: dialogSecondaryHover,
+                    border: `1px solid ${theme.palette.primary.main}`,
+                  },
+                },
+
+                '.MuiButton-icon': {
+                  display: 'none',
+                },
               },
             },
           },
         },
       },
     },
-  } as Record<string, unknown>,
-});
+  } as Record<string, unknown>);
 
-export default customTheme;
+  return responsiveFontSizes(theme);
+};
+
+const customTheme = createCustomTheme('light');
+
+export { createCustomTheme, customTheme };
+export default createCustomTheme;

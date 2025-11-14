@@ -31,19 +31,7 @@ const AppHeader: React.FC<AppBarProps> = ({ userMenu, ...rest }) => {
         <Box sx={{ ml: 2, display: 'flex' }}>
           <SidebarToggleButton />
         </Box>
-        <Typography
-          variant='h6'
-          color='inherit'
-          id='react-admin-title'
-          sx={{
-            flexGrow: 1,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <TitlePortal />
-        </Typography>
+        <TitlePortal />
         <Box
           sx={{
             display: 'flex',

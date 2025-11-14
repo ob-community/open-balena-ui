@@ -1,4 +1,5 @@
 import { Box, Card, useTheme } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import React from 'react';
 import { TabbedShowLayout, Title, useRecordContext } from 'react-admin';
 import DeviceConnect from '../../ui/DeviceConnect';
@@ -71,16 +72,42 @@ const DashboardLayout: React.FC = () => {
             <DeviceLogs />
           </Card>
 
-          <Card sx={{ padding: 0, marginTop: '15px' }}>
+          <Card sx={{ padding: 0, marginTop: '15px', position: 'relative' }}>
             <DeviceConnectButton
-              style={{
-                float: 'right',
-                color: theme.palette.text.primary,
-                backgroundColor: 'white',
-                marginTop: '8px',
-                marginLeft: '-15px',
+              size='small'
+              sx={{
+                'width': 32,
+                'height': 32,
+                'minWidth': 32,
+                'padding': 0,
+                'display': 'inline-flex',
+                'alignItems': 'center',
+                'justifyContent': 'center',
+                'gap': 0,
+                'borderRadius': '6px',
+                'position': 'absolute',
+                'top': 10,
+                'right': 15,
+                'color':
+                  theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.9) : theme.palette.text.secondary,
+                'backgroundColor':
+                  theme.palette.mode === 'dark'
+                    ? alpha(theme.palette.common.white, 0.14)
+                    : theme.palette.background.paper,
+                'border': 'none',
+                'boxShadow': 'none',
+                '&:hover': {
+                  backgroundColor:
+                    theme.palette.mode === 'dark'
+                      ? alpha(theme.palette.common.white, 0.22)
+                      : alpha(theme.palette.background.paper, 0.9),
+                  boxShadow: 'none',
+                },
+                '& .MuiButton-startIcon': {
+                  margin: 0,
+                },
               }}
-              connectIcon={<OpenInFull />}
+              connectIcon={<OpenInFull fontSize='small' />}
               connectIconTooltip='Open Fullscreen View'
             />
             <DeviceConnect />

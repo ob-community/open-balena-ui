@@ -31,3 +31,6 @@ yarn.lock
 
 # WebStrom IDE
 .idea/*
+
+# .env files
+.env.devprod

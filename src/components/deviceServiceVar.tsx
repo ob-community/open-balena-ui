@@ -21,6 +21,7 @@ import { useCreateDeviceServiceVar, useModifyDeviceServiceVar } from '../lib/dev
 import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
 import Row from '../ui/Row';
+import VarNameInput from '../ui/VarNameInput';
 import SelectDevice from '../ui/SelectDevice';
 import SelectDeviceService from '../ui/SelectDeviceService';
 
@@ -119,7 +120,7 @@ export const DeviceServiceVarCreate: React.FC = (props) => {
           </FormDataConsumer>
         </Row>
 
-        <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+        <VarNameInput resource='device service environment variable' validate={required()} />
         <JsonValueInput label='Value' source='value' validate={required()} />
       </SimpleForm>
     </Create>
@@ -151,7 +152,7 @@ export const DeviceServiceVarEdit: React.FC = () => {
           </FormDataConsumer>
         </Row>
 
-        <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+        <VarNameInput resource='device service environment variable' validate={required()} />
         <JsonValueInput label='Value' source='value' validate={required()} />
       </SimpleForm>
     </Edit>

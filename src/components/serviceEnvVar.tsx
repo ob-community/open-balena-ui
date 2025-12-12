@@ -21,6 +21,7 @@ import {
 import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
 import Row from '../ui/Row';
+import VarNameInput from '../ui/VarNameInput';
 
 export const ServiceEnvVarList: React.FC = () => {
   return (
@@ -97,7 +98,7 @@ export const ServiceEnvVarCreate: React.FC<CreateProps> = (props) => {
           </FormDataConsumer>
         </Row>
 
-        <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+        <VarNameInput resource='service environment variable' validate={required()} />
         <JsonValueInput label='Value' source='value' validate={required()} />
       </SimpleForm>
     </Create>
@@ -107,7 +108,7 @@ export const ServiceEnvVarCreate: React.FC<CreateProps> = (props) => {
 export const ServiceEnvVarEdit: React.FC = () => (
   <Edit title='Edit Service Environment Var'>
     <SimpleForm>
-      <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+      <VarNameInput resource='service environment variable' validate={required()} />
       <JsonValueInput label='Value' source='value' validate={required()} />
     </SimpleForm>
   </Edit>

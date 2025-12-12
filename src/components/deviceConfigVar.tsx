@@ -19,6 +19,7 @@ import {
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
+import VarNameInput from '../ui/VarNameInput';
 
 export const DeviceConfigVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
@@ -74,7 +75,7 @@ export const DeviceConfigVarCreate: React.FC = () => (
         <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <TextInput label='Name' source='name' size='large' fullWidth />
+      <VarNameInput resource='device config variable' />
       <JsonValueInput label='Value' source='value' />
     </SimpleForm>
   </Create>
@@ -93,7 +94,7 @@ export const DeviceConfigVarEdit: React.FC = () => (
         <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <TextInput label='Name' source='name' size='large' fullWidth />
+      <VarNameInput resource='device config variable' />
       <JsonValueInput label='Value' source='value' />
     </SimpleForm>
   </Edit>

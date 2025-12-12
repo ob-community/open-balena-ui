@@ -20,6 +20,7 @@ import {
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
+import VarNameInput from '../ui/VarNameInput';
 
 const uniqueIssueMessage = 'This EnvironmentVar is already present for this Fleet';
 
@@ -75,9 +76,8 @@ export const FleetEnvVarCreate: React.FC = () => {
 
         <FormDataConsumer>
           {({ formData }) => (
-            <TextInput
-              label='Name'
-              source='name'
+            <VarNameInput
+              resource='application environment variable'
               validate={[
                 required(),
                 unique({
@@ -87,8 +87,6 @@ export const FleetEnvVarCreate: React.FC = () => {
                   message: uniqueIssueMessage,
                 }),
               ]}
-              size='large'
-              fullWidth
             />
           )}
         </FormDataConsumer>
@@ -111,7 +109,7 @@ export const FleetEnvVarEdit: React.FC = () => (
         <SelectInput label='Fleet name' optionText='app name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+      <VarNameInput resource='application environment variable' validate={required()} />
       <JsonValueInput label='Value' source='value' validate={required()} />
     </SimpleForm>
   </Edit>

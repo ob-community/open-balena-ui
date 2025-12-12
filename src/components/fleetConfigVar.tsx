@@ -19,7 +19,7 @@ import {
   useUnique,
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
-import Row from '../ui/Row';
+import JsonValueInput from '../ui/JsonValueInput';
 
 const uniqueIssueMessage = 'This ConfigVar is already present for this Fleet';
 
@@ -73,27 +73,26 @@ export const FleetConfigVarCreate: React.FC = () => {
           />
         </ReferenceInput>
 
-        <Row>
-          <FormDataConsumer>
-            {({ formData }) => (
-              <TextInput
-                label='Name'
-                source='name'
-                validate={[
-                  required(),
-                  unique({
-                    filter: {
-                      application: formData.application,
-                    },
-                    message: uniqueIssueMessage,
-                  }),
-                ]}
-                size='large'
-              />
-            )}
-          </FormDataConsumer>
-          <TextInput label='Value' source='value' validate={required()} size='large' />
-        </Row>
+        <FormDataConsumer>
+          {({ formData }) => (
+            <TextInput
+              label='Name'
+              source='name'
+              validate={[
+                required(),
+                unique({
+                  filter: {
+                    application: formData.application,
+                  },
+                  message: uniqueIssueMessage,
+                }),
+              ]}
+              size='large'
+              fullWidth
+            />
+          )}
+        </FormDataConsumer>
+        <JsonValueInput label='Value' source='value' validate={required()} />
       </SimpleForm>
     </Create>
   );
@@ -112,10 +111,8 @@ export const FleetConfigVarEdit: React.FC = () => (
         <SelectInput label='Fleet name' optionText='app name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <Row>
-        <TextInput label='Name' source='name' validate={required()} size='large' />
-        <TextInput label='Value' source='value' validate={required()} size='large' />
-      </Row>
+      <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+      <JsonValueInput label='Value' source='value' validate={required()} />
     </SimpleForm>
   </Edit>
 );

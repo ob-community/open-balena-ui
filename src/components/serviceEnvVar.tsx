@@ -19,6 +19,7 @@ import {
   required,
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
+import JsonValueInput from '../ui/JsonValueInput';
 import Row from '../ui/Row';
 
 export const ServiceEnvVarList: React.FC = () => {
@@ -96,10 +97,8 @@ export const ServiceEnvVarCreate: React.FC<CreateProps> = (props) => {
           </FormDataConsumer>
         </Row>
 
-        <Row>
-          <TextInput label='Name' source='name' validate={required()} size='large' />
-          <TextInput label='Value' source='value' validate={required()} size='large' />
-        </Row>
+        <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+        <JsonValueInput label='Value' source='value' validate={required()} />
       </SimpleForm>
     </Create>
   );
@@ -108,10 +107,8 @@ export const ServiceEnvVarCreate: React.FC<CreateProps> = (props) => {
 export const ServiceEnvVarEdit: React.FC = () => (
   <Edit title='Edit Service Environment Var'>
     <SimpleForm>
-      <Row>
-        <TextInput label='Name' source='name' validate={required()} size='large' />
-        <TextInput label='Value' source='value' validate={required()} size='large' />
-      </Row>
+      <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+      <JsonValueInput label='Value' source='value' validate={required()} />
     </SimpleForm>
   </Edit>
 );

@@ -18,7 +18,7 @@ import {
   useShowContext,
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
-import Row from '../ui/Row';
+import JsonValueInput from '../ui/JsonValueInput';
 
 export const DeviceEnvVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
@@ -74,16 +74,14 @@ export const DeviceEnvVarCreate: React.FC = () => (
         <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <Row>
-        <TextInput label='Name' source='name' validate={required()} size='large' />
-        <TextInput label='Value' source='value' validate={required()} size='large' />
-      </Row>
+      <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+      <JsonValueInput label='Value' source='value' validate={required()} />
     </SimpleForm>
   </Create>
 );
 
 export const DeviceEnvVarEdit: React.FC = () => (
-  <Edit title='Create Device Environment Var'>
+  <Edit title='Edit Device Environment Var'>
     <SimpleForm>
       <ReferenceInput
         source='device'
@@ -95,10 +93,8 @@ export const DeviceEnvVarEdit: React.FC = () => (
         <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <Row>
-        <TextInput label='Name' source='name' validate={required()} size='large' />
-        <TextInput label='Value' source='value' validate={required()} size='large' />
-      </Row>
+      <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+      <JsonValueInput label='Value' source='value' validate={required()} />
     </SimpleForm>
   </Edit>
 );

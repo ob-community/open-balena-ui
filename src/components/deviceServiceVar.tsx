@@ -19,6 +19,7 @@ import {
 } from 'react-admin';
 import { useCreateDeviceServiceVar, useModifyDeviceServiceVar } from '../lib/deviceServiceVar';
 import CopyChip from '../ui/CopyChip';
+import JsonValueInput from '../ui/JsonValueInput';
 import Row from '../ui/Row';
 import SelectDevice from '../ui/SelectDevice';
 import SelectDeviceService from '../ui/SelectDeviceService';
@@ -118,10 +119,8 @@ export const DeviceServiceVarCreate: React.FC = (props) => {
           </FormDataConsumer>
         </Row>
 
-        <Row>
-          <TextInput label='Name' source='name' validate={required()} size='large' />
-          <TextInput label='Value' source='value' validate={required()} size='large' />
-        </Row>
+        <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+        <JsonValueInput label='Value' source='value' validate={required()} />
       </SimpleForm>
     </Create>
   );
@@ -152,10 +151,8 @@ export const DeviceServiceVarEdit: React.FC = () => {
           </FormDataConsumer>
         </Row>
 
-        <Row>
-          <TextInput label='Name' source='name' validate={required()} size='large' />
-          <TextInput label='Value' source='value' validate={required()} size='large' />
-        </Row>
+        <TextInput label='Name' source='name' validate={required()} size='large' fullWidth />
+        <JsonValueInput label='Value' source='value' validate={required()} />
       </SimpleForm>
     </Edit>
   );

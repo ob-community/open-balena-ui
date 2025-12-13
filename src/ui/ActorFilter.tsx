@@ -47,9 +47,10 @@ const ActorFilter: React.FC<ActorFilterProps> = ({
       <FormControl size='small' sx={{ minWidth: 120 }}>
         <InputLabel id='actor-type-label'>{label}</InputLabel>
         <Select
-          labelId='actor-type-label'
           value={actorType}
           label={label}
+          labelId='actor-type-label'
+          size='small'
           onChange={(e) => handleTypeChange(e.target.value as ActorType)}
         >
           <MenuItem value=''>
@@ -68,6 +69,7 @@ const ActorFilter: React.FC<ActorFilterProps> = ({
             optionText={selectedTypeConfig.optionText}
             optionValue='actor'
             label={`Select ${selectedTypeConfig.name}`}
+            size='small'
             sx={{ minWidth: 200 }}
           />
         </ReferenceInput>

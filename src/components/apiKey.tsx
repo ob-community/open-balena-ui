@@ -129,7 +129,7 @@ const ActorFieldWrapper: React.FC<Omit<ActorFieldProps, 'record'>> = (props) => 
 
 export const ApiKeyList: React.FC = () => {
   return (
-    <List filters={apiKeyFilters}>
+    <List filters={apiKeyFilters} sx={{ '& .RaList-actions': { marginBottom: 2 } }}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
         <FunctionField
           label='API Key'

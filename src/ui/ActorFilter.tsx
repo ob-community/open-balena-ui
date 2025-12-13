@@ -23,7 +23,13 @@ export interface ActorFilterProps {
   alwaysOn?: boolean;
 }
 
-const ActorFilter: React.FC<ActorFilterProps> = ({ source = 'is of-actor', label = 'Assigned To' }) => {
+const ActorFilter: React.FC<ActorFilterProps> = ({
+  source = 'is of-actor',
+  label = 'Assigned To',
+  // alwaysOn is used by react-admin's List component to determine filter visibility
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  alwaysOn,
+}) => {
   const [actorType, setActorType] = React.useState<ActorType>('');
   const { filterValues, setFilters } = useListContext();
 

@@ -104,8 +104,8 @@ const ActorField: React.FC<ActorFieldProps> = ({ record }) => {
 };
 
 const apiKeyFilters = [
-  <SearchInput source='#key,name,description@ilike' alwaysOn />,
-  <ActorFilter alwaysOn />,
+  <SearchInput key='search' source='#key,name,description@ilike' alwaysOn />,
+  <ActorFilter key='actor' alwaysOn />,
 ];
 
 const CustomBulkActionButtons: React.FC = (props) => {

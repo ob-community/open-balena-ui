@@ -37,7 +37,7 @@ const ActorFilter: React.FC<ActorFilterProps> = ({
     setActorType(newType);
     // Clear the actor filter when type changes
     const { [source]: _, ...restFilters } = filterValues;
-    setFilters(restFilters, undefined);
+    setFilters(restFilters);
   };
 
   const selectedTypeConfig = actorTypeOptions.find((opt) => opt.id === actorType);

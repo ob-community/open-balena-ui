@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { TextInput, useInput } from 'react-admin';
+import { useInput, useTranslate, Validator } from 'react-admin';
 import type { TextInputProps } from 'react-admin';
+import { FormControlLabel, Checkbox, Box, TextField } from '@mui/material';
 
 /**
  * Detects if a string looks like JSON (starts and ends with {} or [])
@@ -8,17 +9,21 @@ import type { TextInputProps } from 'react-admin';
 const looksLikeJson = (value: string): boolean => {
   if (!value || typeof value !== 'string') return false;
   const trimmed = value.trim();
-  return (
+  if (
     (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
     (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  );
+  ) {
+    const parseError = validateJsonSyntax(trimmed);
+    return !parseError;
+  }
+  return false;
 };
 
 /**
  * Validates JSON syntax and returns an error message if invalid
  */
 const validateJsonSyntax = (value: string): string | undefined => {
-  if (!value || !looksLikeJson(value)) return undefined;
+  if (!value) return undefined;
 
   try {
     JSON.parse(value);
@@ -32,11 +37,18 @@ const validateJsonSyntax = (value: string): string | undefined => {
 };
 
 /**
- * Custom JSON validation function for react-admin
+ * Formats JSON string - either pretty-printed or minified
+ * @param value - The JSON string to format
+ * @param pretty - If true, format with indentation; if false, minify
  */
-const jsonValidator = (value: string) => {
-  const error = validateJsonSyntax(value);
-  return error || undefined;
+const formatJson = (value: string, pretty: boolean): string => {
+  if (!value || typeof value !== 'string') return value || '';
+  try {
+    const parsed = JSON.parse(value);
+    return pretty ? JSON.stringify(parsed, null, 2) : JSON.stringify(parsed);
+  } catch {
+    return value;
+  }
 };
 
 export interface JsonValueInputProps extends Omit<TextInputProps, 'multiline'> {
@@ -51,16 +63,36 @@ export interface JsonValueInputProps extends Omit<TextInputProps, 'multiline'> {
  * Features:
  * - Multiline textarea
  * - Monospace font for better readability
- * - Automatic JSON syntax validation when input looks like JSON
- * - Error highlighting for invalid JSON
+ * - "JSON Value" checkbox for explicit JSON mode
+ * - Auto-detection of JSON values on load
+ * - Automatic JSON syntax validation when JSON mode is enabled
+ * - Pretty-formatted JSON display
+ * - Minified JSON on form submission
  */
 const JsonValueInput: React.FC<JsonValueInputProps> = ({
   minRows = 3,
   maxRows = 10,
   validate,
   sx,
+  source = 'value',
+  label,
   ...props
 }) => {
+  const translate = useTranslate();
+  const [isJsonMode, setIsJsonMode] = React.useState(false);
+  const [hasInitialized, setHasInitialized] = React.useState(false);
+  const [displayValue, setDisplayValue] = React.useState('');
+  const [jsonError, setJsonError] = React.useState<string | undefined>(undefined);
+
+  // Create JSON validator that only runs when JSON mode is enabled
+  const jsonValidator: Validator = React.useCallback(
+    (value: string) => {
+      if (!isJsonMode) return undefined;
+      return validateJsonSyntax(value);
+    },
+    [isJsonMode]
+  );
+
   // Combine existing validators with JSON validator
   const combinedValidate = React.useMemo(() => {
     if (!validate) {
@@ -70,30 +102,180 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
       return [...validate, jsonValidator];
     }
     return [validate, jsonValidator];
-  }, [validate]);
+  }, [validate, jsonValidator]);
+
+  // Get access to the field value via useInput
+  const {
+    field,
+    fieldState: { error, isTouched },
+    isRequired,
+  } = useInput({ source, validate: combinedValidate });
+
+  // Initialize display value and JSON mode on load
+  React.useEffect(() => {
+    if (!hasInitialized && field.value !== undefined) {
+      const value = field.value || '';
+      const shouldBeJsonMode = looksLikeJson(value);
+      setIsJsonMode(shouldBeJsonMode);
+
+      // If it's JSON, display it in pretty format
+      if (shouldBeJsonMode) {
+        setDisplayValue(formatJson(value, true));
+      } else {
+        setDisplayValue(value);
+      }
+      setHasInitialized(true);
+    }
+  }, [field.value, hasInitialized]);
+
+  // Handle checkbox toggle
+  const handleJsonModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newJsonMode = event.target.checked;
+    setIsJsonMode(newJsonMode);
+    setJsonError(undefined);
+
+    if (newJsonMode && displayValue) {
+      // When enabling JSON mode, try to pretty-format the current value
+      const error = validateJsonSyntax(displayValue);
+      if (!error) {
+        setDisplayValue(formatJson(displayValue, true));
+      } else {
+        setJsonError(error);
+      }
+    } else if (!newJsonMode && displayValue) {
+      // When disabling JSON mode, revert to minified/original format
+      const minified = formatJson(displayValue, false);
+      setDisplayValue(minified);
+      field.onChange(minified);
+    }
+  };
+
+  // Handle input changes - just update display value, don't sync yet
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const newValue = event.target.value;
+    setDisplayValue(newValue);
+
+    // Clear any previous JSON error when typing
+    if (jsonError) {
+      setJsonError(undefined);
+    }
+
+    // Also update form value in real-time so form knows something changed
+    // In JSON mode, store minified if valid, otherwise store as-is
+    if (isJsonMode) {
+      const error = validateJsonSyntax(newValue);
+      if (!error) {
+        field.onChange(formatJson(newValue, false));
+      } else {
+        field.onChange(newValue);
+      }
+    } else {
+      field.onChange(newValue);
+    }
+  };
+
+  // Handle blur - validate and sync to form state
+  const handleBlur = () => {
+    field.onBlur();
+
+    if (isJsonMode && displayValue) {
+      const error = validateJsonSyntax(displayValue);
+      if (error) {
+        setJsonError(error);
+      } else {
+        // Valid JSON - minify for form state, keep display pretty
+        field.onChange(formatJson(displayValue, false));
+        setDisplayValue(formatJson(displayValue, true));
+        setJsonError(undefined);
+      }
+    }
+  };
+
+  // Determine if there's an error to show
+  // Only show JSON-specific errors when JSON mode is enabled
+  const isJsonError = error?.message?.includes('Invalid JSON') || jsonError;
+  const showError = (isTouched && error && !isJsonError) || // Non-JSON errors (like required)
+                    (isJsonMode && isTouched && error?.message?.includes('Invalid JSON')) || // Form-level JSON error
+                    (isJsonMode && jsonError); // Local JSON error
+  // Translate react-admin error messages (they come as translation keys)
+  const getErrorMessage = () => {
+    // Show local JSON error if in JSON mode
+    if (isJsonMode && jsonError) return jsonError;
+    if (!error) return undefined;
+    
+    // Skip JSON errors if not in JSON mode
+    const message = error.message as string;
+    if (!isJsonMode && message?.includes('Invalid JSON')) {
+      return undefined;
+    }
+    
+    if (message) {
+      // Try to translate the message
+      const translated = translate(message, { _: message });
+      // Clean up any @@react-admin@@ prefixes that may appear in untranslated keys
+      if (translated.includes('@@react-admin@@')) {
+        // Extract the human-readable part or return a simple message
+        return 'Required';
+      }
+      return translated;
+    }
+    return undefined;
+  };
+  const errorMessage = getErrorMessage();
 
   return (
-    <TextInput
-      {...props}
-      multiline
-      minRows={minRows}
-      maxRows={maxRows}
-      validate={combinedValidate}
-      sx={{
-        '& .MuiInputBase-input': {
-          fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", "Monaco", monospace',
-          fontSize: '0.875rem',
-          lineHeight: 1.5,
-        },
-        '& .MuiInputBase-root': {
-          alignItems: 'flex-start',
-        },
-        ...sx,
-      }}
-      fullWidth
-    />
+    <Box sx={{ width: '100%' }}>
+      <TextField
+        {...props}
+        label={label}
+        value={displayValue}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        multiline
+        minRows={minRows}
+        maxRows={maxRows}
+        error={!!showError}
+        helperText={showError ? errorMessage : undefined}
+        required={isRequired}
+        sx={{
+          width: '100%',
+          '& .MuiInputBase-input': {
+            fontFamily: 'Consolas, "Courier New", monospace !important',
+            fontSize: '0.875rem',
+            lineHeight: 1.5,
+          },
+          '& .MuiInputBase-root': {
+            alignItems: 'flex-start',
+          },
+          ...sx,
+        }}
+        fullWidth
+      />
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={isJsonMode}
+            onChange={handleJsonModeChange}
+            size="small"
+            sx={{
+              color: 'text.secondary',
+              '&.Mui-checked': {
+                color: 'primary.main',
+              },
+            }}
+          />
+        }
+        label="JSON Value"
+        sx={{
+          margin: 0,
+          '& .MuiFormControlLabel-label': {
+            fontSize: '0.875rem',
+            color: 'text.secondary',
+          },
+        }}
+      />
+    </Box>
   );
 };
 
 export default JsonValueInput;
-

@@ -71,6 +71,9 @@ const ActorFilter: React.FC<ActorFilterProps> = ({
             label={`Select ${selectedTypeConfig.name}`}
             size='small'
             sx={{ minWidth: 200 }}
+            filterToQuery={(searchText) => ({
+              [`${selectedTypeConfig.optionText}@ilike`]: searchText,
+            })}
           />
         </ReferenceInput>
       )}

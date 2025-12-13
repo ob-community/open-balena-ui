@@ -21,6 +21,7 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
   nameField = 'name',
   label = 'Name',
   source = 'name',
+  sx,
   ...props
 }) => {
   // Fetch existing variable names from the resource
@@ -62,7 +63,7 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
         '& .MuiInputBase-input': {
           fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", "Monaco", monospace',
         },
-        ...props.sx,
+        ...sx,
       }}
     />
   );

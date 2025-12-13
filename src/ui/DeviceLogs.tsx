@@ -1,4 +1,4 @@
-import { Box } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import React from 'react';
@@ -14,6 +14,7 @@ interface LogsIframeProps {
   content: string;
   height?: string | number;
   width?: string | number;
+  backgroundColor?: string;
 }
 
 interface ContainerChoice {
@@ -33,7 +34,7 @@ type DeviceRecord = ResourceRecord & {
   uuid: string;
 };
 
-const LogsIframe: React.FC<LogsIframeProps> = ({ id, title, content, height, width }) => (
+const LogsIframe: React.FC<LogsIframeProps> = ({ id, title, content, height, width, backgroundColor = '#343434' }) => (
   <div style={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
     <iframe
       id={id}
@@ -46,7 +47,7 @@ const LogsIframe: React.FC<LogsIframeProps> = ({ id, title, content, height, wid
         flex: '1',
         position: 'relative',
         minHeight: '400px',
-        background: 'rgb(52, 52, 52)',
+        background: backgroundColor,
       }}
     />
   </div>
@@ -61,6 +62,24 @@ export const DeviceLogs: React.FC = () => {
   const dataProvider = useDataProvider<DataProvider>();
   const authProvider = useAuthProvider<OpenBalenaAuthProvider>();
   const notify = useNotify();
+  const theme = useTheme();
+
+  // Get logs colors from theme palette
+  const logsPalette = (theme.palette as any).logs;
+  const logsBgColor = logsPalette?.background ?? (theme.palette.mode === 'dark' ? '#0d1a26' : '#343434');
+  const logsTextColor = logsPalette?.text?.default ?? '#eeeeee';
+  const logsErrorColor = logsPalette?.text?.error ?? '#ee6666';
+  const logsWarningColor = logsPalette?.text?.warning ?? '#ffee66';
+
+  // Generate empty shell HTML with proper background
+  const emptyLogsHtml = React.useMemo(
+    () =>
+      `<html><body style='font-family: consolas; color: ${logsTextColor}; background-color: ${logsBgColor}; margin: 0; padding: 10px;'></body></html>`,
+    [logsBgColor, logsTextColor],
+  );
+
+  // Use empty shell when no content
+  const displayContent = content || emptyLogsHtml;
 
   const fetchLogs = React.useCallback(async (): Promise<LogEntry[]> => {
     if (!record) {
@@ -120,11 +139,11 @@ export const DeviceLogs: React.FC = () => {
           const message = entry.message ?? '';
 
           if (entry.isStdErr) {
-            return `[${time}] <span style="color: #ee6666; ">${message}</span>`;
+            return `[${time}] <span style="color: ${logsErrorColor}; ">${message}</span>`;
           }
 
           if (entry.isSystem) {
-            return `[${time}] <span style="color: #ffee66; ">${message}</span>`;
+            return `[${time}] <span style="color: ${logsWarningColor}; ">${message}</span>`;
           }
 
           return `[${time}] ${message}`;
@@ -133,7 +152,7 @@ export const DeviceLogs: React.FC = () => {
 
       setContent(
         `<html>
-          <body style='font-family: consolas; color: #eeeeee'>
+          <body style='font-family: consolas; color: ${logsTextColor}; background-color: ${logsBgColor}; margin: 0; padding: 10px;'>
             <div>${formattedLogs}</div>
             <script>window.scrollTo(0, document.body.scrollHeight);</script>
           </body>
@@ -145,7 +164,7 @@ export const DeviceLogs: React.FC = () => {
         notify(`Error: Could not get logs for device ${record.uuid}`, { type: 'error' });
       }
     }
-  }, [container, fetchLogs, notify, record]);
+  }, [container, fetchLogs, logsBgColor, logsTextColor, logsErrorColor, logsWarningColor, notify, record]);
 
   React.useEffect(() => {
     if (container === 'default') {
@@ -287,7 +306,7 @@ export const DeviceLogs: React.FC = () => {
           </IconButton>
         </Box>
       </Form>
-      <LogsIframe content={content} width='100%' height='100%' />
+      <LogsIframe content={displayContent} width='100%' height='100%' backgroundColor={logsBgColor} />
     </>
   );
 };

@@ -27,12 +27,28 @@ declare module '@mui/material/styles' {
       background: string;
       color: string;
     };
+    logs: {
+      background: string;
+      text: {
+        default: string;
+        error: string;
+        warning: string;
+      };
+    };
   }
 
   interface PaletteOptions {
     chip?: {
       background: string;
       color: string;
+    };
+    logs?: {
+      background: string;
+      text: {
+        default: string;
+        error: string;
+        warning: string;
+      };
     };
   }
 }

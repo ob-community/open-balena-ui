@@ -2,7 +2,7 @@ import * as React from 'react';
 import { AutocompleteInput, useGetList } from 'react-admin';
 import type { AutocompleteInputProps } from 'react-admin';
 
-export interface VarNameInputProps extends Omit<AutocompleteInputProps, 'choices'> {
+export interface VarNameInputProps extends Omit<AutocompleteInputProps, 'choices' | 'freeSolo'> {
   /** The resource to fetch existing variable names from */
   resource: string;
   /** The field name that contains the variable name (default: 'name') */
@@ -56,7 +56,7 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
       label={label}
       choices={choices}
       isLoading={isLoading}
-      freeSolo
+      freeSolo={true as any}
       fullWidth
       sx={{
         '& .MuiInputBase-input': {

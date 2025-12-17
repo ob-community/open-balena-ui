@@ -2,6 +2,12 @@ import * as React from 'react';
 import { AutocompleteInput, useGetList } from 'react-admin';
 import type { AutocompleteInputProps } from 'react-admin';
 
+/**
+ * Props for VarNameInput component.
+ * Note: `freeSolo` is intentionally omitted and always enabled internally,
+ * allowing users to enter new variable names not in the suggestions list.
+ * `choices` is also omitted as it's populated automatically from the resource.
+ */
 export interface VarNameInputProps extends Omit<AutocompleteInputProps, 'choices' | 'freeSolo'> {
   /** The resource to fetch existing variable names from */
   resource: string;
@@ -57,7 +63,8 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
       label={label}
       choices={choices}
       isLoading={isLoading}
-      freeSolo={true as any}
+      // @ts-expect-error react-admin types freeSolo as literal false, but it supports true for free text entry
+      freeSolo
       fullWidth
       sx={{
         '& .MuiInputBase-input': {

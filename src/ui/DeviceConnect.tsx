@@ -7,15 +7,7 @@ import ssh from 'micro-key-producer/ssh.js';
 import { randomBytes } from 'micro-key-producer/utils.js';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
 import type { ResourceRecord } from '../types/resource';
-
-interface IframeProps {
-  id?: string;
-  title?: string;
-  src: string;
-  height?: string | number;
-  width?: string | number;
-  backgroundColor?: string;
-}
+import { EmbeddedFrame } from './EmbeddedFrame';
 
 interface ContainerOption {
   id: number;
@@ -49,25 +41,6 @@ const createSelectChoices = (containers: ContainerState): Array<{ label: string;
       }));
     })
     .flat();
-
-export const Iframe: React.FC<IframeProps> = ({ id, title, src, height, width, backgroundColor = '#343434' }) => (
-  <div style={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
-    <iframe
-      id={id}
-      title={title}
-      src={src || undefined}
-      height={height}
-      width={width}
-      frameBorder={0}
-      style={{
-        flex: '1',
-        position: 'relative',
-        minHeight: '400px',
-        background: backgroundColor,
-      }}
-    />
-  </div>
-);
 
 export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp }) => {
   const contextRecord = useRecordContext<ResourceRecord>();
@@ -287,7 +260,7 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
         </Box>
       </Form>
 
-      <Iframe src={iframeUrl} width='100%' height='100%' backgroundColor={logsBgColor} />
+      <EmbeddedFrame src={iframeUrl} backgroundColor={logsBgColor} />
     </>
   );
 };

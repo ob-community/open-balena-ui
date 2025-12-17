@@ -7,15 +7,7 @@ import type { DataProvider } from 'react-admin';
 import environment from '../lib/reactAppEnv';
 import type { ResourceRecord } from '../types/resource';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
-
-interface LogsIframeProps {
-  id?: string;
-  title?: string;
-  content: string;
-  height?: string | number;
-  width?: string | number;
-  backgroundColor?: string;
-}
+import { EmbeddedFrame } from './EmbeddedFrame';
 
 interface ContainerChoice {
   id: number;
@@ -33,25 +25,6 @@ interface LogEntry {
 type DeviceRecord = ResourceRecord & {
   uuid: string;
 };
-
-const LogsIframe: React.FC<LogsIframeProps> = ({ id, title, content, height, width, backgroundColor = '#343434' }) => (
-  <div style={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
-    <iframe
-      id={id}
-      title={title}
-      srcDoc={content}
-      height={height}
-      width={width}
-      frameBorder={0}
-      style={{
-        flex: '1',
-        position: 'relative',
-        minHeight: '400px',
-        background: backgroundColor,
-      }}
-    />
-  </div>
-);
 
 export const DeviceLogs: React.FC = () => {
   const record = useRecordContext<DeviceRecord>();
@@ -306,7 +279,8 @@ export const DeviceLogs: React.FC = () => {
           </IconButton>
         </Box>
       </Form>
-      <LogsIframe content={displayContent} width='100%' height='100%' backgroundColor={logsBgColor} />
+
+      <EmbeddedFrame srcDoc={displayContent} backgroundColor={logsBgColor} />
     </>
   );
 };

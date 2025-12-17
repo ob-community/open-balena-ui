@@ -144,7 +144,8 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
       }
     } else if (!newJsonMode && displayValue) {
       // When disabling JSON mode, revert to minified/original format
-      const minified = formatJson(displayValue, false);
+      const error = validateJsonSyntax(displayValue);
+      const minified = !error ? formatJson(displayValue, false) : displayValue;
       setDisplayValue(minified);
       field.onChange(minified);
     }
@@ -191,37 +192,29 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
     }
   };
 
-  // Determine if there's an error to show
-  // Only show JSON-specific errors when JSON mode is enabled
-  const isJsonError = error?.message?.includes('Invalid JSON') || jsonError;
-  const showError = (isTouched && error && !isJsonError) || // Non-JSON errors (like required)
-                    (isJsonMode && isTouched && error?.message?.includes('Invalid JSON')) || // Form-level JSON error
-                    (isJsonMode && jsonError); // Local JSON error
-  // Translate react-admin error messages (they come as translation keys)
-  const getErrorMessage = () => {
-    // Show local JSON error if in JSON mode
+  // Returns the error message to display, or null if no error should be shown
+  const getError = (): string | null => {
+    const isFormJsonError = error?.message?.includes('Invalid JSON');
+    const hasAnyJsonError = isFormJsonError || !!jsonError;
+    
+    // Local JSON error in JSON mode (shows immediately, no touch required)
     if (isJsonMode && jsonError) return jsonError;
-    if (!error) return undefined;
     
-    // Skip JSON errors if not in JSON mode
-    const message = error.message as string;
-    if (!isJsonMode && message?.includes('Invalid JSON')) {
-      return undefined;
-    }
-    
-    if (message) {
-      // Try to translate the message
-      const translated = translate(message, { _: message });
+    if (!isTouched || !error) return null;
+   
+    if ((isJsonMode && isFormJsonError) || !hasAnyJsonError) {
+      const translated = translate(error.message as string, { _: error.message as string });
       // Clean up any @@react-admin@@ prefixes that may appear in untranslated keys
       if (translated.includes('@@react-admin@@')) {
-        // Extract the human-readable part or return a simple message
-        return 'Required';
+        return error.message as string;
       }
       return translated;
     }
-    return undefined;
+          
+    return null;
   };
-  const errorMessage = getErrorMessage();
+
+  const errorMessage = getError();
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -234,8 +227,8 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
         multiline
         minRows={minRows}
         maxRows={maxRows}
-        error={!!showError}
-        helperText={showError ? errorMessage : undefined}
+        error={!!errorMessage}
+        helperText={errorMessage ?? undefined}
         required={isRequired}
         sx={{
           width: '100%',

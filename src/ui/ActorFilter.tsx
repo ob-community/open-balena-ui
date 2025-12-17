@@ -36,7 +36,8 @@ const ActorFilter: React.FC<ActorFilterProps> = ({
   const handleTypeChange = (newType: ActorType) => {
     setActorType(newType);
     // Clear the actor filter when type changes
-    const { [source]: _, ...restFilters } = filterValues;
+    const restFilters = { ...filterValues };
+    delete (restFilters as Record<string, unknown>)[source];
     setFilters(restFilters);
   };
 

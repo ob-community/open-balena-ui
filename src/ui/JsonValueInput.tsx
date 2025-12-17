@@ -143,7 +143,7 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
         setJsonError(error);
       }
     } else if (!newJsonMode && displayValue) {
-      // When disabling JSON mode, revert to minified/original format
+      // When disabling JSON mode, revert to minified/original format if valid JSON, else leave as-is
       const error = validateJsonSyntax(displayValue);
       const minified = !error ? formatJson(displayValue, false) : displayValue;
       setDisplayValue(minified);

@@ -32,10 +32,10 @@ export const EmbeddedFrame: React.FC<EmbeddedFrameProps> = ({
       srcDoc={srcDoc}
       height="100%"
       width="100%"
-      frameBorder={0}
       style={{
         flex: '1',
-        position: 'relative'
+        position: 'relative',
+        border: 'none'
       }}
     />}
   </Box>

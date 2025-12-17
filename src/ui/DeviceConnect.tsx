@@ -81,7 +81,7 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
   const theme = useTheme();
 
   // Get logs background color from theme palette
-  const logsPalette = (theme.palette as any).logs;
+  const logsPalette = theme.palette.logs;
   const logsBgColor = logsPalette?.background ?? (theme.palette.mode === 'dark' ? '#0d1a26' : '#343434');
 
   const generateSshKeys = async (): Promise<{ publicKeySsh: string; privateKeySsh: string }> => {

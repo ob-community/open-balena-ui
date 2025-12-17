@@ -65,7 +65,7 @@ export const DeviceLogs: React.FC = () => {
   const theme = useTheme();
 
   // Get logs colors from theme palette
-  const logsPalette = (theme.palette as any).logs;
+  const logsPalette = theme.palette.logs;
   const logsBgColor = logsPalette?.background ?? (theme.palette.mode === 'dark' ? '#0d1a26' : '#343434');
   const logsTextColor = logsPalette?.text?.default ?? '#eeeeee';
   const logsErrorColor = logsPalette?.text?.error ?? '#ee6666';

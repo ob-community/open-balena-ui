@@ -26,6 +26,7 @@ import {
   required,
 } from 'react-admin';
 import { useCreateApiKey, useGenerateApiKey, useModifyApiKey } from '../lib/apiKey';
+import ActorFilter from '../ui/ActorFilter';
 import CopyChip from '../ui/CopyChip';
 import DeleteApiKeyButton from '../ui/DeleteApiKeyButton';
 import ManagePermissions from '../ui/ManagePermissions';
@@ -102,7 +103,10 @@ const ActorField: React.FC<ActorFieldProps> = ({ record }) => {
   return <Chip label={generateLabel()} href={actorRecord.actorLink} component='a' clickable />;
 };
 
-const apiKeyFilters = [<SearchInput source='#key,name,description@ilike' alwaysOn />];
+const apiKeyFilters = [
+  <SearchInput key='search' source='#key,name,description@ilike' alwaysOn />,
+  <ActorFilter key='actor' alwaysOn />,
+];
 
 const CustomBulkActionButtons: React.FC = (props) => {
   const { selectedIds } = useListContext();
@@ -125,7 +129,7 @@ const ActorFieldWrapper: React.FC<Omit<ActorFieldProps, 'record'>> = (props) => 
 
 export const ApiKeyList: React.FC = () => {
   return (
-    <List filters={apiKeyFilters}>
+    <List filters={apiKeyFilters} sx={{ '& .RaList-actions': { marginBottom: 2 } }}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
         <FunctionField
           label='API Key'

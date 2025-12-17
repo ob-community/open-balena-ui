@@ -33,7 +33,7 @@
     "ra-core": "^5.12.1",
     "react": "^19.2.3",
     "react-admin": "^5.12.1",
-    "react-dom": "^19.2.0",
+    "react-dom": "^19.2.3",
     "react-final-form": "^7.0.0",
     "react-hook-form": "^7.65.0",
     "react-password-checklist": "^1.8.1",

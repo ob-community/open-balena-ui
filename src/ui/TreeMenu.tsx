@@ -90,6 +90,9 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
     logout,
     dashboardlabel = 'Dashboard',
     setMenuColors = true,
+    // Filter out react-admin props that shouldn't be passed to DOM
+    // @ts-expect-error - appBarAlwaysOn is passed by react-admin but not in our interface
+    appBarAlwaysOn,
     ...rest
   } = props;
 

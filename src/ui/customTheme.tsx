@@ -95,6 +95,14 @@ const createLightPalette = (): PaletteOptions => ({
     background: '#c3efff',
     color: '#006387',
   },
+  logs: {
+    background: '#343434',
+    text: {
+      default: '#eeeeee',
+      error: '#ee6666',
+      warning: '#ffee66',
+    },
+  },
   text: {
     primary: '#23445e',
     secondary: '#4f6b84',
@@ -121,6 +129,14 @@ const createDarkPalette = (): PaletteOptions => ({
   chip: {
     background: '#1e3a52',
     color: '#a6d7ff',
+  },
+  logs: {
+    background: '#0d1a26',
+    text: {
+      default: '#eeeeee',
+      error: '#ee6666',
+      warning: '#ffee66',
+    },
   },
   text: {
     primary: '#e0f2ff',

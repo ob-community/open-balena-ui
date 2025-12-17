@@ -18,7 +18,8 @@ import {
   useShowContext,
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
-import Row from '../ui/Row';
+import JsonValueInput from '../ui/JsonValueInput';
+import VarNameInput from '../ui/VarNameInput';
 
 export const DeviceConfigVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
@@ -74,10 +75,8 @@ export const DeviceConfigVarCreate: React.FC = () => (
         <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <Row>
-        <TextInput label='Name' source='name' size='large' />
-        <TextInput label='Value' source='value' size='large' />
-      </Row>
+      <VarNameInput resource='device config variable' />
+      <JsonValueInput label='Value' source='value' />
     </SimpleForm>
   </Create>
 );
@@ -95,10 +94,8 @@ export const DeviceConfigVarEdit: React.FC = () => (
         <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
 
-      <Row>
-        <TextInput label='Name' source='name' size='large' />
-        <TextInput label='Value' source='value' size='large' />
-      </Row>
+      <VarNameInput resource='device config variable' />
+      <JsonValueInput label='Value' source='value' />
     </SimpleForm>
   </Edit>
 );

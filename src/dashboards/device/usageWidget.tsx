@@ -10,16 +10,16 @@ const LinearProgressWithLabel: React.FC<
     displayValue?: number;
     displayUnits?: string;
   }
-> = (props) => {
+> = ({ label, tooltip, displayValue, displayUnits, style, value, ...progressProps }) => {
   return (
-    <Box sx={{ mb: 2.75, mx: '10px', display: 'flex', alignItems: 'center' }} style={props.style}>
-      <Box sx={{ flex: 1, minWidth: '3em' }}>{props.label}</Box>
+    <Box sx={{ mb: 2.75, mx: '10px', display: 'flex', alignItems: 'center' }} style={style}>
+      <Box sx={{ flex: 1, minWidth: '3em' }}>{label}</Box>
       <Box sx={{ flex: 10, minWidth: '12em', mr: 1, ml: 2 }}>
-        <LinearProgress variant='determinate' color='secondary' {...props} />
+        <LinearProgress variant='determinate' color='secondary' value={value} {...progressProps} />
       </Box>
       <Box sx={{ flex: 1, minWidth: '3em' }}>
-        <Tooltip placement='top' arrow={true} title={props.tooltip}>
-          <>{props.displayValue ? props.displayValue + props.displayUnits! : Math.round(props.value!) + '%'}</>
+        <Tooltip placement='top' arrow={true} title={tooltip}>
+          <>{displayValue ? displayValue + displayUnits! : Math.round(value!) + '%'}</>
         </Tooltip>
       </Box>
     </Box>

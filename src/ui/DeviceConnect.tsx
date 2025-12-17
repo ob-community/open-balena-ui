@@ -1,4 +1,4 @@
-import { Box } from '@mui/material';
+import { Box, useTheme } from '@mui/material';
 import React from 'react';
 import { Form, SelectInput, useAuthProvider, useDataProvider, useRecordContext } from 'react-admin';
 import type { DataProvider, Identifier } from 'react-admin';
@@ -7,14 +7,7 @@ import ssh from 'micro-key-producer/ssh.js';
 import { randomBytes } from 'micro-key-producer/utils.js';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
 import type { ResourceRecord } from '../types/resource';
-
-interface IframeProps {
-  id?: string;
-  title?: string;
-  src: string;
-  height?: string | number;
-  width?: string | number;
-}
+import { EmbeddedFrame } from './EmbeddedFrame';
 
 interface ContainerOption {
   id: number;
@@ -49,25 +42,6 @@ const createSelectChoices = (containers: ContainerState): Array<{ label: string;
     })
     .flat();
 
-export const Iframe: React.FC<IframeProps> = ({ id, title, src, height, width }) => (
-  <div style={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
-    <iframe
-      id={id}
-      title={title}
-      src={src}
-      height={height}
-      width={width}
-      frameBorder={0}
-      style={{
-        flex: '1',
-        position: 'relative',
-        minHeight: '400px',
-        background: 'rgb(52, 52, 52)',
-      }}
-    />
-  </div>
-);
-
 export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp }) => {
   const contextRecord = useRecordContext<ResourceRecord>();
   const record = contextRecord ?? recordProp;
@@ -77,6 +51,11 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
   const [iframeUrl, setIframeUrl] = React.useState('');
   const dataProvider = useDataProvider<DataProvider>();
   const authProvider = useAuthProvider<OpenBalenaAuthProvider>();
+  const theme = useTheme();
+
+  // Get logs background color from theme palette
+  const logsPalette = theme.palette.logs;
+  const logsBgColor = logsPalette?.background ?? (theme.palette.mode === 'dark' ? '#0d1a26' : '#343434');
 
   const generateSshKeys = async (): Promise<{ publicKeySsh: string; privateKeySsh: string }> => {
     const seed = randomBytes(32);
@@ -281,7 +260,7 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
         </Box>
       </Form>
 
-      <Iframe src={iframeUrl} width='100%' height='100%' />
+      <EmbeddedFrame src={iframeUrl} backgroundColor={logsBgColor} />
     </>
   );
 };

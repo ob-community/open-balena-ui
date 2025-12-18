@@ -5,9 +5,12 @@ import dateFormat from 'dateformat';
 import * as React from 'react';
 import {
   Create,
+  CreateButton,
   Datagrid,
   Edit,
   EditButton,
+  ExportButton,
+  FilterButton,
   FormDataConsumer,
   FunctionField,
   List,
@@ -21,6 +24,7 @@ import {
   TextField,
   TextInput,
   Toolbar,
+  TopToolbar,
   required,
   useGetOne,
   useRedirect,
@@ -45,6 +49,7 @@ import environment from '../lib/reactAppEnv';
 import { resolveDeviceTargetRelease } from '../lib/targetRelease';
 import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
+import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
 
 // Get the proper field name for isPinnedOnRelease based on API version
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
@@ -176,8 +181,6 @@ const ReleaseFieldContent: React.FC<{
   );
 };
 
-const deviceFilters = [<SearchInput source='#uuid,device name,status@ilike' alwaysOn />];
-
 const CustomBulkActionButtons: React.FC<DeleteDeviceButtonProps> = (props) => {
   const { selectedIds } = useListContext();
 
@@ -195,9 +198,52 @@ const ExtendedPagination: React.FC<PaginationProps> = ({
   ...props
 }) => <Pagination rowsPerPageOptions={rowsPerPageOptions} {...props} />;
 
+// Standard react-admin filters array (like apiKey.tsx pattern)
+const deviceFilters = [
+  <SearchInput source='#uuid,device name,status@ilike' alwaysOn key='search' />,
+  <DeviceStructuredFilter alwaysOn key='structured' />,
+];
+
+// Custom actions with styled FilterButton for saved queries feature
+// Note: This is a bit of a hack, but it works for now.
+const DeviceListActions = () => (
+  <TopToolbar
+    sx={{
+      // Target the FilterButton using its add-filter class
+      '& .add-filter': {
+        // Hide original icon and replace with bookmark icon
+        '& .MuiButton-startIcon': {
+          '& svg': {
+            display: 'none',
+          },
+          '&::before': {
+            content: '""',
+            display: 'block',
+            width: '18px',
+            height: '18px',
+            mask: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z'/%3E%3C/svg%3E")`,
+            maskSize: 'contain',
+            backgroundColor: 'currentColor',
+          },
+        },
+        // Hide original text - the text is directly in the button
+        fontSize: 0,
+        '&::after': {
+          content: '"Save Filters"',
+          fontSize: '0.8125rem',
+        },
+      },
+    }}
+  >
+    <FilterButton />
+    <CreateButton />
+    <ExportButton />
+  </TopToolbar>
+);
+
 export const DeviceList: React.FC<ListProps<any>> = (props) => {
   return (
-    <List {...props} filters={deviceFilters} pagination={<ExtendedPagination />}>
+    <List {...props} filters={deviceFilters} actions={<DeviceListActions />} pagination={<ExtendedPagination />}>
       <Datagrid rowClick={false} bulkActionButtons={<CustomBulkActionButtons />} size='medium'>
         <ReferenceField label='Name' source='id' reference='device' target='id' link='show'>
           <TextField source='device name' />

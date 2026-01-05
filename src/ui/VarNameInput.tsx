@@ -61,7 +61,8 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
     (choice: unknown) => {
       if (typeof choice === 'string') return choice;
       if (choice && typeof choice === 'object') {
-        const labelValue = (choice as Record<string, unknown>)[nameField] ?? (choice as Record<string, unknown>).id;
+        const obj = choice as Record<string, unknown>;
+        const labelValue = obj[nameField] ?? obj.id;
         return typeof labelValue === 'string' ? labelValue : labelValue?.toString() ?? '';
       }
 
@@ -72,10 +73,17 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
 
   const isOptionEqualToValue = React.useCallback(
     (option: unknown, value: unknown) => {
-      const optionValue =
-        typeof option === 'string' ? option : (option as Record<string, unknown>)[nameField] ?? (option as Record<string, unknown>).id;
-      const currentValue =
-        typeof value === 'string' ? value : (value as Record<string, unknown>)[nameField] ?? (value as Record<string, unknown>).id;
+      const getComparableValue = (item: unknown) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const obj = item as Record<string, unknown>;
+          return (obj[nameField] ?? obj.id) as string | undefined;
+        }
+        return undefined;
+      };
+
+      const optionValue = getComparableValue(option);
+      const currentValue = getComparableValue(value);
 
       return optionValue === currentValue;
     },

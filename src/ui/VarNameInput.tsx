@@ -56,12 +56,40 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
       }));
   }, [data, nameField]);
 
+  // Make sure free text values render correctly by mapping both string values and choice objects.
+  const getOptionText = React.useCallback(
+    (choice: unknown) => {
+      if (typeof choice === 'string') return choice;
+      if (choice && typeof choice === 'object') {
+        const labelValue = (choice as Record<string, unknown>)[nameField] ?? (choice as Record<string, unknown>).id;
+        return typeof labelValue === 'string' ? labelValue : labelValue?.toString() ?? '';
+      }
+
+      return '';
+    },
+    [nameField],
+  );
+
+  const isOptionEqualToValue = React.useCallback(
+    (option: unknown, value: unknown) => {
+      const optionValue =
+        typeof option === 'string' ? option : (option as Record<string, unknown>)[nameField] ?? (option as Record<string, unknown>).id;
+      const currentValue =
+        typeof value === 'string' ? value : (value as Record<string, unknown>)[nameField] ?? (value as Record<string, unknown>).id;
+
+      return optionValue === currentValue;
+    },
+    [nameField],
+  );
+
   return (
     <AutocompleteInput
       {...props}
       source={source}
       label={label}
       choices={choices}
+      optionText={getOptionText}
+      isOptionEqualToValue={isOptionEqualToValue}
       isLoading={isLoading}
       // @ts-expect-error react-admin types freeSolo as literal false, but it supports true for free text entry
       freeSolo

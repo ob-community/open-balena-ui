@@ -56,12 +56,58 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
       }));
   }, [data, nameField]);
 
+  // Make sure free text values render correctly by mapping both string values and choice objects.
+  const getOptionText = React.useCallback(
+    (choice: unknown) => {
+      if (typeof choice === 'string') return choice;
+      if (choice && typeof choice === 'object') {
+        const obj = choice as Record<string, unknown>;
+        const labelValue = obj[nameField] ?? obj.id;
+        return typeof labelValue === 'string' ? labelValue : labelValue?.toString() ?? '';
+      }
+
+      return '';
+    },
+    [nameField],
+  );
+
+  const isOptionEqualToValue = React.useCallback(
+    (option: unknown, value: unknown) => {
+      const getComparableValue = (item: unknown) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const obj = item as Record<string, unknown>;
+          return (obj[nameField] ?? obj.id) as string | undefined;
+        }
+        return undefined;
+      };
+
+      const optionValue = getComparableValue(option);
+      const currentValue = getComparableValue(value);
+
+      // If either side resolves to undefined, only treat them as equal when both inputs are actually null/undefined.
+      if (optionValue === undefined || currentValue === undefined) {
+        const optionIsNullish = option == null;
+        const valueIsNullish = value == null;
+        if (optionIsNullish || valueIsNullish) {
+          return optionIsNullish && valueIsNullish;
+        }
+        return false;
+      }
+
+      return optionValue === currentValue;
+    },
+    [nameField],
+  );
+
   return (
     <AutocompleteInput
       {...props}
       source={source}
       label={label}
       choices={choices}
+      optionText={getOptionText}
+      isOptionEqualToValue={isOptionEqualToValue}
       isLoading={isLoading}
       // @ts-expect-error react-admin types freeSolo as literal false, but it supports true for free text entry
       freeSolo

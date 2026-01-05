@@ -85,6 +85,16 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
       const optionValue = getComparableValue(option);
       const currentValue = getComparableValue(value);
 
+      // If either side resolves to undefined, only treat them as equal when both inputs are actually null/undefined.
+      if (optionValue === undefined || currentValue === undefined) {
+        const optionIsNullish = option == null;
+        const valueIsNullish = value == null;
+        if (optionIsNullish || valueIsNullish) {
+          return optionIsNullish && valueIsNullish;
+        }
+        return false;
+      }
+
       return optionValue === currentValue;
     },
     [nameField],

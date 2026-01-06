@@ -75,6 +75,11 @@ const baseTypography: ThemeOptions['typography'] = {
     "NeueHansKendrick, system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif",
 } as const;
 
+const monoTypography = {
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace !important',
+};
+
 const createLightPalette = (): PaletteOptions => ({
   mode: 'light',
   primary: {
@@ -151,6 +156,7 @@ const createCustomTheme = (mode: PaletteMode) => {
   let theme = createTheme({
     palette,
     typography: baseTypography,
+    monoTypography,
   });
 
   const isDark = mode === 'dark';

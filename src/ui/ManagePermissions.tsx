@@ -1,6 +1,6 @@
 // src/ui/ManagePermissions.tsx
 import React from 'react';
-import { Box, Tooltip } from '@mui/material';
+import { Box, Tooltip, useTheme } from '@mui/material';
 import { Identifier, Loading, RaRecord, TextInput, useGetList, useRecordContext } from 'react-admin';
 import { useFormContext } from 'react-hook-form';
 import GenericTransferList, { TransferListOption } from '../components/genericTransferList';
@@ -36,6 +36,7 @@ type ParsedItem = ListedPermission & {
 // Removed the local, incorrect parseName function.
 
 export const ManagePermissions: React.FC<ManagePermissionsProps> = ({ source, reference, target }) => {
+  const theme = useTheme();
   const record = useRecordContext<RaRecord>();
   const { setValue } = useFormContext();
 
@@ -202,7 +203,7 @@ export const ManagePermissions: React.FC<ManagePermissionsProps> = ({ source, re
                   sx={{
                     m: 0,
                     whiteSpace: 'pre-wrap', // Respects newlines and wraps
-                    fontFamily: 'monospace',
+                    ...theme.monoTypography,
                     fontSize: 11,
                     wordBreak: 'break-word', // Breaks long, unbroken strings
                   }}

@@ -72,7 +72,7 @@ const CopyChip: React.FC<CopyChipProps> = ({ style, title, label, placement = 't
         <Box
           sx={{
             padding: '2px 6px',
-            fontFamily: '"Ubuntu Mono", "Courier New", monospace !important',
+            ...theme.monoTypography,
             backgroundColor: chipBackground,
             color: accentColor,
             border: `1px solid ${chipBorder}`,

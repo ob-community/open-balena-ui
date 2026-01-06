@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useInput, useTranslate, Validator } from 'react-admin';
 import type { TextInputProps } from 'react-admin';
-import { FormControlLabel, Checkbox, Box, TextField } from '@mui/material';
+import { FormControlLabel, Checkbox, Box, TextField, useTheme } from '@mui/material';
 
 /**
  * Detects if a string looks like JSON (starts and ends with {} or [])
@@ -9,10 +9,7 @@ import { FormControlLabel, Checkbox, Box, TextField } from '@mui/material';
 const looksLikeJson = (value: string): boolean => {
   if (!value || typeof value !== 'string') return false;
   const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-    (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  ) {
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
     const parseError = validateJsonSyntax(trimmed);
     return !parseError;
   }
@@ -78,6 +75,8 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
   label,
   ...props
 }) => {
+  const theme = useTheme();
+  const { margin } = props as any;
   const translate = useTranslate();
   const [isJsonMode, setIsJsonMode] = React.useState(false);
   const [hasInitialized, setHasInitialized] = React.useState(false);
@@ -90,7 +89,7 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
       if (!isJsonMode) return undefined;
       return validateJsonSyntax(value);
     },
-    [isJsonMode]
+    [isJsonMode],
   );
 
   // Combine existing validators with JSON validator
@@ -196,12 +195,12 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
   const getError = (): string | null => {
     const isFormJsonError = error?.message?.includes('Invalid JSON');
     const hasAnyJsonError = isFormJsonError || !!jsonError;
-    
+
     // Local JSON error in JSON mode (shows immediately, no touch required)
     if (isJsonMode && jsonError) return jsonError;
-    
+
     if (!isTouched || !error) return null;
-   
+
     if ((isJsonMode && isFormJsonError) || !hasAnyJsonError) {
       const translated = translate(error.message as string, { _: error.message as string });
       // Clean up any @@react-admin@@ prefixes that may appear in untranslated keys
@@ -210,14 +209,14 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
       }
       return translated;
     }
-          
+
     return null;
   };
 
   const errorMessage = getError();
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', marginBottom: margin === 'dense' ? '4px' : '8px' }}>
       <TextField
         {...props}
         label={label}
@@ -231,9 +230,9 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
         helperText={errorMessage ?? undefined}
         required={isRequired}
         sx={{
-          width: '100%',
+          'width': '100%',
           '& .MuiInputBase-input': {
-            fontFamily: 'Consolas, "Courier New", monospace !important',
+            ...theme.monoTypography,
             fontSize: '0.875rem',
             lineHeight: 1.5,
           },
@@ -249,18 +248,18 @@ const JsonValueInput: React.FC<JsonValueInputProps> = ({
           <Checkbox
             checked={isJsonMode}
             onChange={handleJsonModeChange}
-            size="small"
+            size='small'
             sx={{
-              color: 'text.secondary',
+              'color': 'text.secondary',
               '&.Mui-checked': {
                 color: 'primary.main',
               },
             }}
           />
         }
-        label="JSON Value"
+        label='JSON Value'
         sx={{
-          margin: 0,
+          'margin': 0,
           '& .MuiFormControlLabel-label': {
             fontSize: '0.875rem',
             color: 'text.secondary',

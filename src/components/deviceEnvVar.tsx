@@ -74,7 +74,6 @@ export const DeviceEnvVarCreate: React.FC = () => (
       >
         <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
       </ReferenceInput>
-
       <VarNameInput resource='device environment variable' validate={required()} />
       <JsonValueInput label='Value' source='value' validate={required()} />
     </SimpleForm>

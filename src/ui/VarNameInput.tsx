@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { AutocompleteInput, useGetList } from 'react-admin';
+import { useGetList, useInput } from 'react-admin';
 import type { AutocompleteInputProps } from 'react-admin';
+import { Autocomplete, AutocompleteRenderInputParams, TextField, useTheme } from '@mui/material';
 
 /**
  * Props for VarNameInput component.
@@ -28,12 +29,20 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
   label = 'Name',
   source = 'name',
   sx,
+  helperText,
   ...props
 }) => {
+  const theme = useTheme();
+  // Ensure default margin is 'dense' to match other inputs
+  const { margin = 'dense', variant, ...rest } = props as any;
+
   // Fetch existing variable names from the resource
   const { data, isLoading } = useGetList(resource, {
     pagination: { page: 1, perPage: 1000 },
     sort: { field: nameField, order: 'ASC' },
+    // Optimize payload by selecting only necessary fields.
+    // Note: PostgREST doesn't support SELECT DISTINCT on tables without a view/RPC.
+    filter: { 'select@': `id,${nameField}` },
   });
 
   // Extract unique names and format as choices
@@ -56,71 +65,58 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
       }));
   }, [data, nameField]);
 
-  // Make sure free text values render correctly by mapping both string values and choice objects.
-  const getOptionText = React.useCallback(
-    (choice: unknown) => {
-      if (typeof choice === 'string') return choice;
-      if (choice && typeof choice === 'object') {
-        const obj = choice as Record<string, unknown>;
-        const labelValue = obj[nameField] ?? obj.id;
-        return typeof labelValue === 'string' ? labelValue : labelValue?.toString() ?? '';
-      }
-
-      return '';
-    },
-    [nameField],
-  );
-
-  const isOptionEqualToValue = React.useCallback(
-    (option: unknown, value: unknown) => {
-      const getComparableValue = (item: unknown) => {
-        if (typeof item === 'string') return item;
-        if (item && typeof item === 'object') {
-          const obj = item as Record<string, unknown>;
-          return (obj[nameField] ?? obj.id) as string | undefined;
-        }
-        return undefined;
-      };
-
-      const optionValue = getComparableValue(option);
-      const currentValue = getComparableValue(value);
-
-      // If either side resolves to undefined, only treat them as equal when both inputs are actually null/undefined.
-      if (optionValue === undefined || currentValue === undefined) {
-        const optionIsNullish = option == null;
-        const valueIsNullish = value == null;
-        if (optionIsNullish || valueIsNullish) {
-          return optionIsNullish && valueIsNullish;
-        }
-        return false;
-      }
-
-      return optionValue === currentValue;
-    },
-    [nameField],
-  );
+  // Use useInput to integrate with react-admin form
+  const { field, fieldState } = useInput({ source, ...props });
 
   return (
-    <AutocompleteInput
-      {...props}
-      source={source}
-      label={label}
-      choices={choices}
-      optionText={getOptionText}
-      isOptionEqualToValue={isOptionEqualToValue}
-      isLoading={isLoading}
-      // @ts-expect-error react-admin types freeSolo as literal false, but it supports true for free text entry
-      freeSolo
+    <Autocomplete
+      {...rest}
       fullWidth
-      sx={{
-        '& .MuiInputBase-input': {
-          fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", "Monaco", monospace',
-        },
-        ...sx,
+      freeSolo
+      options={choices}
+      loading={isLoading}
+      value={field.value || ''}
+      sx={sx || { marginBottom: margin === 'dense' ? 1 : 2 }}
+      // Handle selection or 'Enter' on a value
+      onChange={(event: React.SyntheticEvent, newValue: string | { name: string } | null) => {
+        const val = typeof newValue === 'string' ? newValue : newValue?.name;
+        field.onChange(val);
       }}
+      // Handle text input changes (essential for strictly freeform entry without selection)
+      onInputChange={(event: React.SyntheticEvent, newInputValue: string) => {
+        field.onChange(newInputValue);
+      }}
+      // Comparison and Labeling
+      getOptionLabel={(option: string | { name: string }) => {
+        if (typeof option === 'string') return option;
+        return option.name;
+      }}
+      isOptionEqualToValue={(option: { name: string }, value: string | { name: string }) => {
+        if (!value) return false;
+        if (typeof value === 'string') return option.name === value;
+        return option.name === value.name;
+      }}
+      renderInput={(params: AutocompleteRenderInputParams) => (
+        <TextField
+          {...params}
+          label={label}
+          name={source}
+          // Default margin to dense for proper vertical spacing in lists
+          // margin={margin} // Handled by root Autocomplete
+          variant={variant}
+          error={!!fieldState.error}
+          helperText={fieldState.error?.message || helperText}
+          onBlur={field.onBlur}
+          fullWidth
+          sx={{
+            '& .MuiInputBase-input': {
+              ...theme.monoTypography,
+            },
+          }}
+        />
+      )}
     />
   );
 };
 
 export default VarNameInput;
-

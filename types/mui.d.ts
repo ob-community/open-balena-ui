@@ -51,4 +51,12 @@ declare module '@mui/material/styles' {
       };
     };
   }
+
+  interface Theme {
+    monoTypography: React.CSSProperties;
+  }
+
+  interface ThemeOptions {
+    monoTypography?: React.CSSProperties;
+  }
 }

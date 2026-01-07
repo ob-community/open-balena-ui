@@ -199,7 +199,6 @@ export const DeviceFilterModal: React.FC<DeviceFilterModalProps> = ({
   // Fetch releases with pagination (cached by react-query)
   const {
     data: releasesData,
-    isLoading: releasesLoading,
     isFetching: releasesFetching,
     total: releasesTotal,
   } = useGetList(

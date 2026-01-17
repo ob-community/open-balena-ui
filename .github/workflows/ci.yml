@@ -6,11 +6,17 @@ on:
     branches-ignore:
       - 'renovate/3rd-party**'
       - 'dependabot/**'
+    paths-ignore:
+      - ".github/dependabot.yml"
+      - ".github/workflows/codeql.yml"
   pull_request:
     branches-ignore:
       - 'renovate/3rd-party**'
       - 'dependabot/**'
-
+    paths-ignore:
+      - ".github/dependabot.yml"
+      - ".github/workflows/codeql.yml"
+      
 env:
   IMAGE_NAME: obcommunity/open-balena-ui
   BASE_VERSION: '0.1.0' # Where action-vtl starts if there are no existing tags

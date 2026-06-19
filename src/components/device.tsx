@@ -55,21 +55,29 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
   return (
     <FunctionField
       {...props}
-      render={(record, source) => {
-        if (!source) {
-          return null;
-        }
-        const isOnline = record[source] === 'online';
+      render={(record) => {
+        const isOnline = record['is online'] === true;
+        const vpnConnected = record['is connected to vpn'] === true;
+        const color = !isOnline
+          ? theme.palette.error.light // red
+          : vpnConnected
+            ? theme.palette.success.light // green
+            : theme.palette.warning.light; // orange
+        const status = `${isOnline ? 'Online' : 'Offline'}, ${vpnConnected ? 'VPN connected' : 'no VPN connection'}`;
+        const lastEvent = record['last connectivity event'];
+        const title = lastEvent ? (
+          <>
+            {status}
+            <br />
+            (since {dateFormat(new Date(lastEvent))})
+          </>
+        ) : (
+          status
+        );
 
         return (
-          <Tooltip
-            placement='top'
-            arrow={true}
-            title={'Since ' + dateFormat(new Date(record['last connectivity event']))}
-          >
-            <strong style={{ color: isOnline ? theme.palette.success.light : theme.palette.error.light }}>
-              {isOnline ? 'Online' : 'Offline'}
-            </strong>
+          <Tooltip placement='top' arrow={true} title={title}>
+            <strong style={{ color }}>{isOnline ? 'Online' : 'Offline'}</strong>
           </Tooltip>
         );
       }}
@@ -133,7 +141,7 @@ const ReleaseFieldContent: React.FC<{
       : false;
 
   const isUpToDate = hasTarget ? isTargetMatch : isTrackingLatest;
-  const isOnline = record['api heartbeat state'] === 'online';
+  const isOnline = record['is online'] === true;
   const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
 
   return (
@@ -203,7 +211,7 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
           <TextField source='device name' />
         </ReferenceField>
 
-        <OnlineField label='Status' source='api heartbeat state' />
+        <OnlineField label='Status' />
 
         <ReleaseField label='Current Release' source='is running-release' />
 

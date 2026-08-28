@@ -98,7 +98,8 @@ versions['0.185.0'] = {
   },
 };
 
-versions['25.2.8'] = {
+// API v7 uses a separate writable device pin field.
+versions['7.0.0'] = {
   resources: {
     ...versions['0.185.0'].resources,
     isPinnedOnRelease: 'is pinned on-release',
@@ -127,6 +128,11 @@ const getTargetVersion = (version?: string): string => {
 };
 
 const resource = (resourceKey: string, version?: string): string => {
+  if (resourceKey === 'isPinnedOnRelease') {
+    const apiGeneration = version?.replace(/^v/i, '').split('.')[0];
+    return apiGeneration === '6' ? 'should be running-release' : 'is pinned on-release';
+  }
+
   const targetVer = getTargetVersion(version);
   const mapping = versions[targetVer];
 

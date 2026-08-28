@@ -30,7 +30,7 @@ const TargetRelease: React.FC = () => {
   }
 
   const applicationId = record['belongs to-application'];
-  const needsFleetFallback = !record['should be running-release'] && Boolean(applicationId);
+  const needsFleetFallback = !record[isPinnedOnRelease] && Boolean(applicationId);
 
   const {
     data: fleet,

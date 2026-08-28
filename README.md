@@ -25,8 +25,7 @@ There are a number of environment variables used to configure the ui:
 - `REACT_APP_OPEN_BALENA_API_URL` The URL (accessible to API) of the `open-balena-api` instance, i.e.
   `https://api.openbalena.local`
 
-- `REACT_APP_OPEN_BALENA_API_VERSION` The version of `open-balena-api` that the above instance is running, i.e.
-  `v0.139.0`
+- `REACT_APP_OPEN_BALENA_API_VERSION` The balena API generation exposed by PostgREST (`v7` for modern balena/openBalena; use `v6` only for legacy pinning semantics).
 
 - `REACT_APP_BANNER_IMAGE` The URL of a custom banner image to use on the main dashboard.
 
@@ -83,7 +82,7 @@ convention.
 
 ## Compatibility
 
-This project is compatible with `open-balena-api` v0.139.0 or newer, all the way up to the current builds (v0.190.0).
+This project uses the modern balena API v7 pinning contract by default. Legacy API v6 pinning can be selected explicitly with `REACT_APP_OPEN_BALENA_API_VERSION=v6`.
 See [this project](https://github.com/dcaputo-harmoni/open-balena-helm) for a fork of bartversluijs' open-balena-helm
 project which has helm scripts to build a current version of `open-balena`.
 

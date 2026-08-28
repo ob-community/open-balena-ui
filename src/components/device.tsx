@@ -64,17 +64,23 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
         if (!source) {
           return null;
         }
-        const isOnline = record[source] === 'online';
+        const isVpnConnected = record['is connected to vpn'] === true;
+        const isAgentOnline = record[source] === 'online';
+        const status = isVpnConnected ? 'Online' : isAgentOnline ? 'NO VPN' : 'Offline';
+        const statusColor = isVpnConnected
+          ? theme.palette.success.light
+          : isAgentOnline
+            ? theme.palette.warning.main
+            : theme.palette.error.light;
+        const statusTimestamp = isVpnConnected ? record['last vpn event'] : record['last connectivity event'];
 
         return (
           <Tooltip
             placement='top'
             arrow={true}
-            title={'Since ' + dateFormat(new Date(record['last connectivity event']))}
+            title={'Since ' + dateFormat(new Date(statusTimestamp))}
           >
-            <strong style={{ color: isOnline ? theme.palette.success.light : theme.palette.error.light }}>
-              {isOnline ? 'Online' : 'Offline'}
-            </strong>
+            <strong style={{ color: statusColor }}>{status}</strong>
           </Tooltip>
         );
       }}
@@ -138,7 +144,7 @@ const ReleaseFieldContent: React.FC<{
       : false;
 
   const isUpToDate = hasTarget ? isTargetMatch : isTrackingLatest;
-  const isOnline = record['api heartbeat state'] === 'online';
+  const isOnline = record['is connected to vpn'] === true;
   const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
 
   return (

@@ -51,8 +51,19 @@ import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
 
-// Get the proper field name for isPinnedOnRelease based on API version
+// Select the writable device pin field for the configured API generation
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const isLegacyPinning = isPinnedOnRelease === 'should be running-release';
+
+const transformDevice = (data: Record<string, any>) => {
+  const transformed = { ...data };
+  delete transformed['should be running-release'];
+  if (isLegacyPinning) {
+    transformed['should track latest release'] =
+      transformed[isPinnedOnRelease] === undefined || transformed[isPinnedOnRelease] === null;
+  }
+  return transformed;
+};
 
 export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -302,7 +313,7 @@ export const DeviceCreate: React.FC = () => {
   };
 
   return (
-    <Create title='Create Device' transform={createDevice} mutationOptions={{ onSuccess }}>
+    <Create title='Create Device' transform={async (data) => transformDevice(await createDevice(data))} mutationOptions={{ onSuccess }}>
       <SimpleForm>
         <Row>
           <TextInput
@@ -383,7 +394,7 @@ export const DeviceEdit: React.FC = () => {
   const modifyDevice = useModifyDevice();
 
   return (
-    <Edit title='Edit Device' actions={false} transform={modifyDevice}>
+    <Edit title='Edit Device' actions={false} transform={async (data) => transformDevice(await modifyDevice(data))}>
       <SimpleForm>
         <Row>
           <TextInput label='UUID' source='uuid' size='large' readOnly={true} />

@@ -2,6 +2,7 @@
 
 import queryString from 'query-string';
 import { fetchUtils } from 'ra-core';
+import { compareDeviceConnectivity } from '../lib/deviceStatus';
 
 function parseFilters(filter, defaultListOp) {
   let result = {};
@@ -136,10 +137,23 @@ const getKeyData = (primaryKey, data) => {
 };
 
 const getOrderBy = (field, order, primaryKey) => {
+  const nullsLast = field === 'last connectivity event' ? '.nullslast' : '';
+  const direction = order.toLowerCase();
+
+  if (field === 'version') {
+    return ['semver major', 'semver minor', 'semver patch', 'semver revision']
+      .map((versionField) => `${versionField}.${direction}`)
+      .join(',');
+  }
+
+  if (field === 'connectivity') {
+    return `id.${direction}`;
+  }
+
   if (field === 'id') {
-    return primaryKey.map((key) => `${key}.${order.toLowerCase()}`).join(',');
+    return primaryKey.map((key) => `${key}.${direction}`).join(',');
   } else {
-    return `${field}.${order.toLowerCase()}`;
+    return `${field}.${direction}${nullsLast}`;
   }
 };
 
@@ -156,6 +170,7 @@ export const postgrestDataProvider = (
 
     const { page, perPage } = params.pagination;
     const { field, order } = params.sort;
+    const isConnectivitySort = resource === 'device' && field === 'connectivity';
     const ftsFilter = {};
     const ftsIdx = Object.keys(params.filter).findIndex((x) => x.includes('#'));
     if (ftsIdx !== -1) {
@@ -169,9 +184,9 @@ export const postgrestDataProvider = (
     }
     const parsedFilter = parseFilters(params.filter, defaultListOp);
     const query: Record<string, unknown> = {
-      order: getOrderBy(field, order, primaryKey),
-      offset: (page - 1) * perPage,
-      limit: perPage,
+      order: isConnectivitySort ? 'id.asc' : getOrderBy(field, order, primaryKey),
+      offset: isConnectivitySort ? 0 : (page - 1) * perPage,
+      limit: isConnectivitySort ? 10000 : perPage,
       // append filters
       ...parsedFilter,
     };
@@ -205,9 +220,13 @@ export const postgrestDataProvider = (
         throw new Error('Missing content-range header in response');
       }
 
+      const total = parseInt(contentRange.split('/').pop() ?? '0', 10);
+      const data = json.map((obj) => dataWithId(obj, primaryKey));
+      const sortedData = isConnectivitySort ? data.sort((a, b) => compareDeviceConnectivity(a, b, order)) : data;
+
       return {
-        data: json.map((obj) => dataWithId(obj, primaryKey)),
-        total: parseInt(contentRange.split('/').pop() ?? '0', 10),
+        data: isConnectivitySort ? sortedData.slice((page - 1) * perPage, page * perPage) : sortedData,
+        total,
       };
     });
   },

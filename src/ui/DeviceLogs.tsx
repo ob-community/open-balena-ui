@@ -7,7 +7,6 @@ import type { DataProvider } from 'react-admin';
 import environment from '../lib/reactAppEnv';
 import type { ResourceRecord } from '../types/resource';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
-import { EmbeddedFrame } from './EmbeddedFrame';
 
 interface ContainerChoice {
   id: number;
@@ -26,12 +25,18 @@ type DeviceRecord = ResourceRecord & {
   uuid: string;
 };
 
+const ansiEscapeSequence = /\u001b(?:\][^\u0007]*(?:\u0007|\u001b\\)|\[[0-?]*[ -/]*[@-~]|[=>])/g;
+
+const normalizeLogMessage = (message: string): string =>
+  message.replace(ansiEscapeSequence, '').replace(/\r\n?/g, '\n');
+
 export const DeviceLogs: React.FC = () => {
   const record = useRecordContext<DeviceRecord>();
   const [loaded, setLoaded] = React.useState(false);
   const [containers, setContainers] = React.useState<ContainerChoice[]>([]);
   const [container, setContainer] = React.useState<number | 'default'>('default');
-  const [content, setContent] = React.useState('');
+  const [content, setContent] = React.useState<LogEntry[]>([]);
+  const logsContainerRef = React.useRef<HTMLPreElement>(null);
   const dataProvider = useDataProvider<DataProvider>();
   const authProvider = useAuthProvider<OpenBalenaAuthProvider>();
   const notify = useNotify();
@@ -43,16 +48,6 @@ export const DeviceLogs: React.FC = () => {
   const logsTextColor = logsPalette?.text?.default ?? '#eeeeee';
   const logsErrorColor = logsPalette?.text?.error ?? '#ee6666';
   const logsWarningColor = logsPalette?.text?.warning ?? '#ffee66';
-
-  // Generate empty shell HTML with proper background
-  const emptyLogsHtml = React.useMemo(
-    () =>
-      `<html><body style='font-family: consolas; color: ${logsTextColor}; background-color: ${logsBgColor}; margin: 0; padding: 10px;'></body></html>`,
-    [logsBgColor, logsTextColor],
-  );
-
-  // Use empty shell when no content
-  const displayContent = content || emptyLogsHtml;
 
   const fetchLogs = React.useCallback(async (): Promise<LogEntry[]> => {
     if (!record) {
@@ -89,7 +84,7 @@ export const DeviceLogs: React.FC = () => {
     try {
       const logs = await fetchLogs();
       if (!logs?.length) {
-        setContent('');
+        setContent([]);
         return;
       }
 
@@ -102,34 +97,15 @@ export const DeviceLogs: React.FC = () => {
       });
 
       if (!filteredLogs.length) {
-        setContent('');
+        setContent([]);
         return;
       }
 
-      const formattedLogs = filteredLogs
-        .map((entry) => {
-          const time = new Date(entry.timestamp).toISOString();
-          const message = entry.message ?? '';
-
-          if (entry.isStdErr) {
-            return `[${time}] <span style="color: ${logsErrorColor}; ">${message}</span>`;
-          }
-
-          if (entry.isSystem) {
-            return `[${time}] <span style="color: ${logsWarningColor}; ">${message}</span>`;
-          }
-
-          return `[${time}] ${message}`;
-        })
-        .join('<br/>');
-
       setContent(
-        `<html>
-          <body style='font-family: consolas; color: ${logsTextColor}; background-color: ${logsBgColor}; margin: 0; padding: 10px;'>
-            <div>${formattedLogs}</div>
-            <script>window.scrollTo(0, document.body.scrollHeight);</script>
-          </body>
-        </html>`,
+        filteredLogs.map((entry) => ({
+          ...entry,
+          message: normalizeLogMessage(entry.message ?? ''),
+        })),
       );
     } catch (error) {
       console.error(error);
@@ -137,7 +113,7 @@ export const DeviceLogs: React.FC = () => {
         notify(`Error: Could not get logs for device ${record.uuid}`, { type: 'error' });
       }
     }
-  }, [container, fetchLogs, logsBgColor, logsTextColor, logsErrorColor, logsWarningColor, notify, record]);
+  }, [container, fetchLogs, notify, record]);
 
   React.useEffect(() => {
     if (container === 'default') {
@@ -146,6 +122,13 @@ export const DeviceLogs: React.FC = () => {
 
     void updateLogs();
   }, [container, updateLogs]);
+
+  React.useEffect(() => {
+    const logsContainer = logsContainerRef.current;
+    if (logsContainer) {
+      logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
+  }, [content]);
 
   React.useEffect(() => {
     if (loaded || !record) {
@@ -280,7 +263,38 @@ export const DeviceLogs: React.FC = () => {
         </Box>
       </Form>
 
-      <EmbeddedFrame srcDoc={displayContent} backgroundColor={logsBgColor} />
+      <Box
+        ref={logsContainerRef}
+        component='pre'
+        sx={{
+          m: 0,
+          p: '10px',
+          height: 'min(500px, 60vh)',
+          minHeight: '300px',
+          maxHeight: '500px',
+          overflowY: 'auto',
+          overflowX: 'auto',
+          color: logsTextColor,
+          backgroundColor: logsBgColor,
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+          fontSize: '0.85rem',
+          lineHeight: 1.5,
+          whiteSpace: 'pre-wrap',
+          overflowWrap: 'anywhere',
+        }}
+      >
+        {content.map((entry, index) => {
+          const color = entry.isStdErr ? logsErrorColor : entry.isSystem ? logsWarningColor : logsTextColor;
+
+          return (
+            <Box component='div' key={`${entry.timestamp}-${index}`}>
+              <Box component='span' sx={{ color }}>
+                {entry.message}
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
     </>
   );
 };

@@ -4,7 +4,12 @@ import DashboardLayout from './dashboardLayout';
 
 const DeviceDashboard: React.FC = () => {
   return (
-    <Show component='div' title='Device Dashboard' actions={false}>
+    <Show
+      component='div'
+      title='Device Dashboard'
+      actions={false}
+      queryOptions={{ refetchInterval: 30000, refetchIntervalInBackground: false }}
+    >
       <DashboardLayout />
     </Show>
   );

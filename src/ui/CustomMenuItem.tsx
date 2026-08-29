@@ -14,7 +14,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import classnames from 'classnames';
 import React, { Fragment } from 'react';
-import { useTranslate } from 'react-admin';
+import { MenuItemLink, useTranslate } from 'react-admin';
 
 const PREFIX = 'RaTreeCustomMenuItem';
 
@@ -59,13 +59,25 @@ const CustomMenuItem: React.FC<{
   name: string;
   icon: React.ReactElement;
   handleToggle: React.MouseEventHandler<HTMLLIElement> | undefined;
+  to?: string;
+  onMenuClick?: (event?: unknown) => void;
   sidebarIsOpen?: boolean;
   setMenuColors?: boolean;
   children?: React.ReactNode;
-}> = ({ handleToggle, sidebarIsOpen, isOpen, name, icon, children, dense, setMenuColors }) => {
+}> = ({ handleToggle, to, onMenuClick, sidebarIsOpen, isOpen, name, icon, children, dense, setMenuColors }) => {
   const translate = useTranslate();
 
-  const header = (
+  const header = to ? (
+    <MenuItemLink
+      key={name}
+      to={`/${encodeURIComponent(to)}`}
+      primaryText={translate(name)}
+      leftIcon={icon}
+      onClick={onMenuClick}
+      dense={dense}
+      sidebarIsOpen={sidebarIsOpen}
+    />
+  ) : (
     <MenuItem
       key={name}
       dense={dense}

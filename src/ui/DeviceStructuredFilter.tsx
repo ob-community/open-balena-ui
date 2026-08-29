@@ -24,6 +24,30 @@ const DeviceFilterButton: React.FC<{
   );
 };
 
+const OnlineOnlyButton: React.FC = () => {
+  const { filterValues, setFilters } = useListContext();
+  const onlineStatusFilter = 'api heartbeat state@eq';
+  const onlineOnly = filterValues?.[onlineStatusFilter] === 'online';
+
+  const toggleOnlineOnly = () => {
+    const nextFilters = { ...filterValues };
+
+    if (onlineOnly) {
+      delete nextFilters[onlineStatusFilter];
+    } else {
+      nextFilters[onlineStatusFilter] = 'online';
+    }
+
+    setFilters(nextFilters);
+  };
+
+  return (
+    <Button variant={onlineOnly ? 'contained' : 'outlined'} size='small' onClick={toggleOnlineOnly}>
+      Online only
+    </Button>
+  );
+};
+
 // Helper to safely coerce potentially string IDs into numbers
 const toOptionalNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') {
@@ -195,6 +219,7 @@ const DeviceStructuredFilter: React.FC<DeviceStructuredFilterProps> = ({
 
   return (
     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+      <OnlineOnlyButton />
       <DeviceFilterButton onClick={() => setIsFilterModalOpen(true)} hasActiveFilters={hasActiveFilters} />
       {hasActiveFilters && <ActiveFilterChips filters={structuredFilters} onRemoveFilter={handleRemoveFilter} />}
       <DeviceFilterModal
@@ -208,4 +233,3 @@ const DeviceStructuredFilter: React.FC<DeviceStructuredFilterProps> = ({
 };
 
 export default DeviceStructuredFilter;
-

@@ -1,6 +1,5 @@
 import { Tooltip, useTheme } from '@mui/material';
 import type { Theme } from '@mui/material/styles';
-import { Done, Warning, WarningAmber } from '@mui/icons-material';
 import dateFormat from 'dateformat';
 import * as React from 'react';
 import {
@@ -27,6 +26,7 @@ import {
   TopToolbar,
   required,
   useGetOne,
+  useGetManyReference,
   useRedirect,
   useListContext,
   WithRecord,
@@ -50,10 +50,13 @@ import { resolveDeviceTargetRelease } from '../lib/targetRelease';
 import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
+import DeviceUpdateStatusIcon from '../ui/DeviceUpdateStatusIcon';
+import { isDeviceUpdating } from '../lib/deviceStatus';
 
 // Select the writable device pin field for the configured API generation
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const isLegacyPinning = isPinnedOnRelease === 'should be running-release';
+const deviceStatusRefreshInterval = 30000;
 
 const transformDevice = (data: Record<string, any>) => {
   const transformed = { ...data };
@@ -64,6 +67,37 @@ const transformDevice = (data: Record<string, any>) => {
   }
   return transformed;
 };
+
+const parseDeviceDate = (value: unknown): Date | null => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatElapsedTime = (referenceDate: Date): string => {
+  const elapsedMilliseconds = Math.max(0, Date.now() - referenceDate.getTime());
+  const elapsedDays = Math.floor(elapsedMilliseconds / 86400000);
+
+  if (elapsedDays >= 1) {
+    return `${elapsedDays} ${elapsedDays === 1 ? 'day' : 'days'}`;
+  }
+
+  const elapsedMinutes = Math.floor(elapsedMilliseconds / 60000);
+  return `${elapsedMinutes} ${elapsedMinutes === 1 ? 'minute' : 'minutes'}`;
+};
+
+const ElapsedTime: React.FC<{ referenceDate: Date; prefix?: string; suffix?: string }> = ({
+  referenceDate,
+  prefix = '',
+  suffix = '',
+}) => (
+  <Tooltip placement='top' arrow title={dateFormat(referenceDate)}>
+    <span>{`${prefix}${formatElapsedTime(referenceDate)}${suffix}`}</span>
+  </Tooltip>
+);
 
 export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -84,12 +118,14 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
             ? theme.palette.warning.main
             : theme.palette.error.light;
         const statusTimestamp = isVpnConnected ? record['last vpn event'] : record['last connectivity event'];
+        const statusSince = parseDeviceDate(statusTimestamp);
+        const statusSinceLabel = statusSince ? `Since ${dateFormat(statusSince)}` : '';
 
         return (
           <Tooltip
             placement='top'
             arrow={true}
-            title={'Since ' + dateFormat(new Date(statusTimestamp))}
+            title={statusSinceLabel}
           >
             <strong style={{ color: statusColor }}>{status}</strong>
           </Tooltip>
@@ -98,6 +134,30 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
     />
   );
 };
+
+export const LastOnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => (
+  <FunctionField
+    {...props}
+    render={(record) => {
+      const isOnline = record['api heartbeat state'] === 'online';
+      const referenceDate = parseDeviceDate(
+        record[isOnline ? 'changed api heartbeat state on-date' : 'last connectivity event'],
+      );
+
+      if (!referenceDate) {
+        return isOnline ? '—' : 'Never online';
+      }
+
+      return (
+        <ElapsedTime
+          referenceDate={referenceDate}
+          prefix={isOnline ? 'Up ' : ''}
+          suffix={isOnline ? '' : ' ago'}
+        />
+      );
+    }}
+  />
+);
 
 export const ReleaseField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -126,6 +186,24 @@ const ReleaseFieldContent: React.FC<{
     isPending,
     error,
   } = useGetOne('application', { id: applicationId }, { enabled: shouldFetchFleet });
+  const deviceUpdateReported = isDeviceUpdating(record);
+  const { data: updatingImageInstalls = [] } = useGetManyReference(
+    'image install',
+    {
+      target: 'device',
+      id: record.id,
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: 'id', order: 'ASC' },
+      filter: {
+        'status@in': '(Downloading,Downloaded,Installing,Installed,Starting,Stopping,configuring)',
+      },
+    },
+    {
+      enabled: record.id !== undefined && record.id !== null && !deviceUpdateReported,
+      refetchInterval: deviceStatusRefreshInterval,
+      refetchIntervalInBackground: false,
+    },
+  );
 
   if (shouldFetchFleet && isPending) {
     return <p>Loading</p>;
@@ -155,8 +233,18 @@ const ReleaseFieldContent: React.FC<{
       : false;
 
   const isUpToDate = hasTarget ? isTargetMatch : isTrackingLatest;
-  const isOnline = record['is connected to vpn'] === true;
+  const isUpdating = deviceUpdateReported || isDeviceUpdating(record, updatingImageInstalls);
+  const updateStatus = isUpToDate ? undefined : isUpdating ? 'updating' : 'outdated';
   const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
+  const isOnline = record['api heartbeat state'] === 'online';
+  const updateStatusColor =
+    updateStatus === 'updating'
+      ? theme.palette.info.main
+      : updateStatus === 'outdated'
+        ? isOnline
+          ? theme.palette.warning.main
+          : theme.palette.common.white
+        : theme.palette.text.primary;
 
   return (
     <RecordContextProvider value={augmentedRecord}>
@@ -167,30 +255,30 @@ const ReleaseFieldContent: React.FC<{
       {record[source] &&
         (targetReleaseId !== undefined && targetReleaseId !== null ? (
           <ReferenceField reference='release' target='id' source='should be running-release' link={false}>
-            <TargetReleaseTooltip origin={origin}>
+            <TargetReleaseTooltip origin={origin} status={updateStatus}>
               <span
                 style={{
                   position: 'relative',
                   top: '3px',
                   left: '3px',
-                  color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
+                  color: updateStatusColor,
                 }}
               >
-                {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
+                {updateStatus && <DeviceUpdateStatusIcon status={updateStatus} />}
               </span>
             </TargetReleaseTooltip>
           </ReferenceField>
         ) : (
-          <TargetReleaseTooltip origin={origin} fallbackDetail='Tracking latest release'>
+          <TargetReleaseTooltip origin={origin} status={updateStatus} fallbackDetail='Tracking latest release'>
             <span
               style={{
                 position: 'relative',
                 top: '3px',
                 left: '3px',
-                color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
+                color: updateStatusColor,
               }}
             >
-              {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
+              {updateStatus && <DeviceUpdateStatusIcon status={updateStatus} />}
             </span>
           </TargetReleaseTooltip>
         ))}
@@ -260,7 +348,14 @@ const DeviceListActions = () => (
 
 export const DeviceList: React.FC<ListProps<any>> = (props) => {
   return (
-    <List {...props} filters={deviceFilters} actions={<DeviceListActions />} pagination={<ExtendedPagination />}>
+    <List
+      {...props}
+      filters={deviceFilters}
+      actions={<DeviceListActions />}
+      sort={{ field: 'connectivity', order: 'DESC' }}
+      pagination={<ExtendedPagination />}
+      queryOptions={{ refetchInterval: deviceStatusRefreshInterval, refetchIntervalInBackground: false }}
+    >
       <Datagrid rowClick={false} bulkActionButtons={<CustomBulkActionButtons />} size='medium'>
         <ReferenceField label='Name' source='id' reference='device' target='id' link='show'>
           <TextField source='device name' />
@@ -270,20 +365,11 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
 
         <ReleaseField label='Current Release' source='is running-release' />
 
-        <ReferenceField label='Device Type' source='is of-device type' reference='device type' target='id' link={false}>
-          <TextField source='slug' />
-        </ReferenceField>
-
         <ReferenceField label='Fleet' source='belongs to-application' reference='application' target='id'>
           <TextField source='app name' />
         </ReferenceField>
 
-        <FunctionField
-          label='OS'
-          render={(record) =>
-            record['os version'] && record['os variant'] ? `${record['os version']}-${record['os variant']}` : ''
-          }
-        />
+        <LastOnlineField label='Connectivity' source='last connectivity event' sortable sortBy='connectivity' />
 
         <FunctionField
           label='UUID'

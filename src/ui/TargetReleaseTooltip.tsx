@@ -2,6 +2,8 @@ import React from 'react';
 import { Box, Tooltip } from '@mui/material';
 import { useRecordContext } from 'react-admin';
 import TargetReleaseIcon from './TargetReleaseIcon';
+import DeviceUpdateStatusIcon from './DeviceUpdateStatusIcon';
+import type { DeviceUpdateStatus } from './DeviceUpdateStatusIcon';
 import type { TargetReleaseOrigin } from '../lib/targetRelease';
 import { getTargetOriginLabel } from '../lib/targetRelease';
 import { getSemver } from './SemVerChip';
@@ -10,16 +12,18 @@ const EMPTY_RECORD: Record<string, any> = {};
 
 interface TargetReleaseTooltipProps {
   origin: TargetReleaseOrigin;
+  status?: DeviceUpdateStatus;
   fallbackDetail?: string;
   children: React.ReactElement;
 }
 
-const TargetReleaseTooltip: React.FC<TargetReleaseTooltipProps> = ({ origin, fallbackDetail, children }) => {
+const TargetReleaseTooltip: React.FC<TargetReleaseTooltipProps> = ({ origin, status, fallbackDetail, children }) => {
   const releaseRecord = useRecordContext<Record<string, any>>(EMPTY_RECORD);
   const resolvedRecord: Record<string, any> | undefined = releaseRecord === EMPTY_RECORD ? undefined : releaseRecord;
   const detail = resolvedRecord ? getSemver(resolvedRecord) : (fallbackDetail ?? 'Tracking latest release');
   const commit = resolvedRecord?.commit;
   const detailLine = commit ? `${detail} (${String(commit).slice(0, 7)})` : detail;
+  const statusLabel = status === 'updating' ? 'Updating' : status === 'outdated' ? 'Update available' : undefined;
 
   const title = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -27,6 +31,12 @@ const TargetReleaseTooltip: React.FC<TargetReleaseTooltipProps> = ({ origin, fal
         <TargetReleaseIcon origin={origin} fontSize='inherit' />
         <span>{getTargetOriginLabel(origin)}</span>
       </Box>
+      {status && (
+        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+          <DeviceUpdateStatusIcon status={status} fontSize='inherit' />
+          <span>{statusLabel}</span>
+        </Box>
+      )}
       <Box sx={{ fontSize: '0.7rem' }}>{detailLine}</Box>
     </Box>
   );

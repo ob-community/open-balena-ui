@@ -6,7 +6,7 @@ WORKDIR /usr/src/app
 COPY ./package.json ./
 COPY ./package-lock.json ./
 
-RUN npm install --no-fund --no-update-notifier --no-audit \
+RUN npm ci --omit=dev --no-fund --no-update-notifier --no-audit \
     && npm cache clean --force
 
 FROM base AS builder
@@ -20,7 +20,7 @@ COPY ./tsconfig*.json ./
 COPY ./vite.config.mts ./
 COPY ./types.d.ts ./
 
-RUN NODE_ENV=development npm install --no-fund --no-update-notifier --no-audit \
+RUN NODE_ENV=development npm ci --include=dev --no-fund --no-update-notifier --no-audit \
     && npm cache clean --force \
     && npm run build
 

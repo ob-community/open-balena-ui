@@ -41,7 +41,7 @@ export const convertToListFilters = (filters: DeviceFilterState): Record<string,
   const listFilters: Record<string, unknown> = {};
 
   if (filters.onlineStatus !== 'all') {
-    listFilters['api heartbeat state@eq'] = filters.onlineStatus;
+    listFilters['is connected to vpn@eq'] = filters.onlineStatus === 'online';
   }
 
   if (filters.deviceTypeId !== null) {
@@ -78,7 +78,13 @@ export const hasActiveStructuredFilters = (filters: DeviceFilterState): boolean 
 
 // Helper to derive structured filters from react-admin's filterValues
 export const deriveStructuredFilters = (filterValues: Record<string, unknown>): DeviceFilterState => {
-  const onlineStatus = (filterValues['api heartbeat state@eq'] as string) || 'all';
+  const vpnStatus = filterValues['is connected to vpn@eq'];
+  const onlineStatus =
+    vpnStatus === true || vpnStatus === 'true'
+      ? 'online'
+      : vpnStatus === false || vpnStatus === 'false'
+        ? 'offline'
+        : 'all';
   const deviceTypeId = toOptionalNumber(filterValues['is of-device type@eq']);
   const fleetId = toOptionalNumber(filterValues['belongs to-application@eq']);
 
@@ -121,7 +127,7 @@ interface DeviceStructuredFilterProps {
 }
 
 const STRUCTURED_FILTER_KEYS = [
-  'api heartbeat state@eq',
+  'is connected to vpn@eq',
   'is of-device type@eq',
   'belongs to-application@eq',
   'is running-release@in',

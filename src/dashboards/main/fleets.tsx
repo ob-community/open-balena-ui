@@ -142,7 +142,7 @@ export const FleetCards: React.FC = () => (
                                   source='id'
                                   reference='device'
                                   target='belongs to-application'
-                                  filter={{ 'api heartbeat state': 'online' }}
+                                  filter={{ 'is connected to vpn': true }}
                                 />{' '}
                                 /{' '}
                                 <ReferenceManyCount

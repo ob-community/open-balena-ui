@@ -55,7 +55,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vercel/ncc": "^0.38.3",
-    "@vitejs/plugin-react-swc": "^4.1.0",
+    "@vitejs/plugin-react-swc": "^4.2.1",
     "eslint-config-react-app": "^7.0.1",
     "prettier": "^3.6.2",
     "tsx": "^4.19.2",

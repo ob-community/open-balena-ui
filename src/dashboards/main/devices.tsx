@@ -111,7 +111,7 @@ export const DeviceCards: React.FC = () => (
                             <TableRow>
                               <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
                               <TableCell align='right'>
-                                <OnlineField record={record} source='api heartbeat state' />
+                                <OnlineField record={record} />
                               </TableCell>
                             </TableRow>
                             <TableRow>

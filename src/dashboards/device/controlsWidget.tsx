@@ -37,6 +37,8 @@ type DeviceRecord = RaRecord & {
   'uuid': string;
   'device name': string;
   'api heartbeat state'?: string;
+  'is online'?: boolean;
+  'is connected to vpn'?: boolean;
 };
 
 const ControlsWidget: React.FC = () => {
@@ -110,14 +112,14 @@ const ControlsWidget: React.FC = () => {
 
         <p style={{ margin: 0 }}>
           <b>Status: </b>
-          <OnlineField source='api heartbeat state' />
+          <OnlineField />
         </p>
       </Box>
 
       <CardActions sx={styles.actionCard}>
         <FunctionField
           render={(fieldRecord: DeviceRecord) => {
-            const isOffline = fieldRecord['api heartbeat state'] !== 'online';
+            const vpnDisconnected = fieldRecord['is connected to vpn'] !== true;
 
             return (
               <>
@@ -128,7 +130,7 @@ const ControlsWidget: React.FC = () => {
                   size='medium'
                   onClick={() => invokeSupervisor(fieldRecord, 'blink')}
                   startIcon={<LightModeIcon />}
-                  disabled={isOffline}
+                  disabled={vpnDisconnected}
                 >
                   Blink
                 </Button>
@@ -137,7 +139,7 @@ const ControlsWidget: React.FC = () => {
                   variant='outlined'
                   size='medium'
                   startIcon={<RestartAltIcon />}
-                  disabled={isOffline}
+                  disabled={vpnDisconnected}
                   onClick={() => {
                     setConfirmationDialog({
                       title: 'Reboot Device',
@@ -153,7 +155,7 @@ const ControlsWidget: React.FC = () => {
                   variant='outlined'
                   size='medium'
                   startIcon={<PowerSettingsNewIcon />}
-                  disabled={isOffline}
+                  disabled={vpnDisconnected}
                   onClick={() => {
                     setConfirmationDialog({
                       title: 'Shutdown Device',

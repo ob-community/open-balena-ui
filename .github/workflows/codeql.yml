@@ -1,66 +1,62 @@
 name: CodeQL
 
+# Run security analysis for changes to main, pull requests targeting main,
+# and once a week to catch findings introduced by updated CodeQL queries.
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
   schedule:
+    # Mondays at 11:27 UTC.
     - cron: "27 11 * * 1"
+
+# CodeQL needs read access to the repository and permission to upload
+# its findings to GitHub's code-scanning results.
+permissions:
+  contents: read
+  actions: read
+  security-events: write
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
 
-    permissions:
-      security-events: write
-      contents: read
-      actions: read
-
     strategy:
+      # A failure while scanning one language should not prevent the other
+      # language from being analyzed.
       fail-fast: false
       matrix:
         language:
+          # Analyze the application's JavaScript and TypeScript source.
           - javascript-typescript
+
+          # Analyze GitHub Actions workflows in .github/workflows for
+          # Actions-specific security issues.
           - actions
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          submodules: true
+        uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+
+          # JavaScript, TypeScript, and GitHub Actions do not require a
+          # compilation step for CodeQL extraction. In particular, there is
+          # no need to run npm ci, npm build, or build the Docker image here.
           build-mode: none
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          provenance: false
-          tags: codeql-scan:latest
+          # Run GitHub's extended security suite. It includes the default
+          # high-confidence queries plus additional security queries that
+          # may find more issues at the cost of some extra noise.
+          queries: security-extended
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
+          # Keep results from each matrix job in a separate CodeQL category.
           category: "/language:${{ matrix.language }}"

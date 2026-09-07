@@ -2,7 +2,6 @@
 
 import queryString from 'query-string';
 import { fetchUtils } from 'ra-core';
-import { compareDeviceConnectivity } from '../lib/deviceStatus';
 
 function parseFilters(filter, defaultListOp) {
   let result = {};
@@ -147,7 +146,12 @@ const getOrderBy = (field, order, primaryKey) => {
   }
 
   if (field === 'connectivity') {
-    return `id.${direction}`;
+    return [
+      `is connected to vpn.${direction}.nullslast`,
+      `last vpn event.${direction}.nullslast`,
+      `last connectivity event.${direction}.nullslast`,
+      'device name.asc',
+    ].join(',');
   }
 
   if (field === 'id') {
@@ -170,7 +174,6 @@ export const postgrestDataProvider = (
 
     const { page, perPage } = params.pagination;
     const { field, order } = params.sort;
-    const isConnectivitySort = resource === 'device' && field === 'connectivity';
     const ftsFilter = {};
     const ftsIdx = Object.keys(params.filter).findIndex((x) => x.includes('#'));
     if (ftsIdx !== -1) {
@@ -184,9 +187,9 @@ export const postgrestDataProvider = (
     }
     const parsedFilter = parseFilters(params.filter, defaultListOp);
     const query: Record<string, unknown> = {
-      order: isConnectivitySort ? 'id.asc' : getOrderBy(field, order, primaryKey),
-      offset: isConnectivitySort ? 0 : (page - 1) * perPage,
-      limit: isConnectivitySort ? 10000 : perPage,
+      order: getOrderBy(field, order, primaryKey),
+      offset: (page - 1) * perPage,
+      limit: perPage,
       // append filters
       ...parsedFilter,
     };
@@ -220,13 +223,9 @@ export const postgrestDataProvider = (
         throw new Error('Missing content-range header in response');
       }
 
-      const total = parseInt(contentRange.split('/').pop() ?? '0', 10);
-      const data = json.map((obj) => dataWithId(obj, primaryKey));
-      const sortedData = isConnectivitySort ? data.sort((a, b) => compareDeviceConnectivity(a, b, order)) : data;
-
       return {
-        data: isConnectivitySort ? sortedData.slice((page - 1) * perPage, page * perPage) : sortedData,
-        total,
+        data: json.map((obj) => dataWithId(obj, primaryKey)),
+        total: parseInt(contentRange.split('/').pop() ?? '0', 10),
       };
     });
   },

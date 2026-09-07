@@ -285,9 +285,14 @@ export const DeviceLogs: React.FC = () => {
       >
         {content.map((entry, index) => {
           const color = entry.isStdErr ? logsErrorColor : entry.isSystem ? logsWarningColor : logsTextColor;
+          const parsedTimestamp = new Date(entry.timestamp);
+          const timestamp = Number.isNaN(parsedTimestamp.getTime()) ? entry.timestamp : parsedTimestamp.toISOString();
 
           return (
             <Box component='div' key={`${entry.timestamp}-${index}`}>
+              <Box component='span' sx={{ color: logsTextColor }}>
+                [{timestamp}]{' '}
+              </Box>
               <Box component='span' sx={{ color }}>
                 {entry.message}
               </Box>

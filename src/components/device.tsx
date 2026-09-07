@@ -60,10 +60,11 @@ const deviceStatusRefreshInterval = 30000;
 
 const transformDevice = (data: Record<string, any>) => {
   const transformed = { ...data };
-  delete transformed['should be running-release'];
   if (isLegacyPinning) {
     transformed['should track latest release'] =
       transformed[isPinnedOnRelease] === undefined || transformed[isPinnedOnRelease] === null;
+  } else {
+    delete transformed['should be running-release'];
   }
   return transformed;
 };
@@ -122,11 +123,7 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
         const statusSinceLabel = statusSince ? `Since ${dateFormat(statusSince)}` : '';
 
         return (
-          <Tooltip
-            placement='top'
-            arrow={true}
-            title={statusSinceLabel}
-          >
+          <Tooltip placement='top' arrow={true} title={statusSinceLabel}>
             <strong style={{ color: statusColor }}>{status}</strong>
           </Tooltip>
         );
@@ -139,21 +136,15 @@ export const LastOnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> 
   <FunctionField
     {...props}
     render={(record) => {
-      const isOnline = record['api heartbeat state'] === 'online';
-      const referenceDate = parseDeviceDate(
-        record[isOnline ? 'changed api heartbeat state on-date' : 'last connectivity event'],
-      );
+      const isOnline = record['is connected to vpn'] === true;
+      const referenceDate = parseDeviceDate(record[isOnline ? 'last vpn event' : 'last connectivity event']);
 
       if (!referenceDate) {
         return isOnline ? '—' : 'Never online';
       }
 
       return (
-        <ElapsedTime
-          referenceDate={referenceDate}
-          prefix={isOnline ? 'Up ' : ''}
-          suffix={isOnline ? '' : ' ago'}
-        />
+        <ElapsedTime referenceDate={referenceDate} prefix={isOnline ? 'Up ' : ''} suffix={isOnline ? '' : ' ago'} />
       );
     }}
   />
@@ -236,7 +227,7 @@ const ReleaseFieldContent: React.FC<{
   const isUpdating = deviceUpdateReported || isDeviceUpdating(record, updatingImageInstalls);
   const updateStatus = isUpToDate ? undefined : isUpdating ? 'updating' : 'outdated';
   const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
-  const isOnline = record['api heartbeat state'] === 'online';
+  const isOnline = record['is connected to vpn'] === true;
   const updateStatusColor =
     updateStatus === 'updating'
       ? theme.palette.info.main
@@ -332,7 +323,7 @@ const DeviceListActions = () => (
           },
         },
         // Hide original text - the text is directly in the button
-        fontSize: 0,
+        'fontSize': 0,
         '&::after': {
           content: '"Save Filters"',
           fontSize: '0.8125rem',
@@ -405,7 +396,11 @@ export const DeviceCreate: React.FC = () => {
   };
 
   return (
-    <Create title='Create Device' transform={async (data) => transformDevice(await createDevice(data))} mutationOptions={{ onSuccess }}>
+    <Create
+      title='Create Device'
+      transform={async (data) => transformDevice(await createDevice(data))}
+      mutationOptions={{ onSuccess }}
+    >
       <SimpleForm>
         <Row>
           <TextInput

@@ -20,9 +20,7 @@ const LinearProgressWithLabel: React.FC<
 
   return (
     <Box sx={{ mb: 2.75, mx: '10px', display: 'flex', alignItems: 'center' }} style={style}>
-      <Box sx={{ flex: 1, minWidth: '3em' }}>
-        {label}
-      </Box>
+      <Box sx={{ flex: 1, minWidth: '3em' }}>{label}</Box>
       <Box sx={{ flex: 10, minWidth: '12em', mr: 1, ml: 2 }}>
         <LinearProgress variant='determinate' color='secondary' value={offline ? 0 : value} {...progressProps} />
       </Box>
@@ -40,7 +38,7 @@ const UsageWidget = () => {
 
   if (!record) return null;
 
-  const offline = record['api heartbeat state'] !== 'online';
+  const offline = record['is connected to vpn'] !== true;
 
   return (
     <>

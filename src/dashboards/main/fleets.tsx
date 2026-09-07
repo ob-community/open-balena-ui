@@ -58,11 +58,11 @@ const LatestFleetReleaseVersion: React.FC<{ fleetId: string | number }> = ({ fle
 const FleetReleaseVersion: React.FC<{ record: Record<string, any> }> = ({ record }) => {
   const { targetReleaseId } = resolveFleetTargetRelease({ record, pinField: isPinnedOnRelease });
   const hasTargetRelease = targetReleaseId !== undefined && targetReleaseId !== null;
-  const { data: targetRelease, isPending, isError } = useGetOne(
-    'release',
-    { id: hasTargetRelease ? targetReleaseId : '' },
-    { enabled: hasTargetRelease },
-  );
+  const {
+    data: targetRelease,
+    isPending,
+    isError,
+  } = useGetOne('release', { id: hasTargetRelease ? targetReleaseId : '' }, { enabled: hasTargetRelease });
 
   if (!hasTargetRelease) {
     return <LatestFleetReleaseVersion fleetId={record.id} />;
@@ -96,9 +96,7 @@ export const FleetCards: React.FC = () => (
                       <CardHeader
                         title={
                           <Tooltip title={record['app name']}>
-                            <Link to={`/application/${record.id}/show`}>
-                              {record['app name']}
-                            </Link>
+                            <Link to={`/application/${record.id}/show`}>{record['app name']}</Link>
                           </Tooltip>
                         }
                         sx={{ fontWeight: 'bold', height: '45px' }}
@@ -158,7 +156,7 @@ export const FleetCards: React.FC = () => (
                             <TableRow>
                               <TableCell sx={{ fontWeight: 'bold' }}>Following pin</TableCell>
                               <TableCell align='right'>
-                                {record[isPinnedOnRelease] ? (
+                                {record['should be running-release'] ? (
                                   <ReferenceManyCount
                                     record={record}
                                     source='id'

@@ -37,9 +37,10 @@ type DeviceRecord = RaRecord & {
   'uuid': string;
   'device name': string;
   'api heartbeat state'?: string;
+  'is connected to vpn'?: boolean;
   'last connectivity event'?: string;
   'changed api heartbeat state on-date'?: string;
-  note?: string;
+  'note'?: string;
 };
 
 const ControlsWidget: React.FC = () => {
@@ -116,7 +117,7 @@ const ControlsWidget: React.FC = () => {
           <OnlineField source='api heartbeat state' />
         </p>
 
-        {record['api heartbeat state'] !== 'online' && (
+        {record['is connected to vpn'] !== true && (
           <p style={{ margin: '4px 0 0' }}>
             <b>Last online: </b>
             <LastOnlineField source='last connectivity event' />
@@ -134,7 +135,7 @@ const ControlsWidget: React.FC = () => {
       <CardActions sx={styles.actionCard}>
         <FunctionField
           render={(fieldRecord: DeviceRecord) => {
-            const isOffline = fieldRecord['api heartbeat state'] !== 'online';
+            const isOffline = fieldRecord['is connected to vpn'] !== true;
 
             return (
               <>

@@ -128,11 +128,6 @@ const getTargetVersion = (version?: string): string => {
 };
 
 const resource = (resourceKey: string, version?: string): string => {
-  if (resourceKey === 'isPinnedOnRelease') {
-    const apiGeneration = version?.replace(/^v/i, '').split('.')[0];
-    return apiGeneration === '6' ? 'should be running-release' : 'is pinned on-release';
-  }
-
   const targetVer = getTargetVersion(version);
   const mapping = versions[targetVer];
 

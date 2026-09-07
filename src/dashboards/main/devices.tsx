@@ -29,16 +29,11 @@ import CopyChip from '../../ui/CopyChip';
 import { getSemver } from '../../ui/SemVerChip';
 import versions from '../../versions';
 import environment from '../../lib/reactAppEnv';
-import { compareDeviceConnectivity } from '../../lib/deviceStatus';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const deviceStatusRefreshInterval = 30000;
 
 const deviceCardFilters = [<SearchInput source='#uuid,device name,status@ilike' alwaysOn />];
-
-function sortDevicesByConnectivity<T extends Record<string, any>>(devices: T[]): T[] {
-  return [...devices].sort((first, second) => compareDeviceConnectivity(first, second));
-}
 
 export const DeviceCards: React.FC = () => (
   <ResourceContextProvider value='device'>
@@ -51,10 +46,7 @@ export const DeviceCards: React.FC = () => (
       title=' '
     >
       <WithListContext
-        render={({ data }) => {
-          const sortedData = sortDevicesByConnectivity(data ?? []);
-
-          return (
+        render={({ data }) => (
           <Card sx={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
             <CardHeader title='Devices' />
             <CardContent sx={{ minHeight: 225, overflow: 'auto', flex: '1', p: 0 }}>
@@ -72,7 +64,7 @@ export const DeviceCards: React.FC = () => (
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {sortedData.map((record, index) => (
+                  {data?.map((record, index) => (
                     <TableRow key={record.id ?? index} hover>
                       <TableCell sx={{ maxWidth: 150 }}>
                         <Tooltip title={record['device name'] ?? ''}>
@@ -181,8 +173,7 @@ export const DeviceCards: React.FC = () => (
               </Table>
             </CardContent>
           </Card>
-          );
-        }}
+        )}
       />
     </List>
   </ResourceContextProvider>

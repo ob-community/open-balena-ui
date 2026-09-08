@@ -329,7 +329,7 @@ export const FleetEdit: React.FC = () => {
             !formData['should track latest release'] && (
               <ReferenceInput
                 label='Target Release'
-                source='should be running-release'
+                source={isPinnedOnRelease}
                 reference='release'
                 target='id'
                 filter={{ 'belongs to-application': fleetId }}

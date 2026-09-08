@@ -4,6 +4,9 @@ import * as React from 'react';
 import { useListContext } from 'react-admin';
 import DeviceFilterModal, { DeviceFilterState } from './DeviceFilterModal';
 import ActiveFilterChips from './ActiveFilterChips';
+import { deviceOnlineStatusField, getDeviceOnlineFilterValue, parseDeviceOnlineFilterValue } from '../lib/deviceStatus';
+
+const onlineStatusFilter = `${deviceOnlineStatusField}@eq`;
 
 // Custom filter button component
 const DeviceFilterButton: React.FC<{
@@ -24,6 +27,30 @@ const DeviceFilterButton: React.FC<{
   );
 };
 
+const OnlineOnlyButton: React.FC = () => {
+  const { filterValues, setFilters } = useListContext();
+  const onlineValue = getDeviceOnlineFilterValue(true);
+  const onlineOnly = parseDeviceOnlineFilterValue(filterValues?.[onlineStatusFilter]) === true;
+
+  const toggleOnlineOnly = () => {
+    const nextFilters = { ...filterValues };
+
+    if (onlineOnly) {
+      delete nextFilters[onlineStatusFilter];
+    } else {
+      nextFilters[onlineStatusFilter] = onlineValue;
+    }
+
+    setFilters(nextFilters);
+  };
+
+  return (
+    <Button variant={onlineOnly ? 'contained' : 'outlined'} size='small' onClick={toggleOnlineOnly}>
+      Online only
+    </Button>
+  );
+};
+
 // Helper to safely coerce potentially string IDs into numbers
 const toOptionalNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') {
@@ -33,15 +60,14 @@ const toOptionalNumber = (value: unknown): number | null => {
   return Number.isNaN(n) ? null : n;
 };
 
-const getNonNullReleaseIds = (ids: Array<number | null>): number[] =>
-  ids.filter((id): id is number => id !== null);
+const getNonNullReleaseIds = (ids: Array<number | null>): number[] => ids.filter((id): id is number => id !== null);
 
 // Helper to convert DeviceFilterState to react-admin filter object
 export const convertToListFilters = (filters: DeviceFilterState): Record<string, unknown> => {
   const listFilters: Record<string, unknown> = {};
 
   if (filters.onlineStatus !== 'all') {
-    listFilters['api heartbeat state@eq'] = filters.onlineStatus;
+    listFilters[onlineStatusFilter] = getDeviceOnlineFilterValue(filters.onlineStatus === 'online');
   }
 
   if (filters.deviceTypeId !== null) {
@@ -78,7 +104,8 @@ export const hasActiveStructuredFilters = (filters: DeviceFilterState): boolean 
 
 // Helper to derive structured filters from react-admin's filterValues
 export const deriveStructuredFilters = (filterValues: Record<string, unknown>): DeviceFilterState => {
-  const onlineStatus = (filterValues['api heartbeat state@eq'] as string) || 'all';
+  const online = parseDeviceOnlineFilterValue(filterValues[onlineStatusFilter]);
+  const onlineStatus = online === undefined ? 'all' : online ? 'online' : 'offline';
   const deviceTypeId = toOptionalNumber(filterValues['is of-device type@eq']);
   const fleetId = toOptionalNumber(filterValues['belongs to-application@eq']);
 
@@ -89,19 +116,14 @@ export const deriveStructuredFilters = (filterValues: Record<string, unknown>): 
 
   if (typeof releaseFilter === 'string') {
     const trimmed = releaseFilter.trim();
-    const inner =
-      trimmed.startsWith('(') && trimmed.endsWith(')')
-        ? trimmed.slice(1, -1)
-        : trimmed;
+    const inner = trimmed.startsWith('(') && trimmed.endsWith(')') ? trimmed.slice(1, -1) : trimmed;
 
     releaseIds = inner
       .split(',')
       .map((id) => Number(id.trim()))
       .filter((id) => !Number.isNaN(id));
   } else if (Array.isArray(releaseFilter)) {
-    releaseIds = releaseFilter
-      .map((id) => Number(id))
-      .filter((id) => !Number.isNaN(id));
+    releaseIds = releaseFilter.map((id) => Number(id)).filter((id) => !Number.isNaN(id));
   }
 
   const osVersion = (filterValues['os version@ilike'] as string) || '';
@@ -121,7 +143,7 @@ interface DeviceStructuredFilterProps {
 }
 
 const STRUCTURED_FILTER_KEYS = [
-  'api heartbeat state@eq',
+  onlineStatusFilter,
   'is of-device type@eq',
   'belongs to-application@eq',
   'is running-release@in',
@@ -154,7 +176,7 @@ const DeviceStructuredFilter: React.FC<DeviceStructuredFilterProps> = ({
 
       setFilters(nextFilters, undefined, false);
     },
-    [filterValues, setFilters]
+    [filterValues, setFilters],
   );
 
   const handleRemoveFilter = React.useCallback(
@@ -182,13 +204,14 @@ const DeviceStructuredFilter: React.FC<DeviceStructuredFilterProps> = ({
 
       handleApplyFilters(updatedFilters);
     },
-    [structuredFilters, handleApplyFilters]
+    [structuredFilters, handleApplyFilters],
   );
 
   const hasActiveFilters = hasActiveStructuredFilters(structuredFilters);
 
   return (
     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+      <OnlineOnlyButton />
       <DeviceFilterButton onClick={() => setIsFilterModalOpen(true)} hasActiveFilters={hasActiveFilters} />
       {hasActiveFilters && <ActiveFilterChips filters={structuredFilters} onRemoveFilter={handleRemoveFilter} />}
       <DeviceFilterModal
@@ -202,4 +225,3 @@ const DeviceStructuredFilter: React.FC<DeviceStructuredFilterProps> = ({
 };
 
 export default DeviceStructuredFilter;
-

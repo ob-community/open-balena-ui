@@ -2,6 +2,7 @@
 
 import queryString from 'query-string';
 import { fetchUtils } from 'ra-core';
+import { deviceOnlineStatusField, usesVpnOnlineStatus } from '../lib/deviceStatus';
 
 function parseFilters(filter, defaultListOp) {
   let result = {};
@@ -136,10 +137,29 @@ const getKeyData = (primaryKey, data) => {
 };
 
 const getOrderBy = (field, order, primaryKey) => {
+  const nullsLast = field === 'last connectivity event' ? '.nullslast' : '';
+  const direction = order.toLowerCase();
+
+  if (field === 'version') {
+    return ['semver major', 'semver minor', 'semver patch', 'semver revision']
+      .map((versionField) => `${versionField}.${direction}`)
+      .join(',');
+  }
+
+  if (field === 'connectivity') {
+    const onlineTimestampField = usesVpnOnlineStatus ? 'last vpn event' : 'changed api heartbeat state on-date';
+    return [
+      `${deviceOnlineStatusField}.${direction}.nullslast`,
+      `${onlineTimestampField}.${direction}.nullslast`,
+      `last connectivity event.${direction}.nullslast`,
+      'device name.asc',
+    ].join(',');
+  }
+
   if (field === 'id') {
-    return primaryKey.map((key) => `${key}.${order.toLowerCase()}`).join(',');
+    return primaryKey.map((key) => `${key}.${direction}`).join(',');
   } else {
-    return `${field}.${order.toLowerCase()}`;
+    return `${field}.${direction}${nullsLast}`;
   }
 };
 

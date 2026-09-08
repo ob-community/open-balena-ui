@@ -107,7 +107,7 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
     setState((state) => ({ [parent]: !state[parent] }));
   };
 
-  const isParent = (resource) => !!resource?.options?.isMenuParent;
+  const isParent = (resource) => !!resource?.options?.isMenuParent && !resource?.options?.hideFromMenu;
 
   const isOrphan = (resource) =>
     !resource?.options?.hasOwnProperty?.('menuParent') && !resource?.options?.hasOwnProperty?.('isMenuParent');
@@ -166,13 +166,20 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
         sidebarIsOpen={open}
         name={getPrimaryTextForResource(parentResource)}
         icon={parentResource.icon ? <parentResource.icon /> : <LabelIcon />}
+        to={parentResource.options?.menuRoute}
+        onMenuClick={onMenuClick}
         dense={dense}
         setMenuColors={false}
       >
         {
           // eslint-disable-next-line
           resources
-            .filter((resource) => isChildOfParent(resource, parentResource) && hasList(resource))
+            .filter(
+              (resource) =>
+                isChildOfParent(resource, parentResource) &&
+                hasList(resource) &&
+                !parentResource.options?.hideChildren,
+            )
             .map((childResource) => {
               return MenuItem(childResource);
             })

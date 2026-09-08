@@ -4,6 +4,9 @@ import * as React from 'react';
 import { useListContext } from 'react-admin';
 import DeviceFilterModal, { DeviceFilterState } from './DeviceFilterModal';
 import ActiveFilterChips from './ActiveFilterChips';
+import { deviceOnlineStatusField, getDeviceOnlineFilterValue, parseDeviceOnlineFilterValue } from '../lib/deviceStatus';
+
+const onlineStatusFilter = `${deviceOnlineStatusField}@eq`;
 
 // Custom filter button component
 const DeviceFilterButton: React.FC<{
@@ -26,8 +29,8 @@ const DeviceFilterButton: React.FC<{
 
 const OnlineOnlyButton: React.FC = () => {
   const { filterValues, setFilters } = useListContext();
-  const onlineStatusFilter = 'is connected to vpn@eq';
-  const onlineOnly = filterValues?.[onlineStatusFilter] === true || filterValues?.[onlineStatusFilter] === 'true';
+  const onlineValue = getDeviceOnlineFilterValue(true);
+  const onlineOnly = parseDeviceOnlineFilterValue(filterValues?.[onlineStatusFilter]) === true;
 
   const toggleOnlineOnly = () => {
     const nextFilters = { ...filterValues };
@@ -35,7 +38,7 @@ const OnlineOnlyButton: React.FC = () => {
     if (onlineOnly) {
       delete nextFilters[onlineStatusFilter];
     } else {
-      nextFilters[onlineStatusFilter] = true;
+      nextFilters[onlineStatusFilter] = onlineValue;
     }
 
     setFilters(nextFilters);
@@ -64,7 +67,7 @@ export const convertToListFilters = (filters: DeviceFilterState): Record<string,
   const listFilters: Record<string, unknown> = {};
 
   if (filters.onlineStatus !== 'all') {
-    listFilters['is connected to vpn@eq'] = filters.onlineStatus === 'online';
+    listFilters[onlineStatusFilter] = getDeviceOnlineFilterValue(filters.onlineStatus === 'online');
   }
 
   if (filters.deviceTypeId !== null) {
@@ -101,13 +104,8 @@ export const hasActiveStructuredFilters = (filters: DeviceFilterState): boolean 
 
 // Helper to derive structured filters from react-admin's filterValues
 export const deriveStructuredFilters = (filterValues: Record<string, unknown>): DeviceFilterState => {
-  const vpnStatus = filterValues['is connected to vpn@eq'];
-  const onlineStatus =
-    vpnStatus === true || vpnStatus === 'true'
-      ? 'online'
-      : vpnStatus === false || vpnStatus === 'false'
-        ? 'offline'
-        : 'all';
+  const online = parseDeviceOnlineFilterValue(filterValues[onlineStatusFilter]);
+  const onlineStatus = online === undefined ? 'all' : online ? 'online' : 'offline';
   const deviceTypeId = toOptionalNumber(filterValues['is of-device type@eq']);
   const fleetId = toOptionalNumber(filterValues['belongs to-application@eq']);
 
@@ -145,7 +143,7 @@ interface DeviceStructuredFilterProps {
 }
 
 const STRUCTURED_FILTER_KEYS = [
-  'is connected to vpn@eq',
+  onlineStatusFilter,
   'is of-device type@eq',
   'belongs to-application@eq',
   'is running-release@in',

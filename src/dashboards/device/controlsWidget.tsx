@@ -17,6 +17,7 @@ import utf8decode from '../../lib/utf8decode';
 import environment from '../../lib/reactAppEnv';
 import { ConfirmationDialog, type ConfirmationDialogProps } from '../../ui/ConfirmationDialog';
 import type { RaRecord } from 'react-admin';
+import { deviceOnlineStatusField, isDeviceOnline } from '../../lib/deviceStatus';
 
 const styles = {
   actionCard: {
@@ -114,10 +115,10 @@ const ControlsWidget: React.FC = () => {
 
         <p style={{ margin: 0 }}>
           <b>Status: </b>
-          <OnlineField source='api heartbeat state' />
+          <OnlineField source={deviceOnlineStatusField} />
         </p>
 
-        {record['is connected to vpn'] !== true && (
+        {!isDeviceOnline(record) && (
           <p style={{ margin: '4px 0 0' }}>
             <b>Last online: </b>
             <LastOnlineField source='last connectivity event' />

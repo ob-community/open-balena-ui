@@ -11,10 +11,15 @@ const versions: Record<string, VersionMapping> = {
     resources: {
       isPinnedOnRelease: 'should be running-release',
     },
-    fields: {},
+    fields: {
+      // Before API v45, the UI's "online" filter is based on
+      // the device heartbeat state.
+      deviceOnlineStatus: 'api heartbeat state',
+    },
     translations: {},
   },
 };
+
 versions['0.149.0'] = {
   resources: {
     ...versions['0.139.0'].resources,
@@ -33,6 +38,7 @@ versions['0.149.0'] = {
     ...versions['0.139.0'].translations,
   },
 };
+
 versions['0.157.3'] = {
   resources: {
     ...versions['0.149.0'].resources,
@@ -98,10 +104,12 @@ versions['0.185.0'] = {
   },
 };
 
-// API v7 uses a separate writable device pin field.
-versions['7.0.0'] = {
+versions['25.2.8'] = {
   resources: {
     ...versions['0.185.0'].resources,
+
+    // v25.2.8 removes the old writable
+    // device.should_be_running__release relationship.
     isPinnedOnRelease: 'is pinned on-release',
   },
   fields: {
@@ -109,6 +117,22 @@ versions['7.0.0'] = {
   },
   translations: {
     ...versions['0.185.0'].translations,
+  },
+};
+
+versions['45.0.0'] = {
+  resources: {
+    ...versions['25.2.8'].resources,
+  },
+  fields: {
+    ...versions['25.2.8'].fields,
+
+    // v45 switches the canonical connectivity/online semantics
+    // from the heartbeat-based state to VPN connectivity.
+    deviceOnlineStatus: 'is connected to vpn',
+  },
+  translations: {
+    ...versions['25.2.8'].translations,
   },
 };
 

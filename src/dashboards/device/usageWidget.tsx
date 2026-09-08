@@ -1,6 +1,7 @@
 import { Box, LinearProgress, Tooltip } from '@mui/material';
 import * as React from 'react';
 import { LinearProgressProps, useRecordContext } from 'react-admin';
+import { isDeviceOnline } from '../../lib/deviceStatus';
 
 const LinearProgressWithLabel: React.FC<
   LinearProgressProps & {
@@ -38,7 +39,7 @@ const UsageWidget = () => {
 
   if (!record) return null;
 
-  const offline = record['is connected to vpn'] !== true;
+  const offline = !isDeviceOnline(record);
 
   return (
     <>

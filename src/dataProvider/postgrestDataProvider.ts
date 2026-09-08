@@ -2,6 +2,7 @@
 
 import queryString from 'query-string';
 import { fetchUtils } from 'ra-core';
+import { deviceOnlineStatusField, usesVpnOnlineStatus } from '../lib/deviceStatus';
 
 function parseFilters(filter, defaultListOp) {
   let result = {};
@@ -146,9 +147,10 @@ const getOrderBy = (field, order, primaryKey) => {
   }
 
   if (field === 'connectivity') {
+    const onlineTimestampField = usesVpnOnlineStatus ? 'last vpn event' : 'changed api heartbeat state on-date';
     return [
-      `is connected to vpn.${direction}.nullslast`,
-      `last vpn event.${direction}.nullslast`,
+      `${deviceOnlineStatusField}.${direction}.nullslast`,
+      `${onlineTimestampField}.${direction}.nullslast`,
       `last connectivity event.${direction}.nullslast`,
       'device name.asc',
     ].join(',');

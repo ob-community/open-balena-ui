@@ -29,6 +29,7 @@ import CopyChip from '../../ui/CopyChip';
 import { getSemver } from '../../ui/SemVerChip';
 import versions from '../../versions';
 import environment from '../../lib/reactAppEnv';
+import { deviceOnlineStatusField } from '../../lib/deviceStatus';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const deviceStatusRefreshInterval = 30000;
@@ -103,7 +104,7 @@ export const DeviceCards: React.FC = () => (
                         <CopyChip title={record.uuid} label={record.uuid.substring(0, 8)} />
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        <OnlineField record={record} source='api heartbeat state' />
+                        <OnlineField record={record} source={deviceOnlineStatusField} />
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         <LastOnlineField record={record} />

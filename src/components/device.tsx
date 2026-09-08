@@ -51,23 +51,15 @@ import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
 import DeviceUpdateStatusIcon from '../ui/DeviceUpdateStatusIcon';
-import { isDeviceUpdating } from '../lib/deviceStatus';
+import {
+  deviceOnlineStatusField,
+  getDeviceStatusTimestamp,
+  isDeviceOnline,
+  isDeviceUpdating,
+} from '../lib/deviceStatus';
 
-// Select the writable device pin field for the configured API generation
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
-const isLegacyPinning = isPinnedOnRelease === 'should be running-release';
 const deviceStatusRefreshInterval = 30000;
-
-const transformDevice = (data: Record<string, any>) => {
-  const transformed = { ...data };
-  if (isLegacyPinning) {
-    transformed['should track latest release'] =
-      transformed[isPinnedOnRelease] === undefined || transformed[isPinnedOnRelease] === null;
-  } else {
-    delete transformed['should be running-release'];
-  }
-  return transformed;
-};
 
 const parseDeviceDate = (value: unknown): Date | null => {
   if (value === null || value === undefined || value === '') {
@@ -110,15 +102,16 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
         if (!source) {
           return null;
         }
-        const isVpnConnected = record['is connected to vpn'] === true;
-        const isAgentOnline = record[source] === 'online';
-        const status = isVpnConnected ? 'Online' : isAgentOnline ? 'NO VPN' : 'Offline';
-        const statusColor = isVpnConnected
+        const online = isDeviceOnline(record);
+        const heartbeatOnline = record['api heartbeat state'] === 'online';
+        const noVpn = !online && heartbeatOnline && record['is connected to vpn'] !== true;
+        const status = online ? 'Online' : noVpn ? 'NO VPN' : 'Offline';
+        const statusColor = online
           ? theme.palette.success.light
-          : isAgentOnline
+          : noVpn
             ? theme.palette.warning.main
             : theme.palette.error.light;
-        const statusTimestamp = isVpnConnected ? record['last vpn event'] : record['last connectivity event'];
+        const statusTimestamp = getDeviceStatusTimestamp(record);
         const statusSince = parseDeviceDate(statusTimestamp);
         const statusSinceLabel = statusSince ? `Since ${dateFormat(statusSince)}` : '';
 
@@ -136,8 +129,8 @@ export const LastOnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> 
   <FunctionField
     {...props}
     render={(record) => {
-      const isOnline = record['is connected to vpn'] === true;
-      const referenceDate = parseDeviceDate(record[isOnline ? 'last vpn event' : 'last connectivity event']);
+      const isOnline = isDeviceOnline(record);
+      const referenceDate = parseDeviceDate(getDeviceStatusTimestamp(record));
 
       if (!referenceDate) {
         return isOnline ? '—' : 'Never online';
@@ -210,10 +203,9 @@ const ReleaseFieldContent: React.FC<{
     pinField: isPinnedOnRelease,
   });
 
+  const targetField = '__targetReleaseId';
   const augmentedRecord =
-    targetReleaseId !== undefined && targetReleaseId !== record['should be running-release']
-      ? { ...record, ['should be running-release']: targetReleaseId }
-      : record;
+    targetReleaseId !== record[targetField] ? { ...record, [targetField]: targetReleaseId } : record;
 
   const isTrackingLatest = origin === 'latest';
   const currentRelease = record[source];
@@ -227,7 +219,7 @@ const ReleaseFieldContent: React.FC<{
   const isUpdating = deviceUpdateReported || isDeviceUpdating(record, updatingImageInstalls);
   const updateStatus = isUpToDate ? undefined : isUpdating ? 'updating' : 'outdated';
   const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
-  const isOnline = record['is connected to vpn'] === true;
+  const isOnline = isDeviceOnline(record);
   const updateStatusColor =
     updateStatus === 'updating'
       ? theme.palette.info.main
@@ -245,7 +237,7 @@ const ReleaseFieldContent: React.FC<{
 
       {record[source] &&
         (targetReleaseId !== undefined && targetReleaseId !== null ? (
-          <ReferenceField reference='release' target='id' source='should be running-release' link={false}>
+          <ReferenceField reference='release' target='id' source={targetField} link={false}>
             <TargetReleaseTooltip origin={origin} status={updateStatus}>
               <span
                 style={{
@@ -352,13 +344,24 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
           <TextField source='device name' />
         </ReferenceField>
 
-        <OnlineField label='Status' source='api heartbeat state' />
+        <OnlineField label='Status' source={deviceOnlineStatusField} />
 
         <ReleaseField label='Current Release' source='is running-release' />
 
         <ReferenceField label='Fleet' source='belongs to-application' reference='application' target='id'>
           <TextField source='app name' />
         </ReferenceField>
+
+        <ReferenceField label='Device Type' source='is of-device type' reference='device type' target='id' link={false}>
+          <TextField source='slug' />
+        </ReferenceField>
+
+        <FunctionField
+          label='OS'
+          render={(record) =>
+            record['os version'] && record['os variant'] ? `${record['os version']}-${record['os variant']}` : ''
+          }
+        />
 
         <LastOnlineField label='Connectivity' source='last connectivity event' sortable sortBy='connectivity' />
 
@@ -396,11 +399,7 @@ export const DeviceCreate: React.FC = () => {
   };
 
   return (
-    <Create
-      title='Create Device'
-      transform={async (data) => transformDevice(await createDevice(data))}
-      mutationOptions={{ onSuccess }}
-    >
+    <Create title='Create Device' transform={createDevice} mutationOptions={{ onSuccess }}>
       <SimpleForm>
         <Row>
           <TextInput
@@ -481,7 +480,7 @@ export const DeviceEdit: React.FC = () => {
   const modifyDevice = useModifyDevice();
 
   return (
-    <Edit title='Edit Device' actions={false} transform={async (data) => transformDevice(await modifyDevice(data))}>
+    <Edit title='Edit Device' actions={false} transform={modifyDevice}>
       <SimpleForm>
         <Row>
           <TextInput label='UUID' source='uuid' size='large' readOnly={true} />

@@ -41,9 +41,6 @@ import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
-const transformFleet = (data: Record<string, any>) =>
-  data['should track latest release'] ? { ...data, ['should be running-release']: null } : data;
-
 const FleetTargetReleaseCell: React.FC<{ record: Record<string, any> }> = ({ record }) => {
   if (!record) {
     return null;
@@ -239,7 +236,7 @@ export const FleetEdit: React.FC = () => {
   const { id: fleetId } = useParams();
 
   return (
-    <Edit title='Edit Fleet' transform={transformFleet}>
+    <Edit title='Edit Fleet'>
       <SimpleForm toolbar={<CustomToolbar />}>
         <Row>
           <TextInput source='app name' validate={[required(), minLength(4), maxLength(100)]} size='large' />
@@ -332,7 +329,7 @@ export const FleetEdit: React.FC = () => {
             !formData['should track latest release'] && (
               <ReferenceInput
                 label='Target Release'
-                source='should be running-release'
+                source={isPinnedOnRelease}
                 reference='release'
                 target='id'
                 filter={{ 'belongs to-application': fleetId }}

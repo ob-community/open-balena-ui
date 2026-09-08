@@ -31,6 +31,7 @@ import { getSemver } from '../../ui/SemVerChip';
 import versions from '../../versions';
 import environment from '../../lib/reactAppEnv';
 import { resolveFleetTargetRelease } from '../../lib/targetRelease';
+import { deviceOnlineStatusField, getDeviceOnlineFilterValue } from '../../lib/deviceStatus';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const fleetStatusRefreshInterval = 30000;
@@ -134,7 +135,7 @@ export const FleetCards: React.FC = () => (
                                   source='id'
                                   reference='device'
                                   target='belongs to-application'
-                                  filter={{ 'is connected to vpn': true }}
+                                  filter={{ [deviceOnlineStatusField]: getDeviceOnlineFilterValue(true) }}
                                   queryOptions={fleetCountQueryOptions}
                                 />{' '}
                                 /{' '}
@@ -156,7 +157,7 @@ export const FleetCards: React.FC = () => (
                             <TableRow>
                               <TableCell sx={{ fontWeight: 'bold' }}>Following pin</TableCell>
                               <TableCell align='right'>
-                                {record['should be running-release'] ? (
+                                {record[isPinnedOnRelease] ? (
                                   <ReferenceManyCount
                                     record={record}
                                     source='id'

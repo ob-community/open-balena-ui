@@ -1,9 +1,58 @@
+import environment from './reactAppEnv';
+import versions from '../versions';
+
 type DeviceStatusRecord = Record<string, unknown> | null | undefined;
 
 const normalizeStatus = (value: unknown): string =>
   String(value ?? '')
     .trim()
     .toLowerCase();
+
+export const deviceOnlineStatusField = versions.field(
+  'deviceOnlineStatus',
+  environment.REACT_APP_OPEN_BALENA_API_VERSION,
+);
+
+export const usesVpnOnlineStatus = deviceOnlineStatusField === 'is connected to vpn';
+
+export const isDeviceOnline = (device: DeviceStatusRecord): boolean => {
+  if (!device) {
+    return false;
+  }
+
+  const status = device[deviceOnlineStatusField];
+  return usesVpnOnlineStatus ? status === true || status === 'true' : normalizeStatus(status) === 'online';
+};
+
+export const getDeviceOnlineFilterValue = (online: boolean): boolean | 'online' | 'offline' =>
+  usesVpnOnlineStatus ? online : online ? 'online' : 'offline';
+
+export const parseDeviceOnlineFilterValue = (value: unknown): boolean | undefined => {
+  if (usesVpnOnlineStatus) {
+    if (value === true || value === 'true') {
+      return true;
+    }
+    if (value === false || value === 'false') {
+      return false;
+    }
+    return undefined;
+  }
+
+  const status = normalizeStatus(value);
+  return status === 'online' ? true : status === 'offline' ? false : undefined;
+};
+
+export const getDeviceStatusTimestamp = (device: DeviceStatusRecord): unknown => {
+  if (!device) {
+    return undefined;
+  }
+
+  if (!isDeviceOnline(device)) {
+    return device['last connectivity event'];
+  }
+
+  return usesVpnOnlineStatus ? device['last vpn event'] : device['changed api heartbeat state on-date'];
+};
 
 const activeDeviceStatuses = new Set([
   'downloading',
@@ -61,13 +110,13 @@ export const getDeviceOverallState = (device: DeviceStatusRecord, imageInstalls:
   const updateStatus = normalizeStatus(device['update status']);
   const provisioningState = normalizeStatus(device['provisioning state']);
   const hasLastConnectivityEvent = Boolean(device['last connectivity event']);
-  const vpnConnected = device['is connected to vpn'] === true;
+  const online = isDeviceOnline(device);
 
   if (provisioningState === 'post-provisioning' || device['provisioning progress'] != null) {
     return 'Configuring';
   }
 
-  if (!vpnConnected) {
+  if (!online) {
     if (!hasLastConnectivityEvent) {
       return 'Configuring';
     }
@@ -87,5 +136,5 @@ export const getDeviceOverallState = (device: DeviceStatusRecord, imageInstalls:
     return 'Reduced functionality';
   }
 
-  return vpnConnected ? 'Operational' : 'Unknown';
+  return 'Operational';
 };

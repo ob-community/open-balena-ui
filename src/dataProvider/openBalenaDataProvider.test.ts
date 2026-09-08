@@ -58,3 +58,34 @@ test('hybrid provider fails closed for unknown resources', async () => {
 
   await assert.rejects(provider.getOne('unlisted resource', { id: 1 }), /has no data-provider route/);
 });
+
+test('hybrid provider uses the dedicated password action', async () => {
+  const requests: Array<{ url: string; options?: Options }> = [];
+  const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
+    requests.push({ url, options });
+    return response(null);
+  });
+
+  await provider.changePassword({ userId: 7, password: 'Valid1!password' });
+
+  assert.equal(requests[0].url, '/admin-db/actions/change-password');
+  assert.equal(requests[0].options?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(requests[0].options?.body)), {
+    userId: 7,
+    password: 'Valid1!password',
+  });
+});
+
+test('hybrid provider provisions credential actors through the dedicated action', async () => {
+  const requests: Array<{ url: string; options?: Options }> = [];
+  const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
+    requests.push({ url, options });
+    return response({ actorId: 42 });
+  });
+
+  const result = await provider.createCredentialActor({ role: 'device-api-key' });
+
+  assert.deepEqual(result, { actorId: 42 });
+  assert.equal(requests[0].url, '/admin-db/actions/provision-credential-actor');
+  assert.deepEqual(JSON.parse(String(requests[0].options?.body)), { role: 'device-api-key' });
+});

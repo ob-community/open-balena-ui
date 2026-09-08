@@ -184,18 +184,7 @@ export const ApiKeyCreate: React.FC = (props) => {
         <Row>
           <FormDataConsumer>
             {({ formData, ...rest }) => {
-              const disable = !!(formData.deviceActor || formData.fleetActor);
-              return (
-                <ReferenceInput source='userActor' reference='user' {...rest}>
-                  <SelectInput optionText='username' optionValue='actor' resettable disabled={disable} />
-                </ReferenceInput>
-              );
-            }}
-          </FormDataConsumer>
-
-          <FormDataConsumer>
-            {({ formData, ...rest }) => {
-              const disable = !!(formData.userActor || formData.fleetActor);
+              const disable = !!formData.fleetActor;
               return (
                 <ReferenceInput source='deviceActor' reference='device' {...rest}>
                   <SelectInput optionText='device name' optionValue='actor' resettable disabled={disable} />
@@ -206,7 +195,7 @@ export const ApiKeyCreate: React.FC = (props) => {
 
           <FormDataConsumer>
             {({ formData, ...rest }) => {
-              const disable = !!(formData.userActor || formData.deviceActor);
+              const disable = !!formData.deviceActor;
               return (
                 <ReferenceInput source='fleetActor' reference='application' {...rest}>
                   <SelectInput optionText='app name' optionValue='actor' resettable disabled={disable} />

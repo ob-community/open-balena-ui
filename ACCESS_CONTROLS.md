@@ -25,17 +25,23 @@ Existing installations historically treated every authenticated UI user as a dat
 lockout, enforcement activates only when a role named `global-admin` exists.
 
 - **No `global-admin` role:** legacy authorization behavior is retained, but credential redaction is always active.
-- **First `global-admin` role created through this UI:** only the user configured by `OPEN_BALENA_BOOTSTRAP_USER_ID` may
-  create it, and the proxy automatically assigns it to that user.
+- **No `global-admin` role and `OPEN_BALENA_BOOTSTRAP_USER_ID` is set:** server startup creates the role and assigns it to
+  that numeric user ID before accepting requests.
 - **`global-admin` role exists:** direct database authorization is enforced for every request.
 
 Before activation, protected administrator roles cannot be renamed into existence or assigned through the proxy. Create
 `organization-admin` only after the bootstrap user has activated `global-admin`.
 
-Set `OPEN_BALENA_BOOTSTRAP_USER_ID` to a trusted existing user before activation. If it is unset, seed and assign the
-role using a trusted database-administration channel instead. Create and assign at least two global administrators
-before relying on enforcement. Deleting the last global-admin assignment can lock administrators out even though the
-role still exists.
+`OPEN_BALENA_BOOTSTRAP_USER_ID` is the positive numeric `user.id` value, not a username or email address. Startup
+validates that it identifies exactly one existing user. Bootstrap is idempotent: while the setting remains present,
+startup creates a missing role and repairs a missing assignment before opening the HTTP listener. This makes an
+interrupted or concurrent startup recoverable without database functions. After a successful bootstrap, create a second
+global administrator and remove `OPEN_BALENA_BOOTSTRAP_USER_ID` so startup no longer restores the bootstrap assignment.
+
+The proxy prevents the enforcement role from being renamed or deleted after activation. Deleting the last global-admin
+assignment through the proxy is also prevented: a global administrator cannot delete their own user record or remove or
+rebind their own `global-admin` assignment. An external database administrator can still create a lockout by changing
+these records directly, so direct database access must remain restricted.
 
 ## Roles
 
@@ -97,15 +103,26 @@ Redaction is applied in both legacy and enforced modes:
 Credential fields are also rejected in query parameters to prevent filter-based inference. Generic PATCH requests cannot
 modify user password/JWT-secret fields or API-key material.
 
+Password changes use the dedicated `/admin-db/actions/change-password` action. It allows users to change their own
+password when they have administrator access and allows administrators to change only passwords for users within their
+computed scope. Password hashing is performed on the UI server; generic user PATCH requests continue to reject password
+changes.
+
+User, device, and fleet creation use `/admin-db/actions/provision-credential-actor`. The server generates the credential
+and creates the actor, API key, and role assignment through old-compatible PostgREST operations. Partial failures trigger
+best-effort cleanup. Human credential material is never returned to the administrator's browser. Provisioning an
+unbound actor is global-admin-only; organization administrators may create and maintain additional keys only for
+existing fleet/device actors already in their organization scope.
+
 ## Deployment checklist
 
 1. Configure `OPEN_BALENA_JWT_SECRET` on the UI server.
 2. Configure internal-only `OPEN_BALENA_POSTGREST_URL`.
-3. Set `OPEN_BALENA_BOOTSTRAP_USER_ID` to the trusted user that will activate enforcement.
+3. Set `OPEN_BALENA_BOOTSTRAP_USER_ID` to the trusted user's numeric ID.
 4. Remove public ingress and browser access to PostgREST.
-5. Upgrade the UI while no `global-admin` role exists; verify legacy administration still works.
-6. Sign in as the bootstrap user, create `global-admin`, and confirm the creator receives the role.
-7. Assign a second global administrator.
+5. Start the UI and confirm startup created the role and assignment.
+6. Assign a second global administrator.
+7. Remove `OPEN_BALENA_BOOTSTRAP_USER_ID` and restart the UI.
 8. Create `organization-admin` and assign it only to intended organization administrators.
 9. Verify ordinary, organization-admin, and global-admin accounts separately.
 10. Monitor denied `/admin-db` requests and audit direct-database writes.

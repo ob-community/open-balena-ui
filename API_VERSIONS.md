@@ -8,11 +8,14 @@ The compatibility registry is implemented in `src/versions/index.ts`. Version th
 previous threshold. Unknown versions newer than the newest threshold use the newest known mappings; versions below the
 supported floor are clamped to v0.139.0 behavior but are not supported or tested.
 
+Administrator bootstrap does not install or call database functions. It uses the `user`, `role`, and `user-has-role`
+PostgREST resources that are present at the v0.139.0 support floor.
+
 ## v25.2.8 and newer: native v7 model
 
 - The provider uses the OData **v7** endpoint by default.
 - Device target-release writes use `is pinned on-release`.
-- V7 full-text and `@ilike` filters use `tolower(...)` for case-insensitive matching.
+- Full-text and `@ilike` filters use `tolower(...)` for case-insensitive matching.
 - Device-type aliases, application classes, release metadata, notes, and invalidation fields from all earlier thresholds
   remain available.
 - Set `REACT_APP_OPEN_BALENA_ODATA_VERSION=v6` only when a deployment based on this software version does not expose v7.
@@ -23,8 +26,7 @@ supported floor are clamped to v0.139.0 behavior but are not supported or tested
 - The `device type alias` resource is available. The UI registers its pages, references, create/delete workflow, and
   menu entry only at this boundary and newer.
 - Device target release still uses the legacy `should be running-release` relation.
-- Case-insensitive searches degrade to PineJS v6-compatible `contains(...)`; v6 does not receive the newer
-  `tolower(...)` expression.
+- Case-insensitive searches use the PineJS-compatible `contains(tolower(...), ...)` expression on v6 and v7.
 
 ## v0.171.0 through v0.184.x
 

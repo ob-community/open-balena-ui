@@ -23,7 +23,7 @@ export const ODATA_RESOURCES = {
   'image environment variable': 'image_environment_variable',
   'image install': 'image_install',
   'image label': 'image_label',
-  'image-is part of-release': 'image__is_part_of__release',
+  'image-is part of-release': 'release_image',
   'release': 'release',
   'release asset': 'release_asset',
   'release image': 'release_image',
@@ -63,7 +63,7 @@ const toODataValue = (value: unknown): string => {
 const group = (clauses: string[], operator: 'and' | 'or'): string =>
   clauses.length === 1 ? clauses[0] : `(${clauses.join(` ${operator} `)})`;
 
-const comparison = (field: string, operator: string, value: unknown, caseInsensitive = false): string => {
+const comparison = (field: string, operator: string, value: unknown): string => {
   const apiField = toApiField(field);
   switch (operator.toLowerCase()) {
     case 'neq':
@@ -83,9 +83,7 @@ const comparison = (field: string, operator: string, value: unknown, caseInsensi
     case 'contains':
       return `contains(${apiField},${toODataValue(value)})`;
     case 'ilike':
-      return caseInsensitive
-        ? `contains(tolower(${apiField}),${toODataValue(String(value).toLowerCase())})`
-        : `contains(${apiField},${toODataValue(value)})`;
+      return `contains(tolower(${apiField}),${toODataValue(String(value).toLowerCase())})`;
     default:
       return `${apiField} eq ${toODataValue(value)}`;
   }
@@ -97,7 +95,30 @@ const arrayComparison = (field: string, operator: string, values: unknown[]): st
   return clauses.length ? group(clauses, isNot ? 'and' : 'or') : isNot ? 'true' : 'false';
 };
 
-const fullTextFilter = (key: string, value: unknown, caseInsensitive: boolean): string | undefined => {
+const legacyArrayValue = (value: unknown): unknown[] | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const match = value.match(/^\((.*)\)$/);
+  if (!match) {
+    return undefined;
+  }
+  return match[1]
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      if (/^-?\d+(?:\.\d+)?$/.test(entry)) {
+        return Number(entry);
+      }
+      if (entry === 'true' || entry === 'false') {
+        return entry === 'true';
+      }
+      return entry.replace(/^'(.*)'$/, '$1').replace(/''/g, "'");
+    });
+};
+
+const fullTextFilter = (key: string, value: unknown): string | undefined => {
   if (!key.startsWith('#') || typeof value !== 'string' || !value.trim()) {
     return undefined;
   }
@@ -110,7 +131,7 @@ const fullTextFilter = (key: string, value: unknown, caseInsensitive: boolean): 
   return group(
     words.map((word) =>
       group(
-        fields.map((field) => comparison(field, operator, word, caseInsensitive)),
+        fields.map((field) => comparison(field, operator, word)),
         'or',
       ),
     ),
@@ -118,13 +139,13 @@ const fullTextFilter = (key: string, value: unknown, caseInsensitive: boolean): 
   );
 };
 
-export const buildODataFilter = (filter: Record<string, unknown>, caseInsensitive = false): string => {
+export const buildODataFilter = (filter: Record<string, unknown>): string => {
   const clauses: string[] = [];
   for (const [key, rawValue] of Object.entries(filter)) {
     if (rawValue === undefined) {
       continue;
     }
-    const search = fullTextFilter(key, rawValue, caseInsensitive);
+    const search = fullTextFilter(key, rawValue);
     if (search) {
       clauses.push(search);
       continue;
@@ -132,18 +153,21 @@ export const buildODataFilter = (filter: Record<string, unknown>, caseInsensitiv
 
     const [rawField, keyOperator = 'eq'] = key.split('@');
     const field = rawField === 'ids' ? 'id' : rawField;
-    if (Array.isArray(rawValue)) {
-      clauses.push(arrayComparison(field, keyOperator === 'eq' ? 'in' : keyOperator, rawValue));
+    const normalizedArray = Array.isArray(rawValue)
+      ? rawValue
+      : ['in', 'nin', 'not.in'].includes(keyOperator)
+        ? legacyArrayValue(rawValue)
+        : undefined;
+    if (normalizedArray) {
+      clauses.push(arrayComparison(field, keyOperator === 'eq' ? 'in' : keyOperator, normalizedArray));
     } else if (rawValue !== null && typeof rawValue === 'object' && !(rawValue instanceof Date)) {
       for (const [operator, value] of Object.entries(rawValue)) {
         clauses.push(
-          Array.isArray(value)
-            ? arrayComparison(field, operator, value)
-            : comparison(field, operator, value, caseInsensitive),
+          Array.isArray(value) ? arrayComparison(field, operator, value) : comparison(field, operator, value),
         );
       }
     } else {
-      clauses.push(comparison(field, keyOperator, rawValue, caseInsensitive));
+      clauses.push(comparison(field, keyOperator, rawValue));
     }
   }
   return clauses.length ? group(clauses, 'and') : '';
@@ -272,7 +296,6 @@ export const createODataDataProvider = (
     throw new Error('createODataDataProvider requires an open-balena-api URL.');
   }
   const baseUrl = joinUrl(apiUrl, odataVersion);
-  const supportsCaseInsensitiveFunctions = odataVersion === 'v7';
   const resourcePath = (resource: string): string => {
     const path = ODATA_RESOURCES[resource as ODataResource];
     if (!path) {
@@ -303,7 +326,7 @@ export const createODataDataProvider = (
     const filterValues = { ...(params.filter ?? {}) };
     const select = filterValues['select@'];
     delete filterValues['select@'];
-    const filter = buildODataFilter(filterValues, supportsCaseInsensitiveFunctions);
+    const filter = buildODataFilter(filterValues);
     const query: Record<string, string | number> = {
       $top: perPage,
       $skip: (page - 1) * perPage,

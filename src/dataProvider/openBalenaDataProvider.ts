@@ -3,6 +3,13 @@ import semver from 'semver';
 import postgrestDataProvider from './postgrestDataProvider';
 import createODataDataProvider, { ODATA_RESOURCES, type HttpClient } from './odataDataProvider';
 
+export type OpenBalenaDataProvider = DataProvider & {
+  changePassword(params: { userId: number | string; password: string }): Promise<void>;
+  createCredentialActor(params: {
+    role: 'named-user-api-key' | 'device-api-key' | 'provisioning-api-key';
+  }): Promise<{ actorId: number }>;
+};
+
 export const DIRECT_DB_RESOURCES = new Set([
   'actor',
   'api key',
@@ -37,7 +44,7 @@ export const openBalenaDataProvider = (
   httpClient: HttpClient,
   serverVersion?: string,
   odataVersion?: string,
-): DataProvider => {
+): OpenBalenaDataProvider => {
   if (!apiUrl) {
     throw new Error('REACT_APP_OPEN_BALENA_API_URL must be defined.');
   }
@@ -65,6 +72,25 @@ export const openBalenaDataProvider = (
     updateMany: async (resource, params) => route(resource).updateMany(resource, params),
     delete: async (resource, params) => route(resource).delete(resource, params),
     deleteMany: async (resource, params) => route(resource).deleteMany(resource, params),
+    changePassword: async ({ userId, password }) => {
+      await httpClient('/admin-db/actions/change-password', {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ userId, password }),
+      });
+    },
+    createCredentialActor: async ({ role }) => {
+      const { json } = await httpClient('/admin-db/actions/provision-credential-actor', {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ role }),
+      });
+      const actorId = Number(json.actorId);
+      if (!Number.isInteger(actorId) || actorId <= 0) {
+        throw new Error('Credential actor provisioning returned an invalid actor ID.');
+      }
+      return { actorId };
+    },
   };
 };
 

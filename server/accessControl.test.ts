@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  authorizeGlobalAdminBootstrap,
+  authorizeAdministratorRoleCreation,
+  authorizeCredentialActorProvision,
   authorizeMutationBody,
+  authorizePasswordChange,
   authorizePreActivationAssignment,
+  authorizeProtectedRoleMutation,
   authorizeResource,
+  authorizeSelfLockoutMutation,
   buildAccessContext,
   queryReferencesCredential,
   queryUsesUnsafeEmbedding,
@@ -84,7 +88,7 @@ test('legacy mode remains enabled until global-admin exists', async () => {
   assert.equal(context.enforcementEnabled, false);
   assert.equal(authorizeResource(context, 'role', 'DELETE'), undefined);
   assert.throws(() => authorizeResource(context, 'unlisted table', 'GET'), /not available/);
-  assert.deepEqual(redactSecrets(records['api key'], context), [
+  assert.deepEqual(redactSecrets('api key', records['api key'], context), [
     { 'id': 201, 'is of-actor': 101 },
     { 'id': 202, 'is of-actor': 102, 'key': 'two' },
     { 'id': 203, 'is of-actor': 104 },
@@ -98,7 +102,7 @@ test('global administrators retain global direct database access', async () => {
   const context = await buildAccessContext({ id: 1 }, reader());
   assert.equal(context.globalAdmin, true);
   assert.equal(authorizeResource(context, 'permission', 'PATCH'), undefined);
-  assert.deepEqual(redactSecrets(records['api key'], context), [
+  assert.deepEqual(redactSecrets('api key', records['api key'], context), [
     { 'id': 201, 'is of-actor': 101, 'key': 'one' },
     { 'id': 202, 'is of-actor': 102 },
     { 'id': 203, 'is of-actor': 104 },
@@ -165,6 +169,22 @@ test('organization mutations reject cross-organization references', async () => 
   );
 });
 
+test('API key actor validation applies to legacy and global administrators', async () => {
+  const legacy = await buildAccessContext({ id: 2 }, reader({ role: [] }));
+  const global = await buildAccessContext({ id: 1 }, reader());
+  assert.throws(
+    () => authorizeMutationBody(legacy, 'api key', 'POST', { 'key': 'other-user', 'is of-actor': 104 }),
+    /outside the administrator's organization scope/,
+  );
+  assert.throws(
+    () => authorizeMutationBody(global, 'api key', 'POST', { 'key': 'other-user', 'is of-actor': 104 }),
+    /outside the administrator's organization scope/,
+  );
+  assert.doesNotThrow(() =>
+    authorizeMutationBody(global, 'api key', 'POST', { 'key': 'device-key', 'is of-actor': 108 }),
+  );
+});
+
 test('credential field detection blocks projected and filtered secret queries', () => {
   assert.equal(queryReferencesCredential('api key', { select: 'key' }), true);
   assert.equal(queryReferencesCredential('api key', { or: '(key.ilike.*abc*,name.ilike.*abc*)' }), true);
@@ -172,11 +192,11 @@ test('credential field detection blocks projected and filtered secret queries', 
   assert.equal(queryReferencesCredential('user', { select: 'id,jwt_secret' }), true);
 });
 
-test('global-admin activation is limited to the configured bootstrap user and cannot use rename', async () => {
+test('administrator role creation is constrained around startup activation', async () => {
   const context = await buildAccessContext({ id: 2 }, reader({ role: [{ id: 2, name: 'organization-admin' }] }));
-  assert.equal(authorizeGlobalAdminBootstrap(context, 'role', 'POST', { name: 'viewer' }, '2'), false);
+  assert.doesNotThrow(() => authorizeAdministratorRoleCreation(context, 'role', 'POST', { name: 'viewer' }));
   assert.throws(
-    () => authorizeGlobalAdminBootstrap(context, 'role', 'PATCH', { name: 'organization-admin' }, '2'),
+    () => authorizeAdministratorRoleCreation(context, 'role', 'PATCH', { name: 'organization-admin' }),
     /only after global administrator enforcement/,
   );
   assert.throws(
@@ -184,14 +204,64 @@ test('global-admin activation is limited to the configured bootstrap user and ca
     /cannot be assigned before/,
   );
   assert.throws(
-    () => authorizeGlobalAdminBootstrap(context, 'role', 'PATCH', { name: 'global-admin' }, '2'),
-    /only be created/,
+    () => authorizePreActivationAssignment(context, 'user-has-role', 'POST', [{ user: 2, role: 2 }]),
+    /Bulk role assignments/,
   );
   assert.throws(
-    () => authorizeGlobalAdminBootstrap(context, 'role', 'POST', { name: 'global-admin' }, '3'),
-    /OPEN_BALENA_BOOTSTRAP_USER_ID/,
+    () => authorizeAdministratorRoleCreation(context, 'role', 'POST', { name: 'global-admin' }),
+    /managed at server startup/,
   );
-  assert.equal(authorizeGlobalAdminBootstrap(context, 'role', 'POST', { name: 'global-admin' }, '2'), true);
+});
+
+test('global-admin enforcement role cannot be renamed or deleted', async () => {
+  const context = await buildAccessContext({ id: 1 }, reader());
+  assert.throws(
+    () => authorizeProtectedRoleMutation(context, 'role', 'DELETE', undefined, { id: 'eq.1' }),
+    /cannot be renamed or deleted/,
+  );
+  assert.throws(
+    () => authorizeProtectedRoleMutation(context, 'role', 'PATCH', { name: 'renamed' }, { id: 'eq.1' }),
+    /cannot be renamed or deleted/,
+  );
+  assert.doesNotThrow(() =>
+    authorizeProtectedRoleMutation(context, 'role', 'PATCH', { name: 'viewer' }, { id: 'eq.3' }),
+  );
+});
+
+test('global administrators cannot remove their own access', async () => {
+  const context = await buildAccessContext({ id: 1 }, reader());
+  assert.throws(
+    () => authorizeSelfLockoutMutation(context, 'user', 'DELETE', { id: 'eq.1' }),
+    /own user record/,
+  );
+  assert.throws(
+    () => authorizeSelfLockoutMutation(context, 'user-has-role', 'DELETE', { id: 'eq.10' }),
+    /own global-admin assignment/,
+  );
+  assert.throws(
+    () => authorizeSelfLockoutMutation(context, 'user-has-role', 'PATCH', { id: 'eq.10' }),
+    /own global-admin assignment/,
+  );
+  assert.doesNotThrow(() =>
+    authorizeSelfLockoutMutation(context, 'user-has-role', 'DELETE', { id: 'eq.12' }),
+  );
+});
+
+test('password changes are restricted to self and administratively scoped users', async () => {
+  const organizationAdmin = await buildAccessContext({ id: 2 }, reader());
+  const ordinaryUser = await buildAccessContext({ id: 4 }, reader());
+  assert.throws(() => authorizePasswordChange(ordinaryUser, 4), /Administrator access/);
+  assert.doesNotThrow(() => authorizePasswordChange(organizationAdmin, 4));
+  assert.throws(() => authorizePasswordChange(organizationAdmin, 3), /outside the administrator scope/);
+});
+
+test('credential actor provisioning is limited to global and legacy administrators', async () => {
+  const legacy = await buildAccessContext({ id: 2 }, reader({ role: [] }));
+  const global = await buildAccessContext({ id: 1 }, reader());
+  const organizationAdmin = await buildAccessContext({ id: 2 }, reader());
+  assert.doesNotThrow(() => authorizeCredentialActorProvision(legacy));
+  assert.doesNotThrow(() => authorizeCredentialActorProvision(global));
+  assert.throws(() => authorizeCredentialActorProvision(organizationAdmin), /Global administrator/);
 });
 
 test('relationship embedding and client projections are rejected', () => {
@@ -206,6 +276,7 @@ test('secret redaction exposes managed device and fleet keys but not other users
   const context = await buildAccessContext({ id: 2 }, reader());
   assert.deepEqual(
     redactSecrets(
+      'api key',
       [
         { id: 2, password: 'hash', jwt_secret: 'secret', username: 'org-admin' },
         { id: 202, key: 'own-key', name: 'mine' },
@@ -231,4 +302,9 @@ test('secret redaction exposes managed device and fleet keys but not other users
       { id: 702, user: 4 },
     ],
   );
+  assert.deepEqual(redactSecrets('config', { id: 1, key: 'OPEN_BALENA_API_URL', value: 'https://api' }, context), {
+    id: 1,
+    key: 'OPEN_BALENA_API_URL',
+    value: 'https://api',
+  });
 });

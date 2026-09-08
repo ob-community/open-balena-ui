@@ -30,9 +30,14 @@ export const UserKeysList: React.FC = () => {
         <TextField label='Key Name' source='title' />
 
         <FunctionField
-          render={(record) => (
-            <CopyChip title={record['public key']} label={record['public key'].slice(0, 70) + '...'} />
-          )}
+          render={(record) => {
+            const publicKey = record['public key'];
+            return typeof publicKey === 'string' ? (
+              <CopyChip title={publicKey} label={`${publicKey.slice(0, 70)}...`} />
+            ) : (
+              'Hidden'
+            );
+          }}
         />
 
         <Toolbar>

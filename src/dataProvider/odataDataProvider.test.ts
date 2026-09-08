@@ -18,12 +18,20 @@ test('buildODataFilter translates comparison, array, relation, and full-text fil
       'created at@gte': '2025-01-01',
       '#uuid,device name@ilike': 'edge west',
     }),
-    "(belongs_to__application eq 7 and (id eq 1 or id eq 2) and created_at ge '2025-01-01' and ((contains(uuid,'edge') or contains(device_name,'edge')) and (contains(uuid,'west') or contains(device_name,'west'))))",
+    "(belongs_to__application eq 7 and (id eq 1 or id eq 2) and created_at ge '2025-01-01' and ((contains(tolower(uuid),'edge') or contains(tolower(device_name),'edge')) and (contains(tolower(uuid),'west') or contains(tolower(device_name),'west'))))",
   );
 });
 
-test('buildODataFilter uses case-insensitive functions when OData v7 enables them', () => {
-  assert.equal(buildODataFilter({ 'device name@ilike': 'Edge' }, true), "contains(tolower(device_name),'edge')");
+test('buildODataFilter preserves case sensitivity for like and lowers both sides for ilike', () => {
+  assert.equal(buildODataFilter({ 'device name@like': 'Edge' }), "contains(device_name,'Edge')");
+  assert.equal(buildODataFilter({ 'device name@ilike': 'Edge' }), "contains(tolower(device_name),'edge')");
+});
+
+test('buildODataFilter accepts legacy parenthesized values for in filters', () => {
+  assert.equal(
+    buildODataFilter({ 'is running-release@in': '(1,2)' }),
+    '(is_running__release eq 1 or is_running__release eq 2)',
+  );
 });
 
 test('extractCollection supports modern and legacy OData response envelopes', () => {
@@ -118,6 +126,22 @@ test('provider translates legacy select filters into OData projections', async (
   const listUrl = new URL(requests.find((url) => !url.includes('/$count'))!);
   assert.equal(listUrl.searchParams.get('$select'), 'id,name');
   assert.equal(listUrl.searchParams.has('$filter'), false);
+});
+
+test('provider maps the legacy image-release UI resource to release_image', async () => {
+  const requests: string[] = [];
+  const provider = createODataDataProvider('https://api.example.test', async (url) => {
+    requests.push(url);
+    return url.includes('/$count') ? response(1) : response({ d: [{ id: 1 }] });
+  });
+
+  await provider.getList('image-is part of-release', {
+    pagination: { page: 1, perPage: 25 },
+    sort: { field: 'id', order: 'ASC' },
+    filter: { image: 3 },
+  });
+
+  assert.equal(new URL(requests[0]).pathname, '/v6/release_image');
 });
 
 test('provider serializes writes and uses entity URLs for mutations', async () => {

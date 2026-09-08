@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import serialize from 'serialize-javascript';
 import registryImageRoutes from './routes/registryImage';
 import adminDatabaseRoutes from './routes/adminDatabase';
+import { bootstrapGlobalAdminFromEnvironment } from './bootstrapGlobalAdmin';
 
 dotenv.config();
 
@@ -53,6 +54,14 @@ app.get(/.*/, (_req, res) => {
   res.type('text/html').send(rawHtml.replace(CLIENT_ENV_PLACEHOLDER, injection));
 });
 
-app.listen(PORT, HOST, () => {
-  console.log(`Running open-balena-ui on http://${HOST}:${PORT}`);
+const start = async (): Promise<void> => {
+  await bootstrapGlobalAdminFromEnvironment();
+  app.listen(PORT, HOST, () => {
+    console.log(`Running open-balena-ui on http://${HOST}:${PORT}`);
+  });
+};
+
+start().catch((error) => {
+  console.error('Unable to start open-balena-ui:', error);
+  process.exitCode = 1;
 });

@@ -24,7 +24,8 @@ There are a number of environment variables used to configure the ui:
   `http://postgrest.openbalena.local:8000`
 
 - `OPEN_BALENA_BOOTSTRAP_USER_ID` The trusted existing user ID allowed to create and receive the first `global-admin`
-  role. It is used only before administrator access-control enforcement is activated.
+  role at server startup. This must be the positive numeric `user.id` (for example `2`), not a username or email address.
+  Leave it unset to retain legacy access when `global-admin` does not exist; remove it after successful bootstrap.
 
 - `REACT_APP_OPEN_BALENA_REMOTE_URL` The URL (accessible to API) of the `open-balena-remote` instance, i.e.
   `http://remote.openbalena.local:10000`

@@ -255,16 +255,18 @@ export const FleetEdit: React.FC = () => {
         />
 
         <Row>
-          <SelectInput
-            label='Class'
-            source='is of-class'
-            choices={[
-              { id: 'fleet', name: 'Fleet' },
-              { id: 'app', name: 'App' },
-              { id: 'block', name: 'Block' },
-            ]}
-            defaultValue={'fleet'}
-          />
+          {applicationClass ? (
+            <SelectInput
+              label='Class'
+              source={applicationClass}
+              choices={[
+                { id: 'fleet', name: 'Fleet' },
+                { id: 'app', name: 'App' },
+                { id: 'block', name: 'Block' },
+              ]}
+              defaultValue={'fleet'}
+            />
+          ) : null}
 
           <ReferenceInput
             label='Depends on Fleet'

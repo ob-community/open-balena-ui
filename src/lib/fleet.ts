@@ -2,29 +2,16 @@ import { useDataProvider } from 'react-admin';
 import { useDeleteRelease } from './release';
 import { useDeleteDevice } from './device';
 import { useDeleteService } from '../lib/service';
-import { useGenerateApiKey, useDeleteApiKey } from './apiKey';
+import { useDeleteApiKey } from './apiKey';
 import { deleteAllRelated } from './delete';
+import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 
 export function useCreateFleet() {
-  const dataProvider = useDataProvider();
-  const generateApiKey = useGenerateApiKey();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
 
   return async (data) => {
-    const roles = await dataProvider.getList('role', {
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: {},
-    });
-    // create fleet actor and provisioning API key
-    const fleetActor = await dataProvider.create('actor', { data: {} });
-    data.actor = fleetActor.data.id;
-    const provisioningRole = roles.data.find((x) => x.name === 'provisioning-api-key');
-    const provisioningApiKey = await dataProvider.create('api key', {
-      data: { 'key': generateApiKey(), 'is of-actor': fleetActor.data.id },
-    });
-    await dataProvider.create('api key-has-role', {
-      data: { 'api key': provisioningApiKey.data.id, 'role': provisioningRole.id },
-    });
+    const { actorId } = await dataProvider.createCredentialActor({ role: 'provisioning-api-key' });
+    data.actor = actorId;
     return data;
   };
 }

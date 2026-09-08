@@ -38,6 +38,8 @@ export interface AccessContext {
   ownActorId?: number;
   allowedIds: Record<string, Set<number>>;
   allowedApplicationIds: Set<number>;
+  globalRoleIds: Set<number>;
+  ownGlobalRoleAssignmentIds: Set<number>;
   protectedRoleIds: Set<number>;
   manageableApiKeyActorIds: Set<number>;
   visibleApiKeyIds: Set<number>;
@@ -76,13 +78,12 @@ export const queryUsesUnsafeEmbedding = (query: Record<string, unknown>): boolea
     return key === 'order' && String(value).includes('(');
   });
 
-export const authorizeGlobalAdminBootstrap = (
+export const authorizeAdministratorRoleCreation = (
   context: AccessContext,
   resource: string,
   method: string,
   body: unknown,
-  configuredUserId: string | undefined,
-): boolean => {
+): void => {
   const requestedRoleNames =
     resource === 'role'
       ? (Array.isArray(body) ? body : [body])
@@ -93,22 +94,13 @@ export const authorizeGlobalAdminBootstrap = (
     throw new Error('Create organization-admin only after global administrator enforcement is active.');
   }
   if (!requestedRoleNames.includes(GLOBAL_ADMIN_ROLE)) {
-    return false;
+    return;
   }
-  if (method !== 'POST') {
-    throw new Error('The global-admin role can only be created through the bootstrap operation.');
+  if (method === 'POST') {
+    throw new Error(
+      'The global-admin role is managed at server startup through OPEN_BALENA_BOOTSTRAP_USER_ID.',
+    );
   }
-  if (context.enforcementEnabled) {
-    return false;
-  }
-  if (!body || Array.isArray(body) || requestedRoleNames.length !== 1) {
-    throw new Error('The global-admin bootstrap operation accepts exactly one role.');
-  }
-  const bootstrapUserId = Number(configuredUserId);
-  if (!Number.isInteger(bootstrapUserId) || bootstrapUserId !== context.userId) {
-    throw new Error('Only OPEN_BALENA_BOOTSTRAP_USER_ID may activate global administrator enforcement.');
-  }
-  return true;
 };
 
 export const authorizePreActivationAssignment = (
@@ -122,10 +114,12 @@ export const authorizePreActivationAssignment = (
     resource !== 'user-has-role' ||
     !['POST', 'PATCH', 'PUT'].includes(method) ||
     !body ||
-    typeof body !== 'object' ||
-    Array.isArray(body)
+    typeof body !== 'object'
   ) {
     return;
+  }
+  if (Array.isArray(body)) {
+    throw new Error('Bulk role assignments are not allowed before global administrator activation.');
   }
   const roleId = numberField(body as Record<string, unknown>, 'role');
   if (roleId != null && context.protectedRoleIds.has(roleId)) {
@@ -207,6 +201,8 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       ownActorId,
       allowedIds: {},
       allowedApplicationIds: new Set(),
+      globalRoleIds,
+      ownGlobalRoleAssignmentIds: new Set(),
       protectedRoleIds,
       manageableApiKeyActorIds,
       visibleApiKeyIds: await getVisibleApiKeyIds(database, ownActorId, manageableApiKeyActorIds),
@@ -215,6 +211,10 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
 
   const assignments = await database.list('user-has-role', new URLSearchParams({ user: `eq.${userId}` }));
   const assignedRoleIds = ids(assignments, 'role');
+  const ownGlobalRoleAssignmentIds = ids(
+    assignments.filter((assignment) => globalRoleIds.has(numberField(assignment, 'role') ?? -1)),
+    'id',
+  );
   const globalAdmin = [...globalRoleIds].some((id) => assignedRoleIds.has(id));
   const organizationAdmin = [...organizationRoleIds].some((id) => assignedRoleIds.has(id));
 
@@ -228,6 +228,8 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       ownActorId,
       allowedIds: {},
       allowedApplicationIds: new Set(),
+      globalRoleIds,
+      ownGlobalRoleAssignmentIds,
       protectedRoleIds,
       manageableApiKeyActorIds,
       visibleApiKeyIds: await getVisibleApiKeyIds(database, ownActorId, manageableApiKeyActorIds),
@@ -281,6 +283,8 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     userId,
     ownActorId,
     allowedApplicationIds: applicationIds,
+    globalRoleIds,
+    ownGlobalRoleAssignmentIds,
     protectedRoleIds,
     manageableApiKeyActorIds,
     visibleApiKeyIds: await getVisibleApiKeyIds(database, ownActorId, manageableApiKeyActorIds),
@@ -339,13 +343,26 @@ export const authorizeMutationBody = (
   method: string,
   body: unknown,
 ): void => {
-  if (!context.enforcementEnabled || context.globalAdmin || !['POST', 'PATCH', 'PUT'].includes(method)) {
+  if (!['POST', 'PATCH', 'PUT'].includes(method)) {
     return;
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('Administrator mutations require an object body.');
   }
   const record = body as Record<string, unknown>;
+  if (resource === 'api key') {
+    if (method === 'POST' && !('is of-actor' in record)) {
+      throw new Error('New API keys require an in-scope actor.');
+    }
+    const credentialActorIds = new Set(context.manageableApiKeyActorIds);
+    if (context.ownActorId != null) {
+      credentialActorIds.add(context.ownActorId);
+    }
+    requireAllowedReference(record, 'is of-actor', credentialActorIds);
+  }
+  if (!context.enforcementEnabled || context.globalAdmin) {
+    return;
+  }
   const userIds = context.allowedIds.user ?? new Set();
   const organizationIds = context.allowedIds.organization ?? new Set();
   const apiKeyIds = context.allowedIds['api key'] ?? new Set();
@@ -357,14 +374,6 @@ export const authorizeMutationBody = (
       }
       break;
     case 'api key':
-      if (method === 'POST' && !('is of-actor' in record)) {
-        throw new Error('New API keys require an in-scope actor.');
-      }
-      const credentialActorIds = new Set(context.manageableApiKeyActorIds);
-      if (context.ownActorId != null) {
-        credentialActorIds.add(context.ownActorId);
-      }
-      requireAllowedReference(record, 'is of-actor', credentialActorIds);
       break;
     case 'organization membership':
       requireAllowedReference(record, 'user', userIds);
@@ -391,7 +400,106 @@ export const authorizeMutationBody = (
   }
 };
 
-const redactRecord = (record: Record<string, unknown>, context: AccessContext): Record<string, unknown> => {
+const queryIds = (query: Record<string, unknown>): Set<number> | undefined => {
+  const values = Array.isArray(query.id) ? query.id : [query.id];
+  const result = new Set<number>();
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+    const match = value.match(/^(?:eq\.(\d+)|in\.\(([\d,]+)\))$/);
+    if (!match) {
+      return undefined;
+    }
+    for (const id of (match[1] ?? match[2]).split(',')) {
+      result.add(Number(id));
+    }
+  }
+  return result.size ? result : undefined;
+};
+
+export const authorizeProtectedRoleMutation = (
+  context: AccessContext,
+  resource: string,
+  method: string,
+  body: unknown,
+  query: Record<string, unknown>,
+): void => {
+  if (!context.enforcementEnabled || resource !== 'role' || !['PATCH', 'DELETE'].includes(method)) {
+    return;
+  }
+  const targetIds = queryIds(query);
+  if (!targetIds) {
+    throw new Error('Role updates and deletions require an explicit role ID.');
+  }
+  if ([...targetIds].some((id) => context.globalRoleIds.has(id))) {
+    throw new Error('The global-admin enforcement role cannot be renamed or deleted after activation.');
+  }
+  if (
+    method === 'PATCH' &&
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    (body as Record<string, unknown>).name === GLOBAL_ADMIN_ROLE
+  ) {
+    throw new Error('Another role cannot be renamed to global-admin after activation.');
+  }
+};
+
+export const authorizeSelfLockoutMutation = (
+  context: AccessContext,
+  resource: string,
+  method: string,
+  query: Record<string, unknown>,
+): void => {
+  if (!context.enforcementEnabled || !context.globalAdmin || !['PATCH', 'DELETE'].includes(method)) {
+    return;
+  }
+  if (resource !== 'user' && resource !== 'user-has-role') {
+    return;
+  }
+  if (resource === 'user' && method !== 'DELETE') {
+    return;
+  }
+  const targetIds = queryIds(query);
+  if (!targetIds) {
+    throw new Error(`${resource} updates and deletions require an explicit ID.`);
+  }
+  if (resource === 'user' && targetIds.has(context.userId)) {
+    throw new Error('Global administrators cannot delete their own user record.');
+  }
+  if (
+    resource === 'user-has-role' &&
+    [...targetIds].some((id) => context.ownGlobalRoleAssignmentIds.has(id))
+  ) {
+    throw new Error('Global administrators cannot remove or rebind their own global-admin assignment.');
+  }
+};
+
+export const authorizePasswordChange = (context: AccessContext, targetUserId: number): void => {
+  if (context.enforcementEnabled && !context.globalAdmin && !context.organizationAdmin) {
+    throw new Error('Administrator access is required.');
+  }
+  if (
+    targetUserId !== context.userId &&
+    !context.globalAdmin &&
+    !(context.organizationAdmin && context.allowedIds.user?.has(targetUserId))
+  ) {
+    throw new Error('The target user is outside the administrator scope.');
+  }
+};
+
+export const authorizeCredentialActorProvision = (context: AccessContext): void => {
+  if (context.enforcementEnabled && !context.globalAdmin) {
+    throw new Error('Global administrator access is required to provision credential actors.');
+  }
+};
+
+const redactRecord = (
+  resource: string,
+  record: Record<string, unknown>,
+  context: AccessContext,
+): Record<string, unknown> => {
   const output: Record<string, unknown> = {};
   const recordId = numberField(record, 'id');
   const actorId = numberField(record, 'is of-actor');
@@ -400,6 +508,7 @@ const redactRecord = (record: Record<string, unknown>, context: AccessContext): 
       continue;
     }
     if (
+      resource === 'api key' &&
       key === 'key' &&
       !(
         (recordId != null && context.visibleApiKeyIds.has(recordId)) ||
@@ -411,17 +520,17 @@ const redactRecord = (record: Record<string, unknown>, context: AccessContext): 
     if (key === 'public key' && numberField(record, 'user') !== context.userId) {
       continue;
     }
-    output[key] = redactSecrets(value, context);
+    output[key] = redactSecrets(resource, value, context);
   }
   return output;
 };
 
-export const redactSecrets = (input: unknown, context: AccessContext): unknown => {
+export const redactSecrets = (resource: string, input: unknown, context: AccessContext): unknown => {
   if (Array.isArray(input)) {
-    return input.map((value) => redactSecrets(value, context));
+    return input.map((value) => redactSecrets(resource, value, context));
   }
   if (input === null || typeof input !== 'object') {
     return input;
   }
-  return redactRecord(input as Record<string, unknown>, context);
+  return redactRecord(resource, input as Record<string, unknown>, context);
 };

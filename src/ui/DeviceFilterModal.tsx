@@ -185,7 +185,7 @@ export const DeviceFilterModal: React.FC<DeviceFilterModalProps> = ({
         .filter((f) => f['is for-device type'] === localFilters.deviceTypeId)
         .map((f) => f.id);
       if (relevantFleetIds.length > 0) {
-        filter['belongs to-application@in'] = `(${relevantFleetIds.join(',')})`;
+        filter['belongs to-application@in'] = relevantFleetIds;
       }
     }
 
@@ -673,4 +673,3 @@ export const DeviceFilterModal: React.FC<DeviceFilterModalProps> = ({
 };
 
 export default DeviceFilterModal;
-

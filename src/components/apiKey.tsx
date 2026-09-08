@@ -104,7 +104,7 @@ const ActorField: React.FC<ActorFieldProps> = ({ record }) => {
 };
 
 const apiKeyFilters = [
-  <SearchInput key='search' source='#key,name,description@ilike' alwaysOn />,
+  <SearchInput key='search' source='name@ilike' alwaysOn />,
   <ActorFilter key='actor' alwaysOn />,
 ];
 
@@ -133,7 +133,9 @@ export const ApiKeyList: React.FC = () => {
       <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
         <FunctionField
           label='API Key'
-          render={(record) => <CopyChip title={record.key} label={record.key.slice(0, 10) + '...'} />}
+          render={(record) =>
+            record.key ? <CopyChip title={record.key} label={record.key.slice(0, 10) + '...'} /> : <span>Hidden</span>
+          }
         />
 
         <TextField label='Name' source='name' />
@@ -182,18 +184,7 @@ export const ApiKeyCreate: React.FC = (props) => {
         <Row>
           <FormDataConsumer>
             {({ formData, ...rest }) => {
-              const disable = !!(formData.deviceActor || formData.fleetActor);
-              return (
-                <ReferenceInput source='userActor' reference='user' {...rest}>
-                  <SelectInput optionText='username' optionValue='actor' resettable disabled={disable} />
-                </ReferenceInput>
-              );
-            }}
-          </FormDataConsumer>
-
-          <FormDataConsumer>
-            {({ formData, ...rest }) => {
-              const disable = !!(formData.userActor || formData.fleetActor);
+              const disable = !!formData.fleetActor;
               return (
                 <ReferenceInput source='deviceActor' reference='device' {...rest}>
                   <SelectInput optionText='device name' optionValue='actor' resettable disabled={disable} />
@@ -204,7 +195,7 @@ export const ApiKeyCreate: React.FC = (props) => {
 
           <FormDataConsumer>
             {({ formData, ...rest }) => {
-              const disable = !!(formData.userActor || formData.deviceActor);
+              const disable = !!formData.deviceActor;
               return (
                 <ReferenceInput source='fleetActor' reference='application' {...rest}>
                   <SelectInput optionText='app name' optionValue='actor' resettable disabled={disable} />
@@ -242,8 +233,6 @@ export const ApiKeyEdit: React.FC = () => {
       }}
     >
       <SimpleForm toolbar={<CustomToolbar />}>
-        <TextInput source='key' size='large' fullWidth={true} validate={required()} readOnly={true} />
-
         <Row>
           <TextInput source='name' size='large' validate={required()} />
           <TextInput source='description' size='large' />

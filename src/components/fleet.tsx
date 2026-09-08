@@ -40,6 +40,7 @@ import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 const FleetTargetReleaseCell: React.FC<{ record: Record<string, any> }> = ({ record }) => {
   if (!record) {
@@ -149,16 +150,18 @@ export const FleetCreate: React.FC<CreateProps> = (props) => {
         />
 
         <Row>
-          <SelectInput
-            label='Class'
-            source='is of-class'
-            choices={[
-              { id: 'fleet', name: 'Fleet' },
-              { id: 'app', name: 'App' },
-              { id: 'block', name: 'Block' },
-            ]}
-            defaultValue={'fleet'}
-          />
+          {applicationClass ? (
+            <SelectInput
+              label='Class'
+              source={applicationClass}
+              choices={[
+                { id: 'fleet', name: 'Fleet' },
+                { id: 'app', name: 'App' },
+                { id: 'block', name: 'Block' },
+              ]}
+              defaultValue={'fleet'}
+            />
+          ) : null}
 
           <ReferenceInput
             label='Depends on Fleet'
@@ -252,16 +255,18 @@ export const FleetEdit: React.FC = () => {
         />
 
         <Row>
-          <SelectInput
-            label='Class'
-            source='is of-class'
-            choices={[
-              { id: 'fleet', name: 'Fleet' },
-              { id: 'app', name: 'App' },
-              { id: 'block', name: 'Block' },
-            ]}
-            defaultValue={'fleet'}
-          />
+          {applicationClass ? (
+            <SelectInput
+              label='Class'
+              source={applicationClass}
+              choices={[
+                { id: 'fleet', name: 'Fleet' },
+                { id: 'app', name: 'App' },
+                { id: 'block', name: 'Block' },
+              ]}
+              defaultValue={'fleet'}
+            />
+          ) : null}
 
           <ReferenceInput
             label='Depends on Fleet'

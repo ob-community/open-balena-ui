@@ -34,8 +34,11 @@ import versions from '../../versions';
 import environment from '../../lib/reactAppEnv';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
-const fleetCardFilters = [<SearchInput source='#app name,is of-class@ilike' alwaysOn />];
+const fleetCardFilters = [
+  <SearchInput source={`#app name${applicationClass ? `,${applicationClass}` : ''}@ilike`} alwaysOn />,
+];
 
 export const FleetCards: React.FC = () => (
   <ResourceContextProvider value='application'>
@@ -107,10 +110,12 @@ export const FleetCards: React.FC = () => (
                                 </ReferenceField>
                               </TableCell>
                             </TableRow>
-                            <TableRow>
-                              <TableCell sx={{ fontWeight: 'bold' }}>Class</TableCell>
-                              <TableCell align='right'>{record['is of-class']}</TableCell>
-                            </TableRow>
+                            {applicationClass ? (
+                              <TableRow>
+                                <TableCell sx={{ fontWeight: 'bold' }}>Class</TableCell>
+                                <TableCell align='right'>{record[applicationClass]}</TableCell>
+                              </TableRow>
+                            ) : null}
                             <TableRow>
                               <TableCell sx={{ fontWeight: 'bold' }}>Rel.</TableCell>
                               <TableCell

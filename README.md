@@ -5,10 +5,13 @@ open-balena.
 
 ## Dependencies
 
-This project is dependent on [open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) and
+This project uses `open-balena-api` for operational data and depends on
+[open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) only for administrator identity and
+authorization resources that the API does not expose with the required global semantics. It also depends on
 [open-balena-remote](https://github.com/ob-community/open-balena-remote), so the easiest way to get this up and
 running would be to install it via the [open-balena-admin](https://github.com/ob-community/open-balena-admin)
-project.
+project. See [DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid
+provider.
 
 ## Configuration
 
@@ -16,8 +19,13 @@ There are a number of environment variables used to configure the ui:
 
 - `PORT` - The port that the ui will listen on
 
-- `REACT_APP_OPEN_BALENA_POSTGREST_URL` The URL (accessible to API) of the `open-balena-postgrest` instance, i.e.
+- `OPEN_BALENA_POSTGREST_URL` The internal URL (accessible to the UI server, not browsers) of the
+  `open-balena-postgrest` instance, i.e.
   `http://postgrest.openbalena.local:8000`
+
+- `OPEN_BALENA_BOOTSTRAP_USER_ID` The trusted existing user ID allowed to create and receive the first `global-admin`
+  role at server startup. This must be the positive numeric `user.id` (for example `2`), not a username or email address.
+  Leave it unset to retain legacy access when `global-admin` does not exist; remove it after successful bootstrap.
 
 - `REACT_APP_OPEN_BALENA_REMOTE_URL` The URL (accessible to API) of the `open-balena-remote` instance, i.e.
   `http://remote.openbalena.local:10000`
@@ -27,6 +35,9 @@ There are a number of environment variables used to configure the ui:
 
 - `REACT_APP_OPEN_BALENA_API_VERSION` The version of `open-balena-api` that the above instance is running, i.e.
   `v0.139.0`
+
+- `REACT_APP_OPEN_BALENA_ODATA_VERSION` Optional OData endpoint override (`v6` or `v7`). By default, the provider uses
+  `v7` on open-balena-api v25.2.8 and newer and falls back to `v6` on older servers.
 
 - `REACT_APP_BANNER_IMAGE` The URL of a custom banner image to use on the main dashboard.
 
@@ -514,6 +525,10 @@ A new mapping should be added only when the UI needs different behavior starting
 
 The compatibility layer is intended to allow the current `open-balena-ui` codebase to operate against both older supported OpenBalena installations and current `open-balena-api` releases without scattering version-specific SBVR knowledge throughout the application.
 
+Operational data uses the backwards-compatible OData v6 endpoint on older servers and v7 where supported, and accepts
+both legacy and current OData response envelopes. See [API_VERSIONS.md](API_VERSIONS.md) for the provider's compatibility
+and degradation behavior and [ACCESS_CONTROLS.md](ACCESS_CONTROLS.md) for administrator role setup and PostgREST security
+requirements.
 
 ## Installation
 

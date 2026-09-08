@@ -2,17 +2,12 @@ import LockIcon from '@mui/icons-material/Lock';
 import SaveIcon from '@mui/icons-material/Save';
 import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
 import type { ButtonProps, SxProps, Theme } from '@mui/material';
-import { hashSync } from 'bcrypt-ts';
 import React from 'react';
 import { PasswordInput, useDataProvider, useNotify, useRecordContext, SimpleForm } from 'react-admin';
 import type { RaRecord } from 'react-admin';
 import PasswordChecklist from 'react-password-checklist';
 import Row from '../ui/Row';
-
-const hashPassword = (password: string) => {
-  const saltRounds = 10;
-  return hashSync(password, saltRounds).replace('2a', '2b');
-};
+import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 
 type ChangePasswordButtonProps = ButtonProps;
 
@@ -36,7 +31,7 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
   const [open, setOpen] = React.useState(false);
   const [newPassword, setPassword] = React.useState('');
   const [isPasswordValid, setPasswordValid] = React.useState(false);
-  const dataProvider = useDataProvider();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const notify = useNotify();
   const record = useRecordContext<RaRecord>();
 
@@ -49,14 +44,8 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
       return;
     }
 
-    const hashedPassword = hashPassword(new_password);
-
     try {
-      await dataProvider.update('user', {
-        id: record.id,
-        data: { password: hashedPassword },
-        previousData: record,
-      });
+      await dataProvider.changePassword({ userId: record.id, password: new_password });
 
       setOpen(false);
       notify('Password successfully changed', { type: 'success' });

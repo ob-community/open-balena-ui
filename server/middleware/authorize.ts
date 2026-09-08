@@ -1,5 +1,10 @@
+import type { JWTPayload } from 'jose';
 import type { RequestHandler } from 'express';
 import { jwtVerify } from 'jose';
+
+export interface AuthorizedLocals {
+  auth: JWTPayload;
+}
 
 const authorize: RequestHandler = async (req, res, next) => {
   try {
@@ -12,9 +17,10 @@ const authorize: RequestHandler = async (req, res, next) => {
     }
 
     const token = authorizationHeader.split('Bearer ')[1];
-    await jwtVerify(token, new TextEncoder().encode(secret), {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
       algorithms: ['HS256'],
     });
+    res.locals.auth = payload;
     next();
   } catch (error) {
     res.status(401).json({ success: false, message: 'Invalid token' });

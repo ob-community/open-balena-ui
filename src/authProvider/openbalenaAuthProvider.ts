@@ -75,9 +75,9 @@ const authProvider: OpenBalenaAuthProvider = {
     const jwt = readToken();
     return jwt ? Promise.resolve(decodeToken(jwt).permissions) : Promise.reject();
   },
-  checkError: (error: { status?: number }) => {
+  checkError: (error: { status?: number; body?: { code?: string } }) => {
     const status = error.status;
-    if (status === 504 || status === 403) {
+    if (status === 504 || (status === 403 && error.body?.code !== 'ADMIN_DB_FORBIDDEN')) {
       localStorage.removeItem('auth');
       return Promise.reject();
     }

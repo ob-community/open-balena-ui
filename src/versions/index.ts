@@ -138,17 +138,19 @@ versions['45.0.0'] = {
 
 const getTargetVersion = (version?: string): string => {
   const availableVersions = Object.keys(versions);
-  const fallback = semver.sort([...availableVersions]).pop() ?? availableVersions[availableVersions.length - 1];
+  const sortedVersions = semver.sort([...availableVersions]);
+  const newestVersion = sortedVersions[sortedVersions.length - 1];
+  const oldestVersion = sortedVersions[0];
 
   if (!version) {
-    return fallback;
+    return newestVersion;
   }
 
   const [, versionNumber] = version.split('v');
   const candidate = versionNumber ?? version;
   const target = semver.maxSatisfying(availableVersions, `<=${candidate}`);
 
-  return target ?? fallback;
+  return target ?? oldestVersion;
 };
 
 const resource = (resourceKey: string, version?: string): string => {
@@ -165,4 +167,14 @@ const field = (fieldKey: string, version?: string): string => {
   return mapping.fields[fieldKey] ?? fieldKey;
 };
 
-export default { resource, field };
+const optionalResource = (resourceKey: string, version?: string): string | undefined => {
+  const targetVer = getTargetVersion(version);
+  return versions[targetVer].resources[resourceKey];
+};
+
+const optionalField = (fieldKey: string, version?: string): string | undefined => {
+  const targetVer = getTargetVersion(version);
+  return versions[targetVer].fields[fieldKey];
+};
+
+export default { resource, field, optionalResource, optionalField };

@@ -1,25 +1,14 @@
 import { useDataProvider } from 'react-admin';
-import { useGenerateApiKey, useDeleteApiKey } from './apiKey';
+import { useDeleteApiKey } from './apiKey';
 import { deleteAllRelated } from './delete';
+import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 
 export function useCreateDevice() {
-  const dataProvider = useDataProvider();
-  const generateApiKey = useGenerateApiKey();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
 
   return async (data) => {
-    const roles = await dataProvider.getList('role', {
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: {},
-    });
-    // create device actor and device API key
-    const deviceRole = roles.data.find((x) => x.name === 'device-api-key');
-    const deviceActor = await dataProvider.create('actor', { data: {} });
-    data.actor = deviceActor.data.id;
-    const deviceApiKey = await dataProvider.create('api key', {
-      data: { 'key': generateApiKey(), 'is of-actor': deviceActor.data.id },
-    });
-    await dataProvider.create('api key-has-role', { data: { 'api key': deviceApiKey.data.id, 'role': deviceRole.id } });
+    const { actorId } = await dataProvider.createCredentialActor({ role: 'device-api-key' });
+    data.actor = actorId;
 
     // delete unused field
     delete data['operated by-application'];

@@ -1,40 +1,6 @@
-import base32Encode from 'base32-encode';
-import { hashSync } from 'bcrypt-ts';
 import { useDataProvider } from 'react-admin';
-import { useDeleteApiKey, useGenerateApiKey } from './apiKey';
+import { useDeleteApiKey } from './apiKey';
 import { deleteAllRelated } from './delete';
-
-const hashPassword = (password) => {
-  const saltRounds = 10;
-  return hashSync(password, saltRounds).replace('2a', '2b');
-};
-
-export function useCreateUser() {
-  const dataProvider = useDataProvider();
-  const generateApiKey = useGenerateApiKey();
-
-  return async (data) => {
-    const roles = await dataProvider.getList('role', {
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: {},
-    });
-    // create user actor and user API key
-    const userRole = roles.data.find((x) => x.name === 'named-user-api-key');
-    const userActor = await dataProvider.create('actor', { data: {} });
-    data.actor = userActor.data.id;
-    const userApiKey = await dataProvider.create('api key', {
-      data: { 'key': generateApiKey(), 'is of-actor': userActor.data.id },
-    });
-    await dataProvider.create('api key-has-role', { data: { 'api key': userApiKey.data.id, 'role': userRole.id } });
-    // hash password and generate jwt secret
-    data.password = hashPassword(data.password);
-    const randomBytes = new Uint8Array(20);
-    crypto.getRandomValues(randomBytes);
-    data['jwt secret'] = base32Encode(randomBytes, 'RFC3548').toString();
-    return data;
-  };
-}
 
 export function useModifyUser() {
   const dataProvider = useDataProvider();

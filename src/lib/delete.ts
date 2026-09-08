@@ -38,7 +38,7 @@ export async function deleteAllRelated(dataProvider, localResource, relatedIndir
         })
         .then((existingMappings) => {
           if (existingMappings.data.length > 0) {
-            dataProvider.deleteMany(x.remoteResource, { ids: existingMappings.data.map((y) => y.id) });
+            return dataProvider.deleteMany(x.remoteResource, { ids: existingMappings.data.map((y) => y.id) });
           }
         });
     }),

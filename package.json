@@ -73,6 +73,7 @@
     "build:server": "ncc build server/index.ts -o dist/server -m",
     "preview": "vite preview --outDir dist/client",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/dataProvider/*.test.ts src/versions/*.test.ts server/*.test.ts",
     "prettier": "prettier --write ."
   },
   "eslintConfig": {

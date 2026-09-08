@@ -1,24 +1,6 @@
-import base32Encode from 'base32-encode';
 import { useDataProvider } from 'react-admin';
 import { useDeleteApiKey } from './apiKey';
-import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 import { deleteAllRelated } from './delete';
-import { hashPassword } from './password';
-
-export function useCreateUser() {
-  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
-
-  return async (data) => {
-    const { actorId } = await dataProvider.createCredentialActor({ role: 'named-user-api-key' });
-    data.actor = actorId;
-    // hash password and generate jwt secret
-    data.password = hashPassword(data.password);
-    const randomBytes = new Uint8Array(20);
-    crypto.getRandomValues(randomBytes);
-    data['jwt secret'] = base32Encode(randomBytes, 'RFC3548').toString();
-    return data;
-  };
-}
 
 export function useModifyUser() {
   const dataProvider = useDataProvider();

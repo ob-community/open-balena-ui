@@ -96,10 +96,8 @@ export const authorizeAdministratorRoleCreation = (
   if (!requestedRoleNames.includes(GLOBAL_ADMIN_ROLE)) {
     return;
   }
-  if (method === 'POST') {
-    throw new Error(
-      'The global-admin role is managed at server startup through OPEN_BALENA_BOOTSTRAP_USER_ID.',
-    );
+  if (['POST', 'PATCH', 'PUT'].includes(method)) {
+    throw new Error('The global-admin role is managed at server startup through OPEN_BALENA_BOOTSTRAP_USER_ID.');
   }
 };
 
@@ -120,6 +118,9 @@ export const authorizePreActivationAssignment = (
   }
   if (Array.isArray(body)) {
     throw new Error('Bulk role assignments are not allowed before global administrator activation.');
+  }
+  if (['PATCH', 'PUT'].includes(method)) {
+    throw new Error('Role assignments cannot be updated before global administrator activation.');
   }
   const roleId = numberField(body as Record<string, unknown>, 'role');
   if (roleId != null && context.protectedRoleIds.has(roleId)) {
@@ -468,10 +469,7 @@ export const authorizeSelfLockoutMutation = (
   if (resource === 'user' && targetIds.has(context.userId)) {
     throw new Error('Global administrators cannot delete their own user record.');
   }
-  if (
-    resource === 'user-has-role' &&
-    [...targetIds].some((id) => context.ownGlobalRoleAssignmentIds.has(id))
-  ) {
+  if (resource === 'user-has-role' && [...targetIds].some((id) => context.ownGlobalRoleAssignmentIds.has(id))) {
     throw new Error('Global administrators cannot remove or rebind their own global-admin assignment.');
   }
 };

@@ -67,7 +67,17 @@ export const openBalenaDataProvider = (
     getOne: async (resource, params) => route(resource).getOne(resource, params),
     getMany: async (resource, params) => route(resource).getMany(resource, params),
     getManyReference: async (resource, params) => route(resource).getManyReference(resource, params),
-    create: async (resource, params) => route(resource).create(resource, params),
+    create: async (resource, params) => {
+      if (resource === 'user') {
+        const { json } = await httpClient('/admin-db/actions/create-user', {
+          method: 'POST',
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(params.data),
+        });
+        return { data: json };
+      }
+      return route(resource).create(resource, params);
+    },
     update: async (resource, params) => route(resource).update(resource, params),
     updateMany: async (resource, params) => route(resource).updateMany(resource, params),
     delete: async (resource, params) => route(resource).delete(resource, params),

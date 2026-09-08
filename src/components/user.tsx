@@ -21,7 +21,7 @@ import {
   CreateProps,
   EditProps,
 } from 'react-admin';
-import { useCreateUser, useModifyUser } from '../lib/user';
+import { useModifyUser } from '../lib/user';
 import ChangePasswordButton from '../ui/ChangePasswordButton';
 import DeleteUserButton, { DeleteUserButtonProps } from '../ui/DeleteUserButton';
 import ManageOrganizations from '../ui/ManageOrganizations';
@@ -77,12 +77,11 @@ const CustomCreateToolbar: React.FC<ToolbarProps & { saveDisabled?: boolean }> =
 );
 
 export const UserCreate: React.FC<CreateProps> = (props) => {
-  const createUser = useCreateUser();
   const [password, setPassword] = React.useState('');
   const [password_valid, setPasswordValid] = React.useState(false);
 
   return (
-    <Create title='Create User' transform={createUser} {...props}>
+    <Create title='Create User' {...props}>
       <SimpleForm toolbar={<CustomCreateToolbar saveDisabled={!password_valid} />}>
         <TextInput
           name='email'

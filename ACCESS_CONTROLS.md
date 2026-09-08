@@ -25,8 +25,8 @@ Existing installations historically treated every authenticated UI user as a dat
 lockout, enforcement activates only when a role named `global-admin` exists.
 
 - **No `global-admin` role:** legacy authorization behavior is retained, but credential redaction is always active.
-- **No `global-admin` role and `OPEN_BALENA_BOOTSTRAP_USER_ID` is set:** server startup creates the role and assigns it to
-  that numeric user ID before accepting requests.
+- **No `global-admin` role and `OPEN_BALENA_BOOTSTRAP_USER_ID` is set:** server startup creates the role and assigns it
+  to that numeric user ID before accepting requests.
 - **`global-admin` role exists:** direct database authorization is enforced for every request.
 
 Before activation, protected administrator roles cannot be renamed into existence or assigned through the proxy. Create
@@ -100,19 +100,21 @@ Redaction is applied in both legacy and enforced modes:
 | Fleet/device API key `key`       | Returned to global admins and organization admins authorized to manage that fleet/device |
 | SSH `public key`                 | Returned only for the authenticated user's own key; other records expose metadata only   |
 
-Credential fields are also rejected in query parameters to prevent filter-based inference. Generic PATCH requests cannot
-modify user password/JWT-secret fields or API-key material.
+Credential fields are also rejected in query parameters to prevent filter-based inference. Generic user POST, PATCH, and
+PUT requests cannot set password/JWT-secret fields, and generic mutations cannot change API-key material. PostgREST
+upsert preferences are rejected so a create request cannot modify an existing out-of-scope record.
 
 Password changes use the dedicated `/admin-db/actions/change-password` action. It allows users to change their own
 password when they have administrator access and allows administrators to change only passwords for users within their
 computed scope. Password hashing is performed on the UI server; generic user PATCH requests continue to reject password
 changes.
 
-User, device, and fleet creation use `/admin-db/actions/provision-credential-actor`. The server generates the credential
-and creates the actor, API key, and role assignment through old-compatible PostgREST operations. Partial failures trigger
-best-effort cleanup. Human credential material is never returned to the administrator's browser. Provisioning an
-unbound actor is global-admin-only; organization administrators may create and maintain additional keys only for
-existing fleet/device actors already in their organization scope.
+User creation uses `/admin-db/actions/create-user`; password hashing, JWT-secret generation, and named-user credential
+provisioning all occur on the UI server. Device and fleet creation use `/admin-db/actions/provision-credential-actor`.
+These actions create actors, API keys, and role assignments through old-compatible PostgREST operations, with
+best-effort cleanup after partial failures. Human credential material is never returned to the administrator's browser.
+User creation and unbound actor provisioning are global-admin-only; organization administrators may create and maintain
+additional keys only for existing fleet/device actors already in their organization scope.
 
 ## Deployment checklist
 

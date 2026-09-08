@@ -76,6 +76,22 @@ test('hybrid provider uses the dedicated password action', async () => {
   });
 });
 
+test('hybrid provider creates users through the dedicated action', async () => {
+  const requests: Array<{ url: string; options?: Options }> = [];
+  const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
+    requests.push({ url, options });
+    return response({ id: 7, username: 'new-user' });
+  });
+
+  const result = await provider.create('user', {
+    data: { username: 'new-user', email: 'new@example.test', password: 'Valid1!password' },
+  });
+
+  assert.deepEqual(result.data, { id: 7, username: 'new-user' });
+  assert.equal(requests[0].url, '/admin-db/actions/create-user');
+  assert.equal(requests[0].options?.method, 'POST');
+});
+
 test('hybrid provider provisions credential actors through the dedicated action', async () => {
   const requests: Array<{ url: string; options?: Options }> = [];
   const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {

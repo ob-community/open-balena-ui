@@ -211,6 +211,14 @@ test('administrator role creation is constrained around startup activation', asy
     () => authorizeAdministratorRoleCreation(context, 'role', 'POST', { name: 'global-admin' }),
     /managed at server startup/,
   );
+  assert.throws(
+    () => authorizeAdministratorRoleCreation(context, 'role', 'PATCH', { name: 'global-admin' }),
+    /managed at server startup/,
+  );
+  assert.throws(
+    () => authorizePreActivationAssignment(context, 'user-has-role', 'PATCH', { user: 3 }),
+    /cannot be updated before/,
+  );
 });
 
 test('global-admin enforcement role cannot be renamed or deleted', async () => {
@@ -230,10 +238,7 @@ test('global-admin enforcement role cannot be renamed or deleted', async () => {
 
 test('global administrators cannot remove their own access', async () => {
   const context = await buildAccessContext({ id: 1 }, reader());
-  assert.throws(
-    () => authorizeSelfLockoutMutation(context, 'user', 'DELETE', { id: 'eq.1' }),
-    /own user record/,
-  );
+  assert.throws(() => authorizeSelfLockoutMutation(context, 'user', 'DELETE', { id: 'eq.1' }), /own user record/);
   assert.throws(
     () => authorizeSelfLockoutMutation(context, 'user-has-role', 'DELETE', { id: 'eq.10' }),
     /own global-admin assignment/,
@@ -242,9 +247,7 @@ test('global administrators cannot remove their own access', async () => {
     () => authorizeSelfLockoutMutation(context, 'user-has-role', 'PATCH', { id: 'eq.10' }),
     /own global-admin assignment/,
   );
-  assert.doesNotThrow(() =>
-    authorizeSelfLockoutMutation(context, 'user-has-role', 'DELETE', { id: 'eq.12' }),
-  );
+  assert.doesNotThrow(() => authorizeSelfLockoutMutation(context, 'user-has-role', 'DELETE', { id: 'eq.12' }));
 });
 
 test('password changes are restricted to self and administratively scoped users', async () => {

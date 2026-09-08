@@ -1,5 +1,6 @@
 import { json, Router, type Response } from 'express';
 import { randomBytes } from 'node:crypto';
+import base32Encode from 'base32-encode';
 import {
   authorizeAdministratorRoleCreation,
   authorizeCredentialActorProvision,
@@ -40,6 +41,16 @@ export const requestHeaders = (authorization: string, headers?: HeadersInit): He
   return result;
 };
 
+export const preferUsesUpsert = (prefer: string | undefined): boolean => /\bresolution\s*=/i.test(prefer ?? '');
+
+export const bodyContainsUserCredentials = (body: unknown): boolean =>
+  (Array.isArray(body) ? body : [body]).some(
+    (record) =>
+      record != null &&
+      typeof record === 'object' &&
+      ('password' in record || 'jwt secret' in record || 'jwt_secret' in record),
+  );
+
 const databaseReader = (authorization: string) => ({
   list: async (resource: string, query = new URLSearchParams()) => {
     const response = await fetch(`${getPostgrestUrl()}/${encodeURIComponent(resource)}?${query}`, {
@@ -74,6 +85,15 @@ const sendDenied = (res: Response, error: unknown): void => {
     message,
   });
 };
+
+const validatePassword = (password: unknown): password is string =>
+  typeof password === 'string' &&
+  password.length >= 8 &&
+  password.length <= 1024 &&
+  /[a-z]/.test(password) &&
+  /[A-Z]/.test(password) &&
+  /\d/.test(password) &&
+  /[^A-Za-z0-9]/.test(password);
 
 router.post('/admin-db/actions/change-password', ...dosProtect, authorize, async (req, res) => {
   try {
@@ -119,6 +139,94 @@ router.post('/admin-db/actions/change-password', ...dosProtect, authorize, async
   }
 });
 
+const createRecord = async (
+  authorization: string,
+  resource: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> => {
+  const response = await fetch(`${getPostgrestUrl()}/${encodeURIComponent(resource)}`, {
+    method: 'POST',
+    headers: requestHeaders(authorization, {
+      'Accept': 'application/vnd.pgrst.object+json',
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
+    }),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new UpstreamRequestError(`Unable to create ${resource} (${response.status}).`);
+  }
+  const record = (await response.json()) as Record<string, unknown>;
+  const id = Number(record.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new UpstreamRequestError(`Creating ${resource} returned an invalid ID.`);
+  }
+  return record;
+};
+
+const deleteCredentialActor = async (
+  authorization: string,
+  actorId: number | undefined,
+  apiKeyId: number | undefined,
+): Promise<void> => {
+  if (apiKeyId != null) {
+    const mappingQuery = new URLSearchParams({ 'api key': `eq.${apiKeyId}` });
+    await fetch(`${getPostgrestUrl()}/${encodeURIComponent('api key-has-role')}?${mappingQuery}`, {
+      method: 'DELETE',
+      headers: requestHeaders(authorization),
+    });
+    await fetch(`${getPostgrestUrl()}/${encodeURIComponent('api key')}?id=eq.${apiKeyId}`, {
+      method: 'DELETE',
+      headers: requestHeaders(authorization),
+    });
+  }
+  if (actorId != null) {
+    await fetch(`${getPostgrestUrl()}/${encodeURIComponent('actor')}?id=eq.${actorId}`, {
+      method: 'DELETE',
+      headers: requestHeaders(authorization),
+    });
+  }
+};
+
+const provisionCredentialActor = async (
+  authorization: string,
+  role: string,
+): Promise<{ actorId: number; apiKeyId: number }> => {
+  const roles = await databaseReader(authorization).list('role', new URLSearchParams({ name: `eq.${role}` }));
+  const roleId = Number(roles[0]?.id);
+  if (roles.length !== 1 || !Number.isInteger(roleId) || roleId <= 0) {
+    throw new Error(`The required ${role} role does not exist.`);
+  }
+  let actorId: number | undefined;
+  let apiKeyId: number | undefined;
+  try {
+    actorId = Number((await createRecord(authorization, 'actor', {})).id);
+    apiKeyId = Number(
+      (
+        await createRecord(authorization, 'api key', {
+          'key': randomBytes(32).toString('base64url'),
+          'is of-actor': actorId,
+        })
+      ).id,
+    );
+    const assignment = await fetch(`${getPostgrestUrl()}/${encodeURIComponent('api key-has-role')}`, {
+      method: 'POST',
+      headers: requestHeaders(authorization, {
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      }),
+      body: JSON.stringify({ 'api key': apiKeyId, 'role': roleId }),
+    });
+    if (!assignment.ok) {
+      throw new UpstreamRequestError(`Unable to assign the credential role (${assignment.status}).`);
+    }
+    return { actorId, apiKeyId };
+  } catch (error) {
+    await deleteCredentialActor(authorization, actorId, apiKeyId);
+    throw error;
+  }
+};
+
 router.post('/admin-db/actions/provision-credential-actor', ...dosProtect, authorize, async (req, res) => {
   try {
     const authorization = req.headers.authorization!;
@@ -128,69 +236,47 @@ router.post('/admin-db/actions/provision-credential-actor', ...dosProtect, autho
     if (!['named-user-api-key', 'device-api-key', 'provisioning-api-key'].includes(role)) {
       throw new Error('A supported credential actor role is required.');
     }
-    const roles = await databaseReader(authorization).list(
-      'role',
-      new URLSearchParams({ name: `eq.${role}` }),
-    );
-    const roleId = Number(roles[0]?.id);
-    if (roles.length !== 1 || !Number.isInteger(roleId) || roleId <= 0) {
-      throw new Error(`The required ${role} role does not exist.`);
-    }
-    let actorId: number | undefined;
-    let apiKeyId: number | undefined;
-    const createRecord = async (resource: string, body: Record<string, unknown>): Promise<number> => {
-      const response = await fetch(`${getPostgrestUrl()}/${encodeURIComponent(resource)}`, {
-        method: 'POST',
-        headers: requestHeaders(authorization, {
-          'Accept': 'application/vnd.pgrst.object+json',
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation',
-        }),
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        throw new UpstreamRequestError(`Unable to create ${resource} (${response.status}).`);
-      }
-      const id = Number(((await response.json()) as { id?: unknown }).id);
-      if (!Number.isInteger(id) || id <= 0) {
-        throw new UpstreamRequestError(`Creating ${resource} returned an invalid ID.`);
-      }
-      return id;
-    };
-    try {
-      actorId = await createRecord('actor', {});
-      apiKeyId = await createRecord('api key', {
-        'key': randomBytes(32).toString('base64url'),
-        'is of-actor': actorId,
-      });
-      const assignment = await fetch(`${getPostgrestUrl()}/${encodeURIComponent('api key-has-role')}`, {
-        method: 'POST',
-        headers: requestHeaders(authorization, {
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal',
-        }),
-        body: JSON.stringify({ 'api key': apiKeyId, role: roleId }),
-      });
-      if (!assignment.ok) {
-        throw new UpstreamRequestError(`Unable to assign the credential role (${assignment.status}).`);
-      }
-    } catch (error) {
-      if (apiKeyId != null) {
-        await fetch(`${getPostgrestUrl()}/${encodeURIComponent('api key')}?id=eq.${apiKeyId}`, {
-          method: 'DELETE',
-          headers: requestHeaders(authorization),
-        });
-      }
-      if (actorId != null) {
-        await fetch(`${getPostgrestUrl()}/${encodeURIComponent('actor')}?id=eq.${actorId}`, {
-          method: 'DELETE',
-          headers: requestHeaders(authorization),
-        });
-      }
-      throw error;
-    }
+    const { actorId } = await provisionCredentialActor(authorization, role);
     res.json({ actorId });
   } catch (error) {
+    sendDenied(res, error);
+  }
+});
+
+router.post('/admin-db/actions/create-user', ...dosProtect, authorize, async (req, res) => {
+  let actorId: number | undefined;
+  let apiKeyId: number | undefined;
+  try {
+    const authorization = req.headers.authorization!;
+    const context = await buildAccessContext((res.locals as AuthorizedLocals).auth, databaseReader(authorization));
+    authorizeCredentialActorProvision(context);
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      throw new Error('User creation requires an object body.');
+    }
+    const { username, email, password, ...unexpected } = req.body as Record<string, unknown>;
+    if (
+      typeof username !== 'string' ||
+      !username.trim() ||
+      typeof email !== 'string' ||
+      !email.trim() ||
+      !validatePassword(password) ||
+      Object.keys(unexpected).length
+    ) {
+      throw new Error('A username, email, and password meeting the password policy are required.');
+    }
+    ({ actorId, apiKeyId } = await provisionCredentialActor(authorization, 'named-user-api-key'));
+    const user = await createRecord(authorization, 'user', {
+      'actor': actorId,
+      'email': email.trim(),
+      'username': username.trim(),
+      'password': hashPassword(password),
+      'jwt secret': base32Encode(randomBytes(20), 'RFC3548').toString(),
+    });
+    res.status(201).json(redactSecrets('user', user, context));
+  } catch (error) {
+    if (actorId != null || apiKeyId != null) {
+      await deleteCredentialActor(req.headers.authorization!, actorId, apiKeyId);
+    }
     sendDenied(res, error);
   }
 });
@@ -215,12 +301,10 @@ router.all('/admin-db/:resource', ...dosProtect, authorize, async (req, res) => 
     if (queryReferencesCredential(resource, req.query)) {
       throw new Error('Credential fields cannot be queried through administrator access.');
     }
-    if (
-      ['PATCH', 'PUT'].includes(req.method) &&
-      resource === 'user' &&
-      req.body &&
-      ('password' in req.body || 'jwt secret' in req.body || 'jwt_secret' in req.body)
-    ) {
+    if (preferUsesUpsert(req.get('Prefer'))) {
+      throw new Error('PostgREST upsert preferences are not allowed through administrator access.');
+    }
+    if (['POST', 'PATCH', 'PUT'].includes(req.method) && resource === 'user' && bodyContainsUserCredentials(req.body)) {
       throw new Error('Use the dedicated password or credential rotation action.');
     }
     if (['PATCH', 'PUT'].includes(req.method) && resource === 'api key' && req.body && 'key' in req.body) {

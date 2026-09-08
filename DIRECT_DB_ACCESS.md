@@ -45,10 +45,11 @@ administrators and to organization administrators whose server-computed scope in
 administrators must be able to create and maintain provisioning/device credentials. This distinction is enforced from
 actor ownership in the `/admin-db` proxy rather than from client-supplied filters.
 
-Initial user, device, and fleet credential actors are provisioned through a server-only action backed by the same
-PostgREST tables available on legacy installations. The server generates the key and performs best-effort cleanup if
-actor, key, and role-assignment creation does not complete. Human-user key material is not returned to the
-administrator's browser.
+User creation is a server-only action that hashes the password, generates the JWT secret, and provisions the named-user
+credential actor through PostgREST tables available on legacy installations. Device and fleet credential actors use a
+separate server-only provisioning action. The server generates each key and performs best-effort cleanup if actor, key,
+role-assignment, or user creation does not complete. Human-user key material is not returned to the administrator's
+browser.
 
 These requests pass through the UI server's `/admin-db` authorization proxy and retain the authenticated JWT, but they
 still **do not gain open-balena-api ACL enforcement**. The PostgREST service must not be publicly reachable. Deploy it

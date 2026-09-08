@@ -4,6 +4,7 @@ import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import serialize from 'serialize-javascript';
 import registryImageRoutes from './routes/registryImage';
+import adminDatabaseRoutes from './routes/adminDatabase';
 
 dotenv.config();
 
@@ -12,10 +13,10 @@ const HOST = '0.0.0.0';
 const CLIENT_DIR = 'dist/client';
 const CLIENT_ENV_PLACEHOLDER = '<!--OBUI_RUNTIME_ENV-->';
 const CLIENT_ENV_KEYS = [
-  'REACT_APP_OPEN_BALENA_POSTGREST_URL',
   'REACT_APP_OPEN_BALENA_REMOTE_URL',
   'REACT_APP_OPEN_BALENA_API_URL',
   'REACT_APP_OPEN_BALENA_API_VERSION',
+  'REACT_APP_OPEN_BALENA_ODATA_VERSION',
   'REACT_APP_BANNER_IMAGE',
   'REACT_APP_OPEN_BALENA_UI_URL',
 ];
@@ -23,6 +24,7 @@ const CLIENT_ENV_KEYS = [
 const app = express();
 
 app.use('/', registryImageRoutes);
+app.use('/', adminDatabaseRoutes);
 app.use(express.static(CLIENT_DIR, { index: false }));
 app.get(/.*/, (_req, res) => {
   const indexPath = path.join(process.cwd(), CLIENT_DIR, 'index.html');

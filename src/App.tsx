@@ -36,7 +36,7 @@ import user from './components/user';
 import userKey from './components/userKey';
 import DeviceDashboard from './dashboards/device';
 import MainDashboard from './dashboards/main';
-import postgrestDataProvider from './dataProvider/postgrestDataProvider';
+import openBalenaDataProvider from './dataProvider/openBalenaDataProvider';
 import TreeMenu from './ui/TreeMenu';
 import versions from './versions';
 import environment from './lib/reactAppEnv';
@@ -51,9 +51,14 @@ const httpClient = (url: string, options: Options = {}): ReturnType<typeof fetch
   return fetchUtils.fetchJson(url, { ...options, headers });
 };
 
-const dataProvider = postgrestDataProvider(environment.REACT_APP_OPEN_BALENA_POSTGREST_URL, httpClient);
+const dataProvider = openBalenaDataProvider(
+  environment.REACT_APP_OPEN_BALENA_API_URL,
+  httpClient,
+  environment.REACT_APP_OPEN_BALENA_API_VERSION,
+  environment.REACT_APP_OPEN_BALENA_ODATA_VERSION,
+);
 
-const deviceTypeAliasVer = versions.resource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const deviceTypeAliasVer = versions.optionalResource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 const App: React.FC = () => (
   <ThemeModeProvider>

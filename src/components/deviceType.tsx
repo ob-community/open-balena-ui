@@ -22,7 +22,7 @@ import Row from '../ui/Row';
 import versions from '../versions';
 import environment from '../lib/reactAppEnv';
 
-const deviceTypeAlias = versions.resource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const deviceTypeAlias = versions.optionalResource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 export const DeviceTypeList: React.FC = () => {
   return (

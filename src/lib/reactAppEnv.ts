@@ -36,9 +36,6 @@ const readEnv = (key: string): string | undefined => {
 };
 
 const env = {
-  get REACT_APP_OPEN_BALENA_POSTGREST_URL() {
-    return readEnv('REACT_APP_OPEN_BALENA_POSTGREST_URL');
-  },
   get REACT_APP_OPEN_BALENA_REMOTE_URL() {
     return readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL');
   },
@@ -47,6 +44,9 @@ const env = {
   },
   get REACT_APP_OPEN_BALENA_API_VERSION() {
     return readEnv('REACT_APP_OPEN_BALENA_API_VERSION');
+  },
+  get REACT_APP_OPEN_BALENA_ODATA_VERSION() {
+    return readEnv('REACT_APP_OPEN_BALENA_ODATA_VERSION');
   },
   get REACT_APP_BANNER_IMAGE() {
     return readEnv('REACT_APP_BANNER_IMAGE');

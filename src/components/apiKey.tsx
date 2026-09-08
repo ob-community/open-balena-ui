@@ -104,7 +104,7 @@ const ActorField: React.FC<ActorFieldProps> = ({ record }) => {
 };
 
 const apiKeyFilters = [
-  <SearchInput key='search' source='#key,name,description@ilike' alwaysOn />,
+  <SearchInput key='search' source='name@ilike' alwaysOn />,
   <ActorFilter key='actor' alwaysOn />,
 ];
 
@@ -133,7 +133,9 @@ export const ApiKeyList: React.FC = () => {
       <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
         <FunctionField
           label='API Key'
-          render={(record) => <CopyChip title={record.key} label={record.key.slice(0, 10) + '...'} />}
+          render={(record) =>
+            record.key ? <CopyChip title={record.key} label={record.key.slice(0, 10) + '...'} /> : <span>Hidden</span>
+          }
         />
 
         <TextField label='Name' source='name' />
@@ -242,8 +244,6 @@ export const ApiKeyEdit: React.FC = () => {
       }}
     >
       <SimpleForm toolbar={<CustomToolbar />}>
-        <TextInput source='key' size='large' fullWidth={true} validate={required()} readOnly={true} />
-
         <Row>
           <TextInput source='name' size='large' validate={required()} />
           <TextInput source='description' size='large' />

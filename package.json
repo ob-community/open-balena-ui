@@ -1,6 +1,6 @@
 {
   "name": "open-balena-ui",
-  "version": "compatibility-updates",
+  "version": "0.7.2",
   "private": true,
   "engines": {
     "node": ">=24"

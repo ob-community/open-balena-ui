@@ -99,6 +99,9 @@ const extractODataRecord = (body: unknown): Record<string, unknown> | undefined 
   if (!body || typeof body !== 'object') {
     return undefined;
   }
+  if ('id' in body) {
+    return body as Record<string, unknown>;
+  }
   if ('d' in body) {
     const data = (body as { d: unknown }).d;
     if (Array.isArray(data)) {
@@ -185,6 +188,17 @@ const requirePositiveId = (value: unknown, field: string): number => {
   return id;
 };
 
+const requirePositiveIds = (value: unknown, field: string): number[] => {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 1000) {
+    throw new Error(`${field} must contain between 1 and 1000 IDs.`);
+  }
+  const ids = value.map((item) => requirePositiveId(item, field));
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(`${field} must not contain duplicate IDs.`);
+  }
+  return ids;
+};
+
 router.post('/admin-db/actions/change-password', ...dosProtect, authorize, async (req, res) => {
   try {
     const authorization = req.headers.authorization!;
@@ -261,6 +275,30 @@ const deleteApiKeyRecord = async (authorization: string, apiKeyId: number): Prom
   });
   if (!apiKeyResponse.ok) {
     throw new UpstreamRequestError(`Unable to delete the API key (${apiKeyResponse.status}).`);
+  }
+};
+
+const deleteApiKeyRecords = async (authorization: string, apiKeyIds: number[]): Promise<void> => {
+  const ids = `in.(${apiKeyIds.join(',')})`;
+  const mappingQuery = new URLSearchParams({ 'api key': ids });
+  for (const resource of ['api key-has-permission', 'api key-has-role']) {
+    const mappingResponse = await fetch(`${getPostgrestUrl()}/${encodeURIComponent(resource)}?${mappingQuery}`, {
+      method: 'DELETE',
+      headers: requestHeaders(authorization),
+    });
+    if (!mappingResponse.ok) {
+      throw new UpstreamRequestError(`Unable to clean up ${resource} records (${mappingResponse.status}).`);
+    }
+  }
+  const apiKeyResponse = await fetch(
+    `${getPostgrestUrl()}/${encodeURIComponent('api key')}?${new URLSearchParams({ id: ids })}`,
+    {
+      method: 'DELETE',
+      headers: requestHeaders(authorization),
+    },
+  );
+  if (!apiKeyResponse.ok) {
+    throw new UpstreamRequestError(`Unable to delete the API keys (${apiKeyResponse.status}).`);
   }
 };
 
@@ -409,6 +447,33 @@ router.post('/admin-db/actions/delete-api-key', ...dosProtect, authorize, async 
   }
 });
 
+router.post('/admin-db/actions/delete-api-keys', ...dosProtect, authorize, async (req, res) => {
+  try {
+    const authorization = req.headers.authorization!;
+    const context = await buildAccessContext((res.locals as AuthorizedLocals).auth, databaseReader(authorization));
+    const apiKeyIds = requirePositiveIds(req.body?.ids, 'API key deletion');
+    const allowedIds = authorizeResource(context, 'api key', 'DELETE');
+    const existingKeys = await databaseReader(authorization).list(
+      'api key',
+      new URLSearchParams({ id: `in.(${apiKeyIds.join(',')})` }),
+    );
+    if (existingKeys.length === 0) {
+      res.json({ ids: apiKeyIds });
+      return;
+    }
+    if (
+      existingKeys.length !== apiKeyIds.length ||
+      (allowedIds && existingKeys.some((record) => !allowedIds.has(Number(record.id))))
+    ) {
+      throw new Error('At least one API key does not exist or is outside the administrator scope.');
+    }
+    await deleteApiKeyRecords(authorization, apiKeyIds);
+    res.json({ ids: apiKeyIds });
+  } catch (error) {
+    sendDenied(res, error);
+  }
+});
+
 router.post('/admin-db/actions/delete-resource-actor', ...dosProtect, authorize, async (req, res) => {
   try {
     const authorization = req.headers.authorization!;
@@ -423,6 +488,30 @@ router.post('/admin-db/actions/delete-resource-actor', ...dosProtect, authorize,
 
     const records = await databaseReader(authorization).list(resource, new URLSearchParams({ id: `eq.${id}` }));
     const record = records[0];
+    if (records.length === 0) {
+      if (context.enforcementEnabled && !context.globalAdmin) {
+        throw new Error('Global administrator access is required to retry orphaned actor cleanup.');
+      }
+      for (const referencingResource of ['application', 'device', 'user', 'api key']) {
+        const actorField = referencingResource === 'api key' ? 'is of-actor' : 'actor';
+        const references = await databaseReader(authorization).list(
+          referencingResource,
+          new URLSearchParams({ [actorField]: `eq.${actorId}` }),
+        );
+        if (references.length > 0) {
+          throw new Error('The actor is still referenced and cannot be cleaned up as an orphan.');
+        }
+      }
+      const actorResponse = await fetch(`${getPostgrestUrl()}/${encodeURIComponent('actor')}?id=eq.${actorId}`, {
+        method: 'DELETE',
+        headers: requestHeaders(authorization),
+      });
+      if (!actorResponse.ok) {
+        throw new UpstreamRequestError(`Unable to delete the orphaned ${resource} actor (${actorResponse.status}).`);
+      }
+      res.json({ id });
+      return;
+    }
     if (records.length !== 1 || Number(record?.actor) !== actorId) {
       throw new Error('The resource does not exist or does not belong to the supplied actor.');
     }

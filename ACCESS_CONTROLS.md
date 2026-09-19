@@ -107,9 +107,10 @@ User and API-key actor ownership is immutable through generic updates in every a
 rebinding from turning another human user's credential into a caller-visible key. API keys are created through
 `/admin-db/actions/create-api-key`, which validates the target actor and generates key material with the server's
 cryptographic random source. The create form offers the authenticated user's own actor plus in-scope fleet and device
-actors, without listing other human users. Deletion uses `/admin-db/actions/delete-api-key` so dependent privilege rows
-are removed only after the server validates the key itself is in mutation scope. PostgREST upsert preferences are
-rejected so a create request cannot modify an existing out-of-scope record.
+actors, without listing other human users. Single deletion uses `/admin-db/actions/delete-api-key`; bulk deletion uses
+one bounded `/admin-db/actions/delete-api-keys` request that validates all existing requested keys before deleting any
+of them. Both actions remove dependent privilege rows only after validating mutation scope. PostgREST upsert preferences
+are rejected so a create request cannot modify an existing out-of-scope record.
 
 Password changes use the dedicated `/admin-db/actions/change-password` action. Global administrators may reset user
 passwords; organization administrators may change only their own password because a user account and its password can
@@ -122,8 +123,10 @@ which provisions the credential actor and performs the open-balena-api write in 
 fails, the newly created role assignment, API key, and actor are removed. User, fleet, and device deletion uses
 `/admin-db/actions/delete-resource-actor`, which validates the parent and actor against the pre-delete authorization
 scope before deleting the parent and cleaning up its actor. Human credential material is never returned to the
-administrator's browser. User, device, and fleet creation are global-admin-only; organization administrators may create
-and maintain additional keys only for existing fleet/device actors already in their organization scope.
+administrator's browser. If actor cleanup fails after the parent was deleted, a global administrator can safely retry
+the same action; the server verifies that no user, fleet, device, or API key still references the actor before deleting
+it. User, device, and fleet creation are global-admin-only; organization administrators may create and maintain
+additional keys only for existing fleet/device actors already in their organization scope.
 
 ## Deployment checklist
 

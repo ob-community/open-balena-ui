@@ -36,6 +36,20 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
   const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const notify = useNotify();
   const record = useRecordContext<RaRecord>();
+  const requestController = React.useRef<AbortController | undefined>(undefined);
+
+  React.useEffect(
+    () => () => {
+      requestController.current?.abort();
+    },
+    [],
+  );
+
+  const handleClose = () => {
+    requestController.current?.abort();
+    requestController.current = undefined;
+    setOpen(false);
+  };
 
   const handleSubmit = async (values: Record<string, unknown>) => {
     const formValues = values as ChangePasswordFormValues;
@@ -46,13 +60,22 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
       return;
     }
 
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     try {
-      await dataProvider.changePassword({ userId: record.id, password: new_password });
+      await dataProvider.changePassword({ userId: record.id, password: new_password, signal: controller.signal });
 
-      setOpen(false);
+      handleClose();
       notify('Password successfully changed', { type: 'success' });
     } catch (error) {
-      notify('Error: Unable to change password', { type: 'error' });
+      if (!controller.signal.aborted) {
+        notify('Error: Unable to change password', { type: 'error' });
+      }
+    } finally {
+      if (requestController.current === controller) {
+        requestController.current = undefined;
+      }
     }
   };
 
@@ -71,7 +94,7 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
         <LockIcon style={{ marginRight: '4px' }} /> Change Password
       </Button>
 
-      <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby='form-dialog-title'>
+      <Dialog open={open} onClose={handleClose} aria-labelledby='form-dialog-title'>
         <DialogTitle id='form-dialog-title'>Change Password</DialogTitle>
 
         <DialogContent>

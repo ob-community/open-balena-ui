@@ -77,7 +77,7 @@ test('hybrid provider uses the dedicated password action', async () => {
   });
 });
 
-test('hybrid provider advertises query abort support and forwards explicit mutation signals', async () => {
+test('hybrid provider advertises query abort support and forwards typed custom-action signals', async () => {
   const requests: Array<{ url: string; options?: Options }> = [];
   const controller = new AbortController();
   const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
@@ -86,24 +86,20 @@ test('hybrid provider advertises query abort support and forwards explicit mutat
   });
 
   assert.equal(provider.supportAbortSignal, true);
-  await provider.create('user', {
-    data: { username: 'new-user', email: 'new@example.test', password: 'Valid1!password' },
-    meta: { signal: controller.signal },
+  await provider.changePassword({
+    userId: 7,
+    password: 'Valid1!password',
+    signal: controller.signal,
   });
-  await provider.delete('api key', {
+  await provider.deleteResourceActor({
+    resource: 'device',
     id: 7,
-    meta: { signal: controller.signal },
-  });
-  await provider.update('device', {
-    id: 7,
-    data: { 'device name': 'renamed' },
-    previousData: { id: 7 },
-    meta: { signal: controller.signal },
+    actorId: 70,
+    signal: controller.signal,
   });
 
   assert.equal(requests[0].options?.signal, controller.signal);
   assert.equal(requests[1].options?.signal, controller.signal);
-  assert.equal(requests[2].options?.signal, controller.signal);
 });
 
 test('hybrid provider forwards abort signals to direct database reads', async () => {
@@ -235,13 +231,9 @@ test('hybrid provider deletes API keys in bulk through the scoped server action'
   const result = await provider.deleteMany('api key', { ids: [41, 42] });
 
   assert.deepEqual(result.data, [41, 42]);
-  assert.deepEqual(
-    requests.map(({ url, options }) => [url, JSON.parse(String(options?.body)).id]),
-    [
-      ['/admin-db/actions/delete-api-key', 41],
-      ['/admin-db/actions/delete-api-key', 42],
-    ],
-  );
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/admin-db/actions/delete-api-keys');
+  assert.deepEqual(JSON.parse(String(requests[0].options?.body)), { ids: [41, 42] });
 });
 
 test('hybrid provider coordinates resource and actor deletion through the server', async () => {

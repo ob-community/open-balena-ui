@@ -2,7 +2,6 @@ import type { DataProvider } from 'react-admin';
 import semver from 'semver';
 import postgrestDataProvider from './postgrestDataProvider';
 import createODataDataProvider, { ODATA_RESOURCES, type HttpClient } from './odataDataProvider';
-import { requestSignal } from './requestSignal';
 
 export type OpenBalenaDataProvider = DataProvider & {
   changePassword(params: { userId: number | string; password: string; signal?: AbortSignal }): Promise<void>;
@@ -96,7 +95,6 @@ export const openBalenaDataProvider = (
           method: 'POST',
           headers: new Headers({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(params.data),
-          signal: requestSignal(params),
         });
         return { data: json };
       }
@@ -105,7 +103,6 @@ export const openBalenaDataProvider = (
           method: 'POST',
           headers: new Headers({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(params.data),
-          signal: requestSignal(params),
         });
         return { data: json };
       }
@@ -114,7 +111,6 @@ export const openBalenaDataProvider = (
           method: 'POST',
           headers: new Headers({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ resource, data: params.data }),
-          signal: requestSignal(params),
         });
         return { data: json };
       }
@@ -136,7 +132,6 @@ export const openBalenaDataProvider = (
           method: 'POST',
           headers: new Headers({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ id: params.id }),
-          signal: requestSignal(params),
         });
         return { data: json };
       }
@@ -144,16 +139,11 @@ export const openBalenaDataProvider = (
     },
     deleteMany: async (resource, params) => {
       if (resource === 'api key') {
-        await Promise.all(
-          params.ids.map((id) =>
-            httpClient('/admin-db/actions/delete-api-key', {
-              method: 'POST',
-              headers: new Headers({ 'Content-Type': 'application/json' }),
-              body: JSON.stringify({ id }),
-              signal: requestSignal(params),
-            }),
-          ),
-        );
+        await httpClient('/admin-db/actions/delete-api-keys', {
+          method: 'POST',
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ ids: params.ids }),
+        });
         return { data: params.ids };
       }
       return route(resource).deleteMany(resource, params);

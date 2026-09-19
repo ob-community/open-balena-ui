@@ -234,6 +234,36 @@ test('provider rejects invalid and mismatched mutation response ids', async () =
   );
 });
 
+test('provider preserves direct mutation records with a top-level value field', async () => {
+  const provider = createODataDataProvider('https://api.example.test', async () =>
+    response({ id: 7, value: 'production' }),
+  );
+
+  assert.deepEqual((await provider.create('device environment variable', { data: { value: 'production' } })).data, {
+    id: 7,
+    value: 'production',
+  });
+  assert.deepEqual(
+    (
+      await provider.update('device environment variable', {
+        id: 7,
+        data: { value: 'production' },
+        previousData: { id: 7, value: 'staging' },
+      })
+    ).data,
+    { id: 7, value: 'production' },
+  );
+  assert.deepEqual(
+    (
+      await provider.delete('device environment variable', {
+        id: 7,
+        previousData: { id: 7, value: 'production' },
+      })
+    ).data,
+    { id: 7, value: 'production' },
+  );
+});
+
 test('provider validates non-empty bulk mutation responses against requested ids', async () => {
   const updateProvider = createODataDataProvider('https://api.example.test', async (url) =>
     response({ id: url.includes('(7)') ? 7 : 99 }),

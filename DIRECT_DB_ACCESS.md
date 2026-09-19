@@ -25,9 +25,10 @@ existing UI compatibility mappings reduce functionality for older installations.
 can override that selection, but this is separate from `REACT_APP_OPEN_BALENA_API_VERSION`, which is the server software
 version.
 
-The hybrid provider advertises React Admin abort-signal support for read queries. React Admin does not synthesize
-mutation abort signals; callers that need cancellable mutations can supply an `AbortSignal` through `meta.signal`, which
-the hybrid provider forwards through OData, PostgREST, and dedicated server actions.
+The hybrid provider advertises React Admin abort-signal support for read queries. React Admin 5.15 does not synthesize
+abort signals for standard mutations, so standard create, update, and delete operations are not described as
+cancellable. Dedicated provider actions accept an explicitly typed `AbortSignal`; callers that expose cancellation must
+create and pass that signal themselves.
 
 ## Why PostgREST is still required
 
@@ -58,7 +59,10 @@ also created by a server action using cryptographically random material after va
 key material is not returned to the administrator's browser.
 
 User, fleet, and device deletion also uses a coordinated server action. It validates the parent record and actor against
-the administrator's scope before deleting the parent, preserving verified ownership for the subsequent actor cleanup.
+the administrator's scope before deleting the parent, preserving verified ownership for the subsequent actor cleanup. If
+cleanup fails after the parent deletion, a global administrator may retry the action; before deleting an orphaned actor,
+the server verifies that no user, fleet, device, or API key still references it. API-key bulk deletion similarly uses
+one bounded server action rather than one rate-limited browser request per selected key.
 
 These requests pass through the UI server's `/admin-db` authorization proxy and retain the authenticated JWT, but they
 still **do not gain open-balena-api ACL enforcement**. The PostgREST service must not be publicly reachable. Deploy it

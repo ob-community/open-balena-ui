@@ -313,7 +313,6 @@ export const postgrestDataProvider = (
 
     return httpClient(url, {
       method: 'PATCH',
-      signal: requestSignal(params),
       headers: new Headers({
         'Accept': 'application/vnd.pgrst.object+json',
         'Prefer': 'return=representation',
@@ -338,7 +337,6 @@ export const postgrestDataProvider = (
 
     return httpClient(url, {
       method: 'PATCH',
-      signal: requestSignal(params),
       headers: new Headers({
         'Prefer': 'return=representation',
         'Content-Type': 'application/json',
@@ -356,7 +354,6 @@ export const postgrestDataProvider = (
 
     return httpClient(url, {
       method: 'POST',
-      signal: requestSignal(params),
       headers: new Headers({
         'Accept': 'application/vnd.pgrst.object+json',
         'Prefer': 'return=representation',
@@ -381,7 +378,6 @@ export const postgrestDataProvider = (
 
     return httpClient(url, {
       method: 'DELETE',
-      signal: requestSignal(params),
       headers: new Headers({
         'Accept': 'application/vnd.pgrst.object+json',
         'Prefer': 'return=representation',
@@ -400,7 +396,6 @@ export const postgrestDataProvider = (
 
     return httpClient(url, {
       method: 'DELETE',
-      signal: requestSignal(params),
       headers: new Headers({
         'Prefer': 'return=representation',
         'Content-Type': 'application/json',

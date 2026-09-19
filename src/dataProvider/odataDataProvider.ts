@@ -263,6 +263,9 @@ export const extractCollection = (json: unknown): Collection => {
 };
 
 const extractSingle = (json: unknown): unknown => {
+  if (json && typeof json === 'object' && 'id' in json) {
+    return json;
+  }
   if (json && typeof json === 'object' && 'd' in json) {
     const data = (json as { d: unknown }).d;
     if (data && typeof data === 'object' && 'results' in data) {
@@ -332,9 +335,8 @@ export const createODataDataProvider = (
     return url.toString();
   };
   const entityUrl = (resource: string, id: Identifier): string => `${resourcePath(resource)}(${entityId(id)})`;
-  const writeOptions = (method: string, data?: unknown, signal?: AbortSignal): Options => ({
+  const writeOptions = (method: string, data?: unknown): Options => ({
     method,
-    signal,
     headers: new Headers({
       'Accept': 'application/json',
       'Content-Type': 'application/json',
@@ -400,18 +402,12 @@ export const createODataDataProvider = (
     getManyReference: (resource, params) =>
       list(resource, { ...params, filter: { ...params.filter, [params.target]: params.id } }),
     create: async (resource, params) => {
-      const { json } = await httpClient(
-        resourcePath(resource),
-        writeOptions('POST', params.data, requestSignal(params)),
-      );
+      const { json } = await httpClient(resourcePath(resource), writeOptions('POST', params.data));
       const response = extractSingle(json);
       return { data: requireRecord(response, 'create') };
     },
     update: async (resource, params) => {
-      const { json } = await httpClient(
-        entityUrl(resource, params.id),
-        writeOptions('PATCH', params.data, requestSignal(params)),
-      );
+      const { json } = await httpClient(entityUrl(resource, params.id), writeOptions('PATCH', params.data));
       const response = extractSingle(json);
       return {
         data:
@@ -422,9 +418,7 @@ export const createODataDataProvider = (
     },
     updateMany: async (resource, params) => {
       const responses = await Promise.all(
-        params.ids.map((id) =>
-          httpClient(entityUrl(resource, id), writeOptions('PATCH', params.data, requestSignal(params))),
-        ),
+        params.ids.map((id) => httpClient(entityUrl(resource, id), writeOptions('PATCH', params.data))),
       );
       responses.forEach(({ json }, index) => {
         const response = extractSingle(json);
@@ -435,10 +429,7 @@ export const createODataDataProvider = (
       return { data: params.ids };
     },
     delete: async (resource, params) => {
-      const { json } = await httpClient(
-        entityUrl(resource, params.id),
-        writeOptions('DELETE', undefined, requestSignal(params)),
-      );
+      const { json } = await httpClient(entityUrl(resource, params.id), writeOptions('DELETE'));
       const response = extractSingle(json);
       return {
         data:
@@ -449,9 +440,7 @@ export const createODataDataProvider = (
     },
     deleteMany: async (resource, params) => {
       const responses = await Promise.all(
-        params.ids.map((id) =>
-          httpClient(entityUrl(resource, id), writeOptions('DELETE', undefined, requestSignal(params))),
-        ),
+        params.ids.map((id) => httpClient(entityUrl(resource, id), writeOptions('DELETE'))),
       );
       responses.forEach(({ json }, index) => {
         const response = extractSingle(json);

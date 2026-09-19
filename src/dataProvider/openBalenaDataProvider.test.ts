@@ -141,10 +141,16 @@ test('hybrid provider strips immutable credential fields from metadata updates',
     ids: [7, 8],
     data: { 'name': 'bulk-renamed', 'key': 'redacted', 'is of-actor': 70 },
   });
+  await provider.update('device', {
+    id: 7,
+    data: { 'id': 7, 'actor': 70, 'device name': 'renamed' },
+    previousData: { 'id': 7, 'actor': 70, 'device name': 'old' },
+  });
 
-  assert.deepEqual(JSON.parse(String(requests[0].options?.body)), { id: 7, name: 'renamed' });
-  assert.deepEqual(JSON.parse(String(requests[1].options?.body)), { id: 8, username: 'renamed' });
+  assert.deepEqual(JSON.parse(String(requests[0].options?.body)), { name: 'renamed' });
+  assert.deepEqual(JSON.parse(String(requests[1].options?.body)), { username: 'renamed' });
   assert.deepEqual(JSON.parse(String(requests[2].options?.body)), { name: 'bulk-renamed' });
+  assert.deepEqual(JSON.parse(String(requests[3].options?.body)), { device_name: 'renamed' });
 });
 
 test('hybrid provider creates users through the dedicated action', async () => {
@@ -243,12 +249,33 @@ test('hybrid provider coordinates resource and actor deletion through the server
     return response({ id: 7 });
   });
 
+  await provider.authorizeResourceActorDeletion({ resource: 'device', id: 7, actorId: 70 });
   await provider.deleteResourceActor({ resource: 'device', id: 7, actorId: 70 });
 
-  assert.equal(requests[0].url, '/admin-db/actions/delete-resource-actor');
+  assert.equal(requests[0].url, '/admin-db/actions/authorize-resource-actor-deletion');
+  assert.equal(requests[1].url, '/admin-db/actions/delete-resource-actor');
   assert.deepEqual(JSON.parse(String(requests[0].options?.body)), {
     resource: 'device',
     id: 7,
     actorId: 70,
   });
+  assert.deepEqual(requests[1].options?.body, requests[0].options?.body);
+});
+
+test('hybrid provider authorizes bulk resource deletion in one server request', async () => {
+  const requests: Array<{ url: string; options?: Options }> = [];
+  const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
+    requests.push({ url, options });
+    return response(null);
+  });
+  const records = [
+    { resource: 'device' as const, id: 7, actorId: 70 },
+    { resource: 'device' as const, id: 8, actorId: 80 },
+  ];
+
+  await provider.authorizeResourceActorDeletions({ records });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/admin-db/actions/authorize-resource-actor-deletions');
+  assert.deepEqual(JSON.parse(String(requests[0].options?.body)), { records });
 });

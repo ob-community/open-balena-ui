@@ -1,5 +1,4 @@
 import { useDataProvider } from 'react-admin';
-import { useDeleteApiKey } from './apiKey';
 import { deleteAllRelated } from './delete';
 import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 
@@ -81,9 +80,15 @@ export function useModifyDevice() {
 
 export function useDeleteDevice() {
   const dataProvider = useDataProvider<OpenBalenaDataProvider>();
-  const deleteApiKey = useDeleteApiKey();
 
-  return async (device) => {
+  return async (device, authorizationChecked = false) => {
+    if (!authorizationChecked) {
+      await dataProvider.authorizeResourceActorDeletion({
+        resource: 'device',
+        id: device['id'],
+        actorId: device['actor'],
+      });
+    }
     let relatedIndirectLookups = [
       {
         remoteResource: 'device service environment variable',
@@ -92,15 +97,6 @@ export function useDeleteDevice() {
         viaResource: 'service install',
         viaLocalField: 'device',
         localField: 'id',
-      },
-      {
-        remoteResource: 'api key',
-        remoteField: 'is of-actor',
-        viaRemoteField: 'id',
-        viaResource: 'actor',
-        viaLocalField: 'id',
-        localField: 'actor',
-        deleteFunction: deleteApiKey,
       },
     ];
     let relatedDirectLookups = [
@@ -121,11 +117,18 @@ export function useDeleteDevice() {
 }
 
 export function useDeleteDeviceBulk() {
-  const dataProvider = useDataProvider();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const deleteDevice = useDeleteDevice();
 
   return async (deviceIds) => {
     const selectedDevices = await dataProvider.getMany('device', { ids: deviceIds });
-    return Promise.all(selectedDevices.data.map((device) => deleteDevice(device)));
+    await dataProvider.authorizeResourceActorDeletions({
+      records: selectedDevices.data.map((device) => ({
+        resource: 'device',
+        id: device.id,
+        actorId: device.actor,
+      })),
+    });
+    return Promise.all(selectedDevices.data.map((device) => deleteDevice(device, true)));
   };
 }

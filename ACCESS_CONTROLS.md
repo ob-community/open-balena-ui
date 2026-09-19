@@ -24,7 +24,9 @@ Database row-level security or restricted views/RPCs remain the preferred long-t
 Existing installations historically treated every authenticated UI user as a database administrator. To avoid an upgrade
 lockout, enforcement activates only when a role named `global-admin` exists.
 
-- **No `global-admin` role:** legacy authorization behavior is retained, but credential redaction is always active.
+- **No `global-admin` role:** this is intentionally the legacy wild-west mode. Every authenticated user is effectively a
+  super administrator with unrestricted direct-database administration. Credential redaction and credential-mutation
+  protections remain active, but administrator resource scoping does not.
 - **No `global-admin` role and `OPEN_BALENA_BOOTSTRAP_USER_ID` is set:** server startup creates the role and assigns it
   to that numeric user ID before accepting requests.
 - **`global-admin` role exists:** direct database authorization is enforced for every request.
@@ -66,10 +68,11 @@ members. Scope includes:
 - actors for member users, organization fleets, and their devices;
 - API-key metadata and assignment rows for those actors;
 - API-key material for fleets and devices in the administered organization;
-- user role, permission, SSH-key metadata, and direct-fleet-access rows for members.
+- user role and permission metadata, SSH-key metadata, and direct-fleet-access rows for members.
 
 Global role definitions, permissions, role-permission mappings, configuration, and migration/model metadata remain
-global-admin-only.
+global-admin-only. Role metadata explicitly named by `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` is the sole
+read-only exception so organization administrators can render approved role choices.
 
 Organization administrators may read, update, and delete existing scoped records and create scoped join records when
 every referenced ID is already in scope. They can create API keys for existing in-scope fleet/device actors. They cannot
@@ -77,9 +80,14 @@ create users, actors, or organizations through the current direct-database workf
 records because a user may have relationships in other organizations. Those workflows start with unscoped records and
 require a future transactional server endpoint to bind new records to an organization safely.
 
-Only global administrators may assign `global-admin` or `organization-admin`, direct user permissions, or API-key
-roles/permissions. Protected administrator-role assignments and global-administrator user records are excluded from
-organization scope, preventing an organization administrator from promoting themselves or modifying a global admin.
+Only global administrators may change direct user permissions or API-key roles/permissions. Organization administrators
+may create, update, or delete user-role assignments only when both the user is in their organization scope and the
+role's exact name is listed in the server-only `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` setting. `global-admin`
+and `organization-admin` are always excluded even if configured. Leave the setting empty to deny organization-admin role
+changes. Because roles and their permissions are global, operators must list only roles whose effective permissions are
+safe for organization-scoped delegation and re-audit the list whenever those roles change. Assignments for other roles
+and global-administrator user records are excluded from organization scope, preventing promotion or modification of a
+global admin.
 
 Organization membership currently defines administrative scope. Assign `organization-admin` only to users who should
 administer every member and fleet in each organization to which they belong.
@@ -103,8 +111,9 @@ Redaction is applied in both legacy and enforced modes:
 
 Credential fields are also rejected in query parameters to prevent filter-based inference. Generic user POST, PATCH, and
 PUT requests cannot set password/JWT-secret fields, and generic API-key creation or key-material mutation is rejected.
-User and API-key actor ownership is immutable through generic updates in every authorization mode, preventing ownership
-rebinding from turning another human user's credential into a caller-visible key. API keys are created through
+Primary keys cannot be supplied or changed through generic mutations in any authorization mode, and user/API-key actor
+ownership is immutable through generic updates. This prevents ID collisions, row movement, or ownership rebinding from
+moving scoped data or turning another human user's credential into a caller-visible key. API keys are created through
 `/admin-db/actions/create-api-key`, which validates the target actor and generates key material with the server's
 cryptographic random source. The create form offers the authenticated user's own actor plus in-scope fleet and device
 actors, without listing other human users. Single deletion uses `/admin-db/actions/delete-api-key`; bulk deletion uses
@@ -121,12 +130,15 @@ User creation uses `/admin-db/actions/create-user`; password hashing, JWT-secret
 provisioning all occur on the UI server. Device and fleet creation use `/admin-db/actions/create-operational-resource`,
 which provisions the credential actor and performs the open-balena-api write in one server workflow. If the API write
 fails, the newly created role assignment, API key, and actor are removed. User, fleet, and device deletion uses
-`/admin-db/actions/delete-resource-actor`, which validates the parent and actor against the pre-delete authorization
-scope before deleting the parent and cleaning up its actor. Human credential material is never returned to the
-administrator's browser. If actor cleanup fails after the parent was deleted, a global administrator can safely retry
-the same action; the server verifies that no user, fleet, device, or API key still references the actor before deleting
-it. User, device, and fleet creation are global-admin-only; organization administrators may create and maintain
-additional keys only for existing fleet/device actors already in their organization scope.
+`/admin-db/actions/delete-resource-actor`. Before browser-side related-record cleanup begins, a shared server preflight
+validates parent/actor ownership, administrator scope, and self-lockout rules; the final action repeats the same checks.
+Human credential material is never returned to the administrator's browser. If actor cleanup fails after the parent was
+deleted, a global administrator can safely retry the same action; the server verifies that no user, fleet, or device
+still references the actor, deletes its remaining API keys, and then deletes the actor. Related API keys are deleted
+only after the parent deletion succeeds. User relation rows required for deletion are restored if the parent deletion
+fails, so a failed attempt does not leave a live user stripped of roles, permissions, keys, or memberships. User,
+device, and fleet creation are global-admin-only; organization administrators may create and maintain additional keys
+only for existing fleet/device actors already in their organization scope.
 
 ## Deployment checklist
 

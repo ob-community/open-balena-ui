@@ -282,3 +282,28 @@ test('provider validates non-empty bulk mutation responses against requested ids
     /deleteMany response did not contain a record with an id/,
   );
 });
+
+test('bulk deletion is sequential and treats already-absent records as successfully deleted', async () => {
+  const requests: string[] = [];
+  const provider = createODataDataProvider('https://api.example.test', async (url) => {
+    requests.push(url);
+    if (url.endsWith('/device(7)')) {
+      throw Object.assign(new Error('Not found'), { status: 404 });
+    }
+    return response(null);
+  });
+
+  assert.deepEqual(await provider.deleteMany('device', { ids: [7, 8] }), { data: [7, 8] });
+  assert.deepEqual(
+    requests.map((url) => new URL(url).pathname),
+    ['/v6/device(7)', '/v6/device(8)'],
+  );
+});
+
+test('bulk deletion still surfaces non-not-found failures', async () => {
+  const provider = createODataDataProvider('https://api.example.test', async () => {
+    throw Object.assign(new Error('Forbidden'), { status: 403 });
+  });
+
+  await assert.rejects(provider.deleteMany('device', { ids: [7] }), /Forbidden/);
+});

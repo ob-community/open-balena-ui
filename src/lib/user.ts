@@ -1,6 +1,4 @@
 import { useDataProvider } from 'react-admin';
-import { useDeleteApiKey } from './apiKey';
-import { deleteAllRelated } from './delete';
 import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 
 export function useModifyUser() {
@@ -53,21 +51,15 @@ export function useModifyUser() {
 
 export function useDeleteUser() {
   const dataProvider = useDataProvider<OpenBalenaDataProvider>();
-  const deleteApiKey = useDeleteApiKey();
 
-  return async (user) => {
-    let relatedIndirectLookups = [
-      {
-        remoteResource: 'api key',
-        remoteField: 'is of-actor',
-        viaRemoteField: 'id',
-        viaResource: 'actor',
-        viaLocalField: 'id',
-        localField: 'actor',
-        deleteFunction: deleteApiKey,
-      },
-    ];
-    await deleteAllRelated(dataProvider, user, relatedIndirectLookups, []);
+  return async (user, authorizationChecked = false) => {
+    if (!authorizationChecked) {
+      await dataProvider.authorizeResourceActorDeletion({
+        resource: 'user',
+        id: user['id'],
+        actorId: user['actor'],
+      });
+    }
     await dataProvider.deleteResourceActor({
       resource: 'user',
       id: user['id'],
@@ -78,11 +70,18 @@ export function useDeleteUser() {
 }
 
 export function useDeleteUserBulk() {
-  const dataProvider = useDataProvider();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const deleteUser = useDeleteUser();
 
   return async (userIds) => {
     const selectedUsers = await dataProvider.getMany('user', { ids: userIds });
-    return Promise.all(selectedUsers.data.map((user) => deleteUser(user)));
+    await dataProvider.authorizeResourceActorDeletions({
+      records: selectedUsers.data.map((user) => ({
+        resource: 'user',
+        id: user.id,
+        actorId: user.actor,
+      })),
+    });
+    return Promise.all(selectedUsers.data.map((user) => deleteUser(user, true)));
   };
 }

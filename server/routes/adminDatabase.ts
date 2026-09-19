@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import base32Encode from 'base32-encode';
 import semver from 'semver';
 import {
+  type AccessContext,
   authorizeAdministratorRoleCreation,
   authorizeCredentialActorProvision,
   authorizeMutationBody,
@@ -474,34 +475,172 @@ router.post('/admin-db/actions/delete-api-keys', ...dosProtect, authorize, async
   }
 });
 
+type ActorResource = 'application' | 'device' | 'user';
+
+const parseResourceActorDeletion = (body: unknown): { resource: ActorResource; id: number; actorId: number } => {
+  const request = requireObjectBody(body, 'Resource deletion');
+  const resource = String(request.resource);
+  if (!['application', 'device', 'user'].includes(resource)) {
+    throw new Error('Only application, device, and user actor cleanup is supported.');
+  }
+  return {
+    resource: resource as ActorResource,
+    id: requirePositiveId(request.id, 'Resource ID'),
+    actorId: requirePositiveId(request.actorId, 'Actor ID'),
+  };
+};
+
+const authorizeExistingResourceActorDeletion = (
+  context: AccessContext,
+  resource: ActorResource,
+  id: number,
+  actorId: number,
+  records: Array<Record<string, unknown>>,
+): Record<string, unknown> => {
+  const record = records[0];
+  if (records.length !== 1 || Number(record?.actor) !== actorId) {
+    throw new Error('The resource does not exist or does not belong to the supplied actor.');
+  }
+  if (resource === 'user') {
+    const allowedIds = authorizeResource(context, 'user', 'DELETE');
+    if (allowedIds && !allowedIds.has(id)) {
+      throw new Error('The user is outside the administrator scope.');
+    }
+    authorizeSelfLockoutMutation(context, 'user', 'DELETE', { id: `eq.${id}` });
+  } else if (
+    context.enforcementEnabled &&
+    !context.globalAdmin &&
+    (!context.organizationAdmin ||
+      (resource === 'application'
+        ? !context.allowedApplicationIds.has(id)
+        : !context.allowedApplicationIds.has(Number(record['belongs to-application']))))
+  ) {
+    throw new Error(`The ${resource} is outside the administrator scope.`);
+  }
+  return record;
+};
+
+const deleteActorApiKeys = async (authorization: string, actorId: number): Promise<void> => {
+  const actorKeys = await databaseReader(authorization).list(
+    'api key',
+    new URLSearchParams({ 'is of-actor': `eq.${actorId}` }),
+  );
+  const actorKeyIds = actorKeys.map((actorKey) => requirePositiveId(actorKey.id, 'API key ID'));
+  if (actorKeyIds.length > 0) {
+    await deleteApiKeyRecords(authorization, actorKeyIds);
+  }
+};
+
+const USER_RELATION_RESOURCES = [
+  'user-has-direct access to-application',
+  'user-has-permission',
+  'user-has-public key',
+  'user-has-role',
+  'organization membership',
+] as const;
+
+type DeletedUserRelations = Array<{
+  resource: (typeof USER_RELATION_RESOURCES)[number];
+  records: Array<Record<string, unknown>>;
+}>;
+
+const restoreUserRelations = async (authorization: string, deletedRelations: DeletedUserRelations): Promise<void> => {
+  for (const { resource, records } of [...deletedRelations].reverse()) {
+    if (records.length === 0) {
+      continue;
+    }
+    const response = await fetch(`${getPostgrestUrl()}/${encodeURIComponent(resource)}`, {
+      method: 'POST',
+      headers: requestHeaders(authorization, {
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      }),
+      body: JSON.stringify(records),
+    });
+    if (!response.ok) {
+      throw new UpstreamRequestError(`Unable to restore ${resource} records (${response.status}).`);
+    }
+  }
+};
+
+const deleteUserRelations = async (authorization: string, userId: number): Promise<DeletedUserRelations> => {
+  const deletedRelations: DeletedUserRelations = [];
+  const userQuery = new URLSearchParams({ user: `eq.${userId}` });
+  try {
+    for (const resource of USER_RELATION_RESOURCES) {
+      const records = await databaseReader(authorization).list(resource, userQuery);
+      if (records.length === 0) {
+        continue;
+      }
+      const response = await fetch(`${getPostgrestUrl()}/${encodeURIComponent(resource)}?${userQuery}`, {
+        method: 'DELETE',
+        headers: requestHeaders(authorization),
+      });
+      if (!response.ok) {
+        throw new UpstreamRequestError(`Unable to clean up ${resource} records (${response.status}).`);
+      }
+      deletedRelations.push({ resource, records });
+    }
+    return deletedRelations;
+  } catch (error) {
+    await restoreUserRelations(authorization, deletedRelations);
+    throw error;
+  }
+};
+
+router.post('/admin-db/actions/authorize-resource-actor-deletion', ...dosProtect, authorize, async (req, res) => {
+  try {
+    const authorization = req.headers.authorization!;
+    const context = await buildAccessContext((res.locals as AuthorizedLocals).auth, databaseReader(authorization));
+    const { resource, id, actorId } = parseResourceActorDeletion(req.body);
+    const records = await databaseReader(authorization).list(resource, new URLSearchParams({ id: `eq.${id}` }));
+    authorizeExistingResourceActorDeletion(context, resource, id, actorId, records);
+    res.status(204).end();
+  } catch (error) {
+    sendDenied(res, error);
+  }
+});
+
+router.post('/admin-db/actions/authorize-resource-actor-deletions', ...dosProtect, authorize, async (req, res) => {
+  try {
+    const authorization = req.headers.authorization!;
+    const context = await buildAccessContext((res.locals as AuthorizedLocals).auth, databaseReader(authorization));
+    const body = requireObjectBody(req.body, 'Bulk resource deletion');
+    if (!Array.isArray(body.records) || body.records.length === 0 || body.records.length > 1000) {
+      throw new Error('Bulk resource deletion requires between 1 and 1000 records.');
+    }
+    const requests = body.records.map(parseResourceActorDeletion);
+    for (const { resource, id, actorId } of requests) {
+      const records = await databaseReader(authorization).list(resource, new URLSearchParams({ id: `eq.${id}` }));
+      authorizeExistingResourceActorDeletion(context, resource, id, actorId, records);
+    }
+    res.status(204).end();
+  } catch (error) {
+    sendDenied(res, error);
+  }
+});
+
 router.post('/admin-db/actions/delete-resource-actor', ...dosProtect, authorize, async (req, res) => {
   try {
     const authorization = req.headers.authorization!;
     const context = await buildAccessContext((res.locals as AuthorizedLocals).auth, databaseReader(authorization));
-    const body = requireObjectBody(req.body, 'Resource deletion');
-    const resource = String(body.resource);
-    const id = requirePositiveId(body.id, 'Resource ID');
-    const actorId = requirePositiveId(body.actorId, 'Actor ID');
-    if (!['application', 'device', 'user'].includes(resource)) {
-      throw new Error('Only application, device, and user actor cleanup is supported.');
-    }
+    const { resource, id, actorId } = parseResourceActorDeletion(req.body);
 
     const records = await databaseReader(authorization).list(resource, new URLSearchParams({ id: `eq.${id}` }));
-    const record = records[0];
     if (records.length === 0) {
       if (context.enforcementEnabled && !context.globalAdmin) {
         throw new Error('Global administrator access is required to retry orphaned actor cleanup.');
       }
-      for (const referencingResource of ['application', 'device', 'user', 'api key']) {
-        const actorField = referencingResource === 'api key' ? 'is of-actor' : 'actor';
+      for (const referencingResource of ['application', 'device', 'user']) {
         const references = await databaseReader(authorization).list(
           referencingResource,
-          new URLSearchParams({ [actorField]: `eq.${actorId}` }),
+          new URLSearchParams({ actor: `eq.${actorId}` }),
         );
         if (references.length > 0) {
           throw new Error('The actor is still referenced and cannot be cleaned up as an orphan.');
         }
       }
+      await deleteActorApiKeys(authorization, actorId);
       const actorResponse = await fetch(`${getPostgrestUrl()}/${encodeURIComponent('actor')}?id=eq.${actorId}`, {
         method: 'DELETE',
         headers: requestHeaders(authorization),
@@ -512,61 +651,30 @@ router.post('/admin-db/actions/delete-resource-actor', ...dosProtect, authorize,
       res.json({ id });
       return;
     }
-    if (records.length !== 1 || Number(record?.actor) !== actorId) {
-      throw new Error('The resource does not exist or does not belong to the supplied actor.');
-    }
+    authorizeExistingResourceActorDeletion(context, resource, id, actorId, records);
 
-    if (resource === 'user') {
-      const allowedIds = authorizeResource(context, 'user', 'DELETE');
-      if (allowedIds && !allowedIds.has(id)) {
-        throw new Error('The user is outside the administrator scope.');
-      }
-      authorizeSelfLockoutMutation(context, 'user', 'DELETE', { id: `eq.${id}` });
-    } else if (
-      context.enforcementEnabled &&
-      !context.globalAdmin &&
-      (!context.organizationAdmin ||
-        (resource === 'application'
-          ? !context.allowedApplicationIds.has(id)
-          : !context.allowedApplicationIds.has(Number(record['belongs to-application']))))
-    ) {
-      throw new Error(`The ${resource} is outside the administrator scope.`);
-    }
-
-    if (resource === 'user') {
-      const userQuery = new URLSearchParams({ user: `eq.${id}` });
-      for (const relatedResource of [
-        'user-has-direct access to-application',
-        'user-has-permission',
-        'user-has-public key',
-        'user-has-role',
-        'organization membership',
-      ]) {
-        const relatedResponse = await fetch(
-          `${getPostgrestUrl()}/${encodeURIComponent(relatedResource)}?${userQuery}`,
-          {
-            method: 'DELETE',
-            headers: requestHeaders(authorization),
-          },
-        );
-        if (!relatedResponse.ok) {
-          throw new UpstreamRequestError(`Unable to clean up ${relatedResource} records (${relatedResponse.status}).`);
-        }
-      }
-    }
+    const deletedUserRelations = resource === 'user' ? await deleteUserRelations(authorization, id) : [];
 
     const parentUrl =
       resource === 'user'
         ? `${getPostgrestUrl()}/${encodeURIComponent(resource)}?id=eq.${id}`
         : `${getOpenBalenaApiUrl()}/${getODataVersion()}/${resource}(${id})`;
-    const parentResponse = await fetch(parentUrl, {
-      method: 'DELETE',
-      headers: requestHeaders(authorization, { Accept: 'application/json' }),
-    });
+    let parentResponse: globalThis.Response;
+    try {
+      parentResponse = await fetch(parentUrl, {
+        method: 'DELETE',
+        headers: requestHeaders(authorization, { Accept: 'application/json' }),
+      });
+    } catch {
+      await restoreUserRelations(authorization, deletedUserRelations);
+      throw new UpstreamRequestError(`Unable to delete ${resource}.`);
+    }
     if (!parentResponse.ok) {
+      await restoreUserRelations(authorization, deletedUserRelations);
       throw new UpstreamRequestError(`Unable to delete ${resource} (${parentResponse.status}).`);
     }
 
+    await deleteActorApiKeys(authorization, actorId);
     const actorResponse = await fetch(`${getPostgrestUrl()}/${encodeURIComponent('actor')}?id=eq.${actorId}`, {
       method: 'DELETE',
       headers: requestHeaders(authorization),

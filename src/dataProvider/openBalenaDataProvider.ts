@@ -4,6 +4,20 @@ import postgrestDataProvider from './postgrestDataProvider';
 import createODataDataProvider, { ODATA_RESOURCES, type HttpClient } from './odataDataProvider';
 
 export type OpenBalenaDataProvider = DataProvider & {
+  authorizeResourceActorDeletions(params: {
+    records: Array<{
+      resource: 'application' | 'device' | 'user';
+      id: number | string;
+      actorId: number | string;
+    }>;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  authorizeResourceActorDeletion(params: {
+    resource: 'application' | 'device' | 'user';
+    id: number | string;
+    actorId: number | string;
+    signal?: AbortSignal;
+  }): Promise<void>;
   changePassword(params: { userId: number | string; password: string; signal?: AbortSignal }): Promise<void>;
   deleteResourceActor(params: {
     resource: 'application' | 'device' | 'user';
@@ -80,6 +94,9 @@ export const openBalenaDataProvider = (
       delete sanitized['is of-actor'];
       delete sanitized.key;
     }
+    if (resource === 'application' || resource === 'device') {
+      delete sanitized.actor;
+    }
     return sanitized;
   };
 
@@ -147,6 +164,22 @@ export const openBalenaDataProvider = (
         return { data: params.ids };
       }
       return route(resource).deleteMany(resource, params);
+    },
+    authorizeResourceActorDeletions: async ({ records, signal }) => {
+      await httpClient('/admin-db/actions/authorize-resource-actor-deletions', {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ records }),
+        signal,
+      });
+    },
+    authorizeResourceActorDeletion: async ({ resource, id, actorId, signal }) => {
+      await httpClient('/admin-db/actions/authorize-resource-actor-deletion', {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ resource, id, actorId }),
+        signal,
+      });
     },
     changePassword: async ({ userId, password, signal }) => {
       await httpClient('/admin-db/actions/change-password', {

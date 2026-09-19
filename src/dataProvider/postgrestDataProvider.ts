@@ -122,20 +122,6 @@ const getQuery = (primaryKey, ids, resource) => {
   }
 };
 
-const getKeyData = (primaryKey, data) => {
-  if (isCompoundKey(primaryKey)) {
-    return primaryKey.reduce(
-      (keyData, key) => ({
-        ...keyData,
-        [key]: data[key],
-      }),
-      {},
-    );
-  } else {
-    return { [primaryKey[0]]: data[primaryKey[0]] };
-  }
-};
-
 const getOrderBy = (field, order, primaryKey) => {
   if (field === 'id') {
     return primaryKey.map((key) => `${key}.${order.toLowerCase()}`).join(',');
@@ -302,14 +288,12 @@ export const postgrestDataProvider = (
 
     const query = getQuery(primaryKey, id, resource);
 
-    const primaryKeyData = getKeyData(primaryKey, data);
-
     const url = `${apiUrl}/${resource}?${query}`;
 
-    const body = JSON.stringify({
-      ...data,
-      ...primaryKeyData,
-    });
+    const updateData = { ...data };
+    delete updateData.id;
+    primaryKey.forEach((key) => delete updateData[key]);
+    const body = JSON.stringify(updateData);
 
     return httpClient(url, {
       method: 'PATCH',

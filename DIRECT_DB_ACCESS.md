@@ -58,11 +58,13 @@ the API write fails, the server removes the newly created role assignment, API k
 also created by a server action using cryptographically random material after validating the target actor. Human-user
 key material is not returned to the administrator's browser.
 
-User, fleet, and device deletion also uses a coordinated server action. It validates the parent record and actor against
-the administrator's scope before deleting the parent, preserving verified ownership for the subsequent actor cleanup. If
-cleanup fails after the parent deletion, a global administrator may retry the action; before deleting an orphaned actor,
-the server verifies that no user, fleet, device, or API key still references it. API-key bulk deletion similarly uses
-one bounded server action rather than one rate-limited browser request per selected key.
+User, fleet, and device deletion also uses a coordinated server action. A shared server preflight validates the parent
+record, actor, administrator scope, and self-lockout rules before browser-side related-record cleanup begins; the final
+action repeats the checks. If cleanup fails after the parent deletion, a global administrator may retry the action;
+before deleting an orphaned actor, the server verifies that no user, fleet, or device still references it and deletes
+its remaining API keys. API-key bulk deletion similarly uses one bounded server action rather than one rate-limited
+browser request per selected key. Parent credential keys are removed only after the parent deletion succeeds. For user
+deletion, relation rows are restored if the parent deletion fails.
 
 These requests pass through the UI server's `/admin-db` authorization proxy and retain the authenticated JWT, but they
 still **do not gain open-balena-api ACL enforcement**. The PostgREST service must not be publicly reachable. Deploy it

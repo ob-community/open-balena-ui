@@ -41,6 +41,8 @@ export interface AccessContext {
   globalRoleIds: Set<number>;
   ownGlobalRoleAssignmentIds: Set<number>;
   protectedRoleIds: Set<number>;
+  organizationAssignableRoleIds: Set<number>;
+  manageableUserRoleAssignmentIds: Set<number>;
   manageableApiKeyActorIds: Set<number>;
   manageableApiKeyIds: Set<number>;
   visibleApiKeyIds: Set<number>;
@@ -203,6 +205,14 @@ export const authorizePreActivationAssignment = (
 const ids = (records: Array<Record<string, unknown>>, ...fields: string[]): Set<number> =>
   new Set(records.map((record) => numberField(record, ...fields)).filter((value): value is number => value != null));
 
+export const organizationAssignableRoleNames = (): Set<string> =>
+  new Set(
+    (process.env.OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0 && name !== GLOBAL_ADMIN_ROLE && name !== ORGANIZATION_ADMIN_ROLE),
+  );
+
 const listByIds = async (
   database: DatabaseReader,
   resource: string,
@@ -248,10 +258,7 @@ export const getAuthenticatedUserId = (payload: JWTPayload): number => {
 
 export const buildAccessContext = async (payload: JWTPayload, database: DatabaseReader): Promise<AccessContext> => {
   const userId = getAuthenticatedUserId(payload);
-  const roles = await database.list(
-    'role',
-    new URLSearchParams({ name: `in.(${GLOBAL_ADMIN_ROLE},${ORGANIZATION_ADMIN_ROLE})` }),
-  );
+  const roles = await database.list('role');
   const globalRoleIds = ids(
     roles.filter((role) => role.name === GLOBAL_ADMIN_ROLE),
     'id',
@@ -261,10 +268,16 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     'id',
   );
   const protectedRoleIds = new Set([...globalRoleIds, ...organizationRoleIds]);
+  const assignableRoleNames = organizationAssignableRoleNames();
+  const organizationAssignableRoleIds = ids(
+    roles.filter((role) => typeof role.name === 'string' && assignableRoleNames.has(role.name)),
+    'id',
+  );
   const ownUser = await database.list('user', new URLSearchParams({ id: `eq.${userId}` }));
   const ownActorId = ownUser[0] ? numberField(ownUser[0], 'actor') : undefined;
 
   if (!globalRoleIds.size) {
+    // Deliberate compatibility mode: without global-admin, every authenticated user retains legacy super-admin access.
     const manageableApiKeyActorIds = await getManagedCredentialActors(database);
     const manageableApiKeyIds = await getVisibleApiKeyIds(database, ownActorId, manageableApiKeyActorIds);
     return {
@@ -278,6 +291,8 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       globalRoleIds,
       ownGlobalRoleAssignmentIds: new Set(),
       protectedRoleIds,
+      organizationAssignableRoleIds,
+      manageableUserRoleAssignmentIds: new Set(),
       manageableApiKeyActorIds,
       manageableApiKeyIds,
       visibleApiKeyIds: manageableApiKeyIds,
@@ -307,6 +322,8 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       globalRoleIds,
       ownGlobalRoleAssignmentIds,
       protectedRoleIds,
+      organizationAssignableRoleIds,
+      manageableUserRoleAssignmentIds: new Set(),
       manageableApiKeyActorIds,
       manageableApiKeyIds,
       visibleApiKeyIds: manageableApiKeyIds,
@@ -356,9 +373,10 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       listByIds(database, 'api key-has-permission', 'api key', apiKeyIds),
     ]);
 
-  const assignableUserRoles = userRoles.filter(
-    (assignment) => !protectedRoleIds.has(numberField(assignment, 'role') ?? -1),
+  const assignableUserRoles = userRoles.filter((assignment) =>
+    organizationAssignableRoleIds.has(numberField(assignment, 'role') ?? -1),
   );
+  const manageableUserRoleAssignmentIds = ids(assignableUserRoles, 'id');
 
   return {
     enforcementEnabled: true,
@@ -370,6 +388,8 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     globalRoleIds,
     ownGlobalRoleAssignmentIds,
     protectedRoleIds,
+    organizationAssignableRoleIds,
+    manageableUserRoleAssignmentIds,
     manageableApiKeyActorIds,
     manageableApiKeyIds,
     visibleApiKeyIds: manageableApiKeyIds,
@@ -400,6 +420,9 @@ export const authorizeResource = (
   if (!context.enforcementEnabled || context.globalAdmin) {
     return undefined;
   }
+  if (resource === 'role' && method === 'GET' && context.organizationAdmin) {
+    return context.organizationAssignableRoleIds;
+  }
   if (GLOBAL_ONLY_RESOURCES.has(resource) || !ORGANIZATION_SCOPED_RESOURCES.has(resource)) {
     throw new Error('Global administrator access is required.');
   }
@@ -417,6 +440,9 @@ export const authorizeResource = (
   }
   if (resource === 'api key' && ['PATCH', 'DELETE'].includes(method)) {
     return context.manageableApiKeyIds;
+  }
+  if (resource === 'user-has-role' && ['PATCH', 'DELETE'].includes(method)) {
+    return context.manageableUserRoleAssignmentIds;
   }
   return context.allowedIds[resource] ?? new Set();
 };
@@ -444,6 +470,9 @@ export const authorizeMutationBody = (
     throw new Error('Administrator mutations require an object body.');
   }
   const record = body as Record<string, unknown>;
+  if ('id' in record) {
+    throw new Error('Primary keys cannot be supplied or changed through direct database access.');
+  }
   if (resource === 'user' && ['PATCH', 'PUT'].includes(method) && 'actor' in record) {
     throw new Error('User actor ownership cannot be changed through direct database access.');
   }
@@ -476,9 +505,10 @@ export const authorizeMutationBody = (
       break;
     case 'user-has-role':
       requireAllowedReference(record, 'user', userIds);
-      if (numberField(record, 'role') != null && context.protectedRoleIds.has(numberField(record, 'role')!)) {
-        throw new Error('Only global administrators can assign administrator roles.');
+      if (method === 'POST' && numberField(record, 'role') == null) {
+        throw new Error('New user role assignments require an organization-safe role.');
       }
+      requireAllowedReference(record, 'role', context.organizationAssignableRoleIds);
       break;
     case 'user-has-permission':
       throw new Error('Only global administrators can assign direct user permissions.');

@@ -10,6 +10,7 @@ import {
   authorizeResource,
   authorizeSelfLockoutMutation,
   buildAccessContext,
+  organizationAssignableRoleNames,
   queryReferencesCredential,
   queryUsesUnsafeEmbedding,
   redactSecrets,
@@ -20,11 +21,15 @@ const records: Record<string, Array<Record<string, unknown>>> = {
   'role': [
     { id: 1, name: 'global-admin' },
     { id: 2, name: 'organization-admin' },
+    { id: 3, name: 'support' },
+    { id: 4, name: 'operator' },
   ],
   'user-has-role': [
     { id: 10, user: 1, role: 1 },
     { id: 11, user: 2, role: 2 },
     { id: 12, user: 3, role: 2 },
+    { id: 13, user: 4, role: 3 },
+    { id: 14, user: 4, role: 4 },
   ],
   'user': [
     { id: 1, actor: 101 },
@@ -140,9 +145,10 @@ test('organization administrators are restricted to their organization records',
     () => authorizeMutationBody(context, 'api key', 'POST', { 'key': 'other-user-key', 'is of-actor': 104 }),
     /outside the administrator's organization scope/,
   );
-  assert.throws(() => authorizeResource(context, 'role', 'GET'), /Global administrator/);
+  assert.deepEqual([...authorizeResource(context, 'role', 'GET')!], []);
   assert.throws(() => authorizeResource(context, 'user', 'POST'), /cannot create/);
   assert.throws(() => authorizeResource(context, 'user', 'DELETE'), /Only global administrators can delete users/);
+  assert.deepEqual([...authorizeResource(context, 'user-has-role', 'DELETE')!], []);
 });
 
 test('ordinary users cannot access direct database resources after activation', async () => {
@@ -180,12 +186,45 @@ test('organization mutations reject cross-organization references', async () => 
   );
   assert.throws(
     () => authorizeMutationBody(context, 'user-has-role', 'POST', { user: 2, role: 1 }),
-    /Only global administrators can assign administrator roles/,
+    /outside the administrator's organization scope/,
+  );
+  assert.throws(
+    () => authorizeMutationBody(context, 'user-has-role', 'POST', { user: 2, role: 3 }),
+    /outside the administrator's organization scope/,
   );
   assert.throws(
     () => authorizeMutationBody(context, 'user-has-permission', 'POST', { user: 2, permission: 99 }),
     /Only global administrators can assign direct user permissions/,
   );
+});
+
+test('organization administrators may manage only explicitly configured safe roles', async () => {
+  const previous = process.env.OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES;
+  process.env.OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES = ' support, operator, global-admin, organization-admin ';
+  try {
+    assert.deepEqual([...organizationAssignableRoleNames()].sort(), ['operator', 'support']);
+    const context = await buildAccessContext({ id: 2 }, reader());
+
+    assert.deepEqual([...authorizeResource(context, 'role', 'GET')!].sort(), [3, 4]);
+    assert.deepEqual([...authorizeResource(context, 'user-has-role', 'GET')!].sort(), [13, 14]);
+    assert.deepEqual([...authorizeResource(context, 'user-has-role', 'PATCH')!].sort(), [13, 14]);
+    assert.deepEqual([...authorizeResource(context, 'user-has-role', 'DELETE')!].sort(), [13, 14]);
+    assert.doesNotThrow(() => authorizeMutationBody(context, 'user-has-role', 'POST', { user: 4, role: 3 }));
+    assert.throws(
+      () => authorizeMutationBody(context, 'user-has-role', 'POST', { user: 4, role: 1 }),
+      /outside the administrator's organization scope/,
+    );
+    assert.throws(
+      () => authorizeMutationBody(context, 'user-has-role', 'POST', { user: 3, role: 3 }),
+      /outside the administrator's organization scope/,
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES;
+    } else {
+      process.env.OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES = previous;
+    }
+  }
 });
 
 test('API key actor validation applies to legacy and global administrators', async () => {
@@ -218,6 +257,32 @@ test('API key actor validation applies to legacy and global administrators', asy
     () => authorizeMutationBody(global, 'user', 'PATCH', { actor: 104 }),
     /actor ownership cannot be changed/,
   );
+});
+
+test('generic mutations reject caller-supplied primary keys in every authorization mode', async () => {
+  const legacy = await buildAccessContext({ id: 2 }, reader({ role: [] }));
+  const global = await buildAccessContext({ id: 1 }, reader());
+  const organizationAdmin = await buildAccessContext({ id: 2 }, reader());
+
+  for (const context of [legacy, global, organizationAdmin]) {
+    assert.throws(
+      () => authorizeMutationBody(context, 'organization membership', 'PATCH', { id: 999 }),
+      /Primary keys cannot be supplied or changed/,
+    );
+    assert.throws(
+      () => authorizeMutationBody(context, 'user', 'PUT', { id: 999, username: 'renamed' }),
+      /Primary keys cannot be supplied or changed/,
+    );
+    assert.throws(
+      () =>
+        authorizeMutationBody(context, 'organization membership', 'POST', {
+          'id': 999,
+          'user': 2,
+          'is member of-organization': 401,
+        }),
+      /Primary keys cannot be supplied or changed/,
+    );
+  }
 });
 
 test('credential field detection blocks projected and filtered secret queries', () => {

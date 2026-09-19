@@ -439,15 +439,19 @@ export const createODataDataProvider = (
       };
     },
     deleteMany: async (resource, params) => {
-      const responses = await Promise.all(
-        params.ids.map((id) => httpClient(entityUrl(resource, id), writeOptions('DELETE'))),
-      );
-      responses.forEach(({ json }, index) => {
-        const response = extractSingle(json);
-        if (response != null) {
-          requireRecord(response, 'deleteMany', params.ids[index]);
+      for (const id of params.ids) {
+        try {
+          const { json } = await httpClient(entityUrl(resource, id), writeOptions('DELETE'));
+          const response = extractSingle(json);
+          if (response != null) {
+            requireRecord(response, 'deleteMany', id);
+          }
+        } catch (error) {
+          if (!(error && typeof error === 'object' && 'status' in error && error.status === 404)) {
+            throw error;
+          }
         }
-      });
+      }
       return { data: params.ids };
     },
   };

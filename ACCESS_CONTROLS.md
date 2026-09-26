@@ -80,6 +80,10 @@ create users, actors, or organizations through the current direct-database workf
 records because a user may have relationships in other organizations. Those workflows start with unscoped records and
 require a future transactional server endpoint to bind new records to an organization safely.
 
+SSH public-key metadata remains visible for in-scope organization members, but public-key creation, replacement, and
+deletion are self-service only at every access level, including global-administrator and legacy modes. This prevents an
+administrator for one organization from taking over or disrupting a member's account in their other organizations.
+
 Only global administrators may change direct user permissions or API-key roles/permissions. Organization administrators
 may create, update, or delete user-role assignments only when both the user is in their organization scope and the
 role's exact name is listed in the server-only `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` setting. `global-admin`

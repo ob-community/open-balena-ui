@@ -196,6 +196,32 @@ test('organization mutations reject cross-organization references', async () => 
     () => authorizeMutationBody(context, 'user-has-permission', 'POST', { user: 2, permission: 99 }),
     /Only global administrators can assign direct user permissions/,
   );
+  assert.deepEqual([...authorizeResource(context, 'user-has-public key', 'DELETE')!], [701]);
+  assert.doesNotThrow(() =>
+    authorizeMutationBody(context, 'user-has-public key', 'POST', { 'user': 2, 'public key': 'self' }),
+  );
+  assert.throws(
+    () => authorizeMutationBody(context, 'user-has-public key', 'POST', { 'user': 4, 'public key': 'other' }),
+    /outside the administrator's organization scope/,
+  );
+  assert.throws(
+    () => authorizeMutationBody(context, 'user-has-public key', 'POST', { 'public key': 'missing owner' }),
+    /require the authenticated user/,
+  );
+});
+
+test('public-key mutations remain self-service for global and legacy administrators', async () => {
+  const contexts = [
+    { context: await buildAccessContext({ id: 1 }, reader()), ownKeyIds: [] },
+    { context: await buildAccessContext({ id: 2 }, reader({ role: [] })), ownKeyIds: [701] },
+  ];
+  for (const { context, ownKeyIds } of contexts) {
+    assert.deepEqual([...authorizeResource(context, 'user-has-public key', 'PATCH')!], ownKeyIds);
+    assert.throws(
+      () => authorizeMutationBody(context, 'user-has-public key', 'POST', { 'user': 4, 'public key': 'other' }),
+      /outside the administrator's organization scope/,
+    );
+  }
 });
 
 test('organization administrators may manage only explicitly configured safe roles', async () => {

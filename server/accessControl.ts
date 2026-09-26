@@ -43,6 +43,7 @@ export interface AccessContext {
   protectedRoleIds: Set<number>;
   organizationAssignableRoleIds: Set<number>;
   manageableUserRoleAssignmentIds: Set<number>;
+  ownPublicKeyIds: Set<number>;
   manageableApiKeyActorIds: Set<number>;
   manageableApiKeyIds: Set<number>;
   visibleApiKeyIds: Set<number>;
@@ -275,6 +276,10 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
   );
   const ownUser = await database.list('user', new URLSearchParams({ id: `eq.${userId}` }));
   const ownActorId = ownUser[0] ? numberField(ownUser[0], 'actor') : undefined;
+  const ownPublicKeyIds = ids(
+    await database.list('user-has-public key', new URLSearchParams({ user: `eq.${userId}` })),
+    'id',
+  );
 
   if (!globalRoleIds.size) {
     // Deliberate compatibility mode: without global-admin, every authenticated user retains legacy super-admin access.
@@ -293,6 +298,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       protectedRoleIds,
       organizationAssignableRoleIds,
       manageableUserRoleAssignmentIds: new Set(),
+      ownPublicKeyIds,
       manageableApiKeyActorIds,
       manageableApiKeyIds,
       visibleApiKeyIds: manageableApiKeyIds,
@@ -324,6 +330,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       protectedRoleIds,
       organizationAssignableRoleIds,
       manageableUserRoleAssignmentIds: new Set(),
+      ownPublicKeyIds,
       manageableApiKeyActorIds,
       manageableApiKeyIds,
       visibleApiKeyIds: manageableApiKeyIds,
@@ -390,6 +397,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     protectedRoleIds,
     organizationAssignableRoleIds,
     manageableUserRoleAssignmentIds,
+    ownPublicKeyIds,
     manageableApiKeyActorIds,
     manageableApiKeyIds,
     visibleApiKeyIds: manageableApiKeyIds,
@@ -416,6 +424,9 @@ export const authorizeResource = (
 ): Set<number> | undefined => {
   if (!DIRECT_DATABASE_RESOURCES.has(resource)) {
     throw new Error('This resource is not available through direct database access.');
+  }
+  if (resource === 'user-has-public key' && ['PATCH', 'DELETE'].includes(method)) {
+    return context.ownPublicKeyIds;
   }
   if (!context.enforcementEnabled || context.globalAdmin) {
     return undefined;
@@ -489,6 +500,12 @@ export const authorizeMutationBody = (
     }
     requireAllowedReference(record, 'is of-actor', credentialActorIds);
   }
+  if (resource === 'user-has-public key') {
+    if (method === 'POST' && numberField(record, 'user') == null) {
+      throw new Error('New public keys require the authenticated user.');
+    }
+    requireAllowedReference(record, 'user', new Set([context.userId]));
+  }
   if (!context.enforcementEnabled || context.globalAdmin) {
     return;
   }
@@ -513,7 +530,6 @@ export const authorizeMutationBody = (
     case 'user-has-permission':
       throw new Error('Only global administrators can assign direct user permissions.');
     case 'user-has-public key':
-      requireAllowedReference(record, 'user', userIds);
       break;
     case 'user-has-direct access to-application':
       requireAllowedReference(record, 'user', userIds);

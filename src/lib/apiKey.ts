@@ -1,4 +1,4 @@
-import { useDataProvider } from 'react-admin';
+import { type DataProvider, type Identifier, useDataProvider } from 'react-admin';
 
 export function useCreateApiKey() {
   return (data) => {
@@ -59,10 +59,9 @@ export function useDeleteApiKey() {
 
 export function useDeleteApiKeyBulk() {
   const dataProvider = useDataProvider();
-  const deleteApiKey = useDeleteApiKey();
 
-  return async (apiKeyIds) => {
-    const selectedApiKeys = await dataProvider.getMany('api key', { ids: apiKeyIds });
-    return Promise.all(selectedApiKeys.data.map((apiKey) => deleteApiKey(apiKey)));
-  };
+  return (apiKeyIds: Identifier[]) => deleteApiKeysBulk(dataProvider, apiKeyIds);
 }
+
+export const deleteApiKeysBulk = (dataProvider: Pick<DataProvider, 'deleteMany'>, apiKeyIds: Identifier[]) =>
+  dataProvider.deleteMany('api key', { ids: apiKeyIds });

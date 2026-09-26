@@ -79,9 +79,13 @@ const createHttpClient = () => {
     const offset = Number(request.searchParams.get('offset') ?? '0');
     const limit = Number(request.searchParams.get('limit') ?? `${orderedRecords.length}`);
 
+    const json = orderedRecords.slice(offset, offset + limit);
+
     return {
+      status: 200,
       headers: new Headers({ 'content-range': `*/${orderedRecords.length}` }),
-      json: orderedRecords.slice(offset, offset + limit),
+      body: JSON.stringify(json),
+      json,
     };
   };
 

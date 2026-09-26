@@ -552,12 +552,10 @@ release.
 
 The compatibility layer is intended to allow the current `open-balena-ui` codebase to operate against both older
 supported OpenBalena installations and current `open-balena-api` releases without scattering version-specific SBVR
-knowledge throughout the application.
-
-Operational data uses the backwards-compatible OData v6 endpoint on older servers and v7 where supported, and accepts
-both legacy and current OData response envelopes. See [API_VERSIONS.md](API_VERSIONS.md) for the provider's
-compatibility and degradation behavior and [ACCESS_CONTROLS.md](ACCESS_CONTROLS.md) for administrator role setup and
-PostgREST security requirements.
+knowledge throughout the application. Operational data uses the backwards-compatible OData v6 endpoint on older servers
+and v7 where supported, and accepts both legacy and current OData response envelopes. See
+[API_VERSIONS.md](API_VERSIONS.md) for the provider's compatibility and degradation behavior and
+[ACCESS_CONTROLS.md](ACCESS_CONTROLS.md) for administrator role setup and PostgREST security requirements.
 
 ## Installation
 

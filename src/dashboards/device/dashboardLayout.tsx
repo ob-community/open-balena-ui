@@ -32,7 +32,7 @@ const DashboardLayout: React.FC = () => {
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ flex: 2, margin: '7.5px', minWidth: '600px' }}>
+        <div style={{ flex: '2 1 600px', margin: '7.5px', minWidth: 0 }}>
           <Card style={{ padding: '15px' }}>
             <ControlsWidget />
           </Card>
@@ -63,7 +63,7 @@ const DashboardLayout: React.FC = () => {
           </Card>
         </div>
 
-        <div style={{ flex: 3, margin: '7.5px', minWidth: '550px' }}>
+        <div style={{ flex: '3 1 550px', margin: '7.5px', minWidth: 0 }}>
           <Card sx={{ padding: '15px' }}>
             <UsageWidget />
           </Card>

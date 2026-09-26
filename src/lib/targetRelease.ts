@@ -5,6 +5,8 @@ export interface TargetReleaseInfo {
   origin: TargetReleaseOrigin;
 }
 
+const fleetPinField = 'should be running-release';
+
 export const getTargetOriginLabel = (origin: TargetReleaseOrigin): string => {
   switch (origin) {
     case 'device':
@@ -66,7 +68,7 @@ export const resolveDeviceTargetRelease = ({
   }
 
   if (fleetRecord) {
-    const fleetInfo = resolveFleetTargetRelease({ record: fleetRecord, pinField });
+    const fleetInfo = resolveFleetTargetRelease({ record: fleetRecord, pinField: fleetPinField });
     if (fleetInfo.targetReleaseId !== undefined || fleetInfo.origin !== 'latest') {
       return fleetInfo;
     }

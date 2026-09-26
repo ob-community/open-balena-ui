@@ -1,8 +1,8 @@
 import React from 'react';
 import type { SvgIconProps } from '@mui/material/SvgIcon';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import AutoModeIcon from '@mui/icons-material/AutoMode';
 import PushPinIcon from '@mui/icons-material/PushPin';
-import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
-import SwitchAccessShortcutIcon from '@mui/icons-material/SwitchAccessShortcut';
 import type { TargetReleaseOrigin } from '../lib/targetRelease';
 
 interface TargetReleaseIconProps extends SvgIconProps {
@@ -14,9 +14,9 @@ const TargetReleaseIcon: React.FC<TargetReleaseIconProps> = ({ origin, ...props 
     case 'device':
       return <PushPinIcon {...props} />;
     case 'fleet':
-      return <PushPinOutlinedIcon {...props} />;
+      return <AccountTreeIcon {...props} />;
     default:
-      return <SwitchAccessShortcutIcon {...props} />;
+      return <AutoModeIcon {...props} />;
   }
 };
 

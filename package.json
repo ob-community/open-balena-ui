@@ -72,7 +72,7 @@
     "build:server": "ncc build server/index.ts -o dist/server -m",
     "preview": "vite preview --outDir dist/client",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/authProvider/*.test.ts src/dataProvider/*.test.ts src/lib/*.test.ts src/versions/*.test.ts server/*.test.ts",
+    "test": "tsx --test src/authProvider/*.test.ts src/dataProvider/*.test.ts src/lib/*.test.ts src/versions/*.test.ts server/*.test.ts test/*.test.ts",
     "prettier": "prettier --write ."
   },
   "browserslist": {

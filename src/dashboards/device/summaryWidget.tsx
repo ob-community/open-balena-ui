@@ -6,6 +6,7 @@ import {
   TextField,
   Title,
   Loading,
+  useGetManyReference,
   useGetOne,
   useRecordContext,
   RecordContextProvider,
@@ -19,8 +20,36 @@ import TargetReleaseIcon from '../../ui/TargetReleaseIcon';
 import versions from '../../versions';
 import environment from '../../lib/reactAppEnv';
 import TargetReleaseTooltip from '../../ui/TargetReleaseTooltip';
+import { getDeviceOverallState } from '../../lib/deviceStatus';
+import type { ResourceRecord } from '../../types/resource';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const deviceStateRefreshInterval = 30000;
+
+const DeviceState: React.FC = () => {
+  const record = useRecordContext<ResourceRecord>();
+  const { data: imageInstalls = [] } = useGetManyReference<ResourceRecord>(
+    'image install',
+    {
+      target: 'device',
+      id: record?.id,
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: 'id', order: 'ASC' },
+      filter: {},
+    },
+    {
+      enabled: record?.id !== undefined && record?.id !== null,
+      refetchInterval: deviceStateRefreshInterval,
+      refetchIntervalInBackground: false,
+    },
+  );
+
+  if (!record) {
+    return null;
+  }
+
+  return <span>{getDeviceOverallState(record, imageInstalls)}</span>;
+};
 
 const TargetRelease: React.FC = () => {
   const record = useRecordContext();
@@ -30,7 +59,7 @@ const TargetRelease: React.FC = () => {
   }
 
   const applicationId = record['belongs to-application'];
-  const needsFleetFallback = !record['should be running-release'] && Boolean(applicationId);
+  const needsFleetFallback = !record[isPinnedOnRelease] && Boolean(applicationId);
 
   const {
     data: fleet,
@@ -118,7 +147,7 @@ const SummaryWidget: React.FC = () => {
 
               <td>
                 <Label>State</Label>
-                <span>{record.status}</span>
+                <DeviceState />
               </td>
 
               <td>

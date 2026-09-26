@@ -3,6 +3,7 @@ import {
   BooleanField,
   ChipField,
   Datagrid,
+  DateField,
   FunctionField,
   List,
   ReferenceField,
@@ -48,7 +49,7 @@ const TagChipField: React.FC = (props) => {
 
 export const ReleaseList: React.FC = (props) => {
   return (
-    <List filters={releaseFilters}>
+    <List filters={releaseFilters} sort={{ field: 'version', order: 'DESC' }}>
       <Datagrid
         size='medium'
         rowClick={false}
@@ -58,12 +59,7 @@ export const ReleaseList: React.FC = (props) => {
           </DeleteReleaseButton>
         }
       >
-        <ReferenceField
-          label='Fleet'
-          source='belongs to-application'
-          reference='application'
-          sortable={false}
-        >
+        <ReferenceField label='Fleet' source='belongs to-application' reference='application' sortable={false}>
           <TextField source='app name' />
         </ReferenceField>
         <ReferenceField
@@ -75,7 +71,8 @@ export const ReleaseList: React.FC = (props) => {
         >
           <BooleanBinaryField source='is host' />
         </ReferenceField>
-        <SemVerTextField label='Version' />
+        <SemVerTextField label='Version' sortable sortBy='version' />
+        <DateField label='Date' source='created at' />
         <ReferenceManyCount
           label='Devices'
           source='id'

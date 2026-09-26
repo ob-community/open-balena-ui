@@ -10,6 +10,8 @@ interface SemVerTextFieldProps extends TypographyProps {
   emptyText?: string;
   emptyCommitText?: string;
   label?: string;
+  sortable?: boolean;
+  sortBy?: string;
 }
 
 const SemVerTextField: React.FC<SemVerTextFieldProps> = ({
@@ -17,6 +19,8 @@ const SemVerTextField: React.FC<SemVerTextFieldProps> = ({
   emptyText = 'Unknown',
   emptyCommitText = 'unknown commit',
   label,
+  sortable,
+  sortBy,
   ...rest
 }) => {
   const translate = useTranslate();

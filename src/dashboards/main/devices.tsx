@@ -1,6 +1,7 @@
 import React from 'react';
 import {
-  ChipField,
+  FunctionField,
+  Link,
   List,
   ReferenceField,
   ResourceContextProvider,
@@ -8,167 +9,169 @@ import {
   ShowButton,
   WithListContext,
 } from 'react-admin';
-import GrainIcon from '@mui/icons-material/Grain';
-import DeveloperBoardIcon from '@mui/icons-material/DeveloperBoard';
 import {
   Card,
   CardActions,
   CardContent,
   CardHeader,
-  Grid,
   Table,
   TableBody,
   TableCell,
+  TableHead,
   TableRow,
   Tooltip,
 } from '@mui/material';
-import { tableCellClasses } from '@mui/material/TableCell';
 import { EditButton } from 'react-admin';
 import EnvVarButton from '../../ui/EnvVarButton';
 import DeviceConnectButton from '../../ui/DeviceConnectButton';
-import { OnlineField } from '../../components/device';
+import { LastOnlineField, OnlineField } from '../../components/device';
+import CopyChip from '../../ui/CopyChip';
+import { getSemver } from '../../ui/SemVerChip';
+import versions from '../../versions';
+import environment from '../../lib/reactAppEnv';
+import { deviceOnlineStatusField } from '../../lib/deviceStatus';
+
+const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const deviceStatusRefreshInterval = 30000;
 
 const deviceCardFilters = [<SearchInput source='#uuid,device name,status@ilike' alwaysOn />];
 
 export const DeviceCards: React.FC = () => (
   <ResourceContextProvider value='device'>
-    <List emptyWhileLoading disableSyncWithLocation filters={deviceCardFilters} title=' '>
+    <List
+      emptyWhileLoading
+      disableSyncWithLocation
+      filters={deviceCardFilters}
+      sort={{ field: 'connectivity', order: 'DESC' }}
+      queryOptions={{ refetchInterval: deviceStatusRefreshInterval, refetchIntervalInBackground: false }}
+      title=' '
+    >
       <WithListContext
         render={({ data }) => (
-          <Card sx={{ flex: '1', dispay: 'flex', flexDirection: 'column' }}>
+          <Card sx={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
             <CardHeader title='Devices' />
-            <CardContent sx={{ minHeight: 225, overflow: 'auto', flex: '1', display: 'flex', flexDirection: 'column' }}>
-              <Grid container spacing={3} sx={{ flex: '1' }}>
-                {data?.map((record, index) => (
-                  <Grid item key={index} xs='auto'>
-                    <Card sx={{ minWidth: 200, maxWidth: 200, minHeight: 220, maxHeight: 220 }}>
-                      <CardHeader
-                        title={
-                          <Tooltip title={record['device name']}>
-                            {record['device name'].length > 0 ? record['device name'] : <br />}
-                          </Tooltip>
-                        }
-                        sx={{ fontWeight: 'bold', height: '45px' }}
-                        titleTypographyProps={{
-                          variant: 'inherit',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          maxWidth: 165,
-                        }}
-                      />
-                      <CardContent sx={{ paddingTop: '4px', paddingBottom: '4px' }}>
-                        <Table
-                          sx={{
-                            [`& .${tableCellClasses.root}`]: {
-                              borderBottom: 'none',
-                              paddingLeft: '0px',
-                              paddingRight: '0px',
-                              paddingTop: '2px',
-                              paddingBottom: '2px',
-                            },
-                          }}
+            <CardContent sx={{ minHeight: 225, overflow: 'auto', flex: '1', p: 0 }}>
+              <Table size='small' stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Fleet</TableCell>
+                    <TableCell>UUID</TableCell>
+                    <TableCell>Connection status</TableCell>
+                    <TableCell>Connectivity</TableCell>
+                    <TableCell>Release</TableCell>
+                    <TableCell>Pinned release</TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data?.map((record, index) => (
+                    <TableRow key={record.id ?? index} hover>
+                      <TableCell sx={{ maxWidth: 150 }}>
+                        <Tooltip title={record['device name'] ?? ''}>
+                          <Link to={`/device/${record.id}/show`}>
+                            <span
+                              style={{
+                                display: 'block',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {record['device name'] || 'Unnamed device'}
+                            </span>
+                          </Link>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 140 }}>
+                        <ReferenceField
+                          record={record}
+                          source='belongs to-application'
+                          reference='application'
+                          target='id'
+                          link={false}
                         >
-                          <TableBody>
-                            <TableRow>
-                              <TableCell colSpan={2}>
-                                <ReferenceField
-                                  record={record}
-                                  source='belongs to-application'
-                                  reference='application'
-                                  target='id'
-                                >
-                                  <ChipField
-                                    icon={<GrainIcon />}
-                                    source='app name'
-                                    variant='outlined'
-                                    style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '5px' }}
-                                  />
-                                </ReferenceField>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell colSpan={2}>
-                                <ReferenceField
-                                  record={record}
-                                  source='is of-device type'
-                                  reference='device type'
-                                  target='id'
-                                >
-                                  <ChipField
-                                    icon={<DeveloperBoardIcon />}
-                                    source='name'
-                                    variant='outlined'
-                                    style={{ width: '100%', justifyContent: 'space-between', paddingLeft: '5px' }}
-                                  />
-                                </ReferenceField>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell sx={{ fontWeight: 'bold' }}>UUID</TableCell>
-                              <TableCell align='right'>{record.uuid.substring(0, 8)}</TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-                              <TableCell align='right'>
-                                <OnlineField record={record} />
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell sx={{ fontWeight: 'bold' }}>OS</TableCell>
-                              <TableCell
-                                align='right'
-                                sx={{
-                                  variant: 'inherit',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  maxWidth: 125,
-                                }}
-                              >
-                                <Tooltip title={record['os version'] ? record['os version'].split(' ')[1] : 'n/a'}>
-                                  {record['os version'] ? record['os version'].split(' ')[1] : 'n/a'}
-                                </Tooltip>
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                      <CardActions sx={{ paddingTop: '0px', paddingBottom: '4px' }}>
-                        <DeviceConnectButton
+                          <FunctionField
+                            render={(fleet) => (
+                              <Tooltip title={fleet['app name'] ?? ''}>
+                                <span>{fleet['app name']}</span>
+                              </Tooltip>
+                            )}
+                          />
+                        </ReferenceField>
+                      </TableCell>
+                      <TableCell>
+                        <CopyChip title={record.uuid} label={record.uuid.substring(0, 8)} />
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        <OnlineField record={record} source={deviceOnlineStatusField} />
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        <LastOnlineField record={record} />
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        <ReferenceField
                           record={record}
-                          label=''
-                          size='small'
-                          variant='outlined'
-                          style={{ minWidth: '0' }}
-                        />
-                        <ShowButton
-                          record={record}
-                          label=''
-                          size='small'
-                          variant='outlined'
-                          style={{ minWidth: '0' }}
-                        />
-                        <EditButton
-                          record={record}
-                          label=''
-                          size='small'
-                          variant='outlined'
-                          style={{ minWidth: '0' }}
-                        />
-                        <EnvVarButton
-                          resource='device'
-                          record={record}
-                          label=''
-                          size='small'
-                          variant='outlined'
-                          style={{ minWidth: '0' }}
-                        />
-                      </CardActions>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
+                          source='is running-release'
+                          reference='release'
+                          target='id'
+                          link={false}
+                        >
+                          <FunctionField render={(release) => getSemver(release)} />
+                        </ReferenceField>
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        {record[isPinnedOnRelease] ? (
+                          <ReferenceField
+                            record={record}
+                            source={isPinnedOnRelease}
+                            reference='release'
+                            target='id'
+                            link={false}
+                          >
+                            <FunctionField render={(release) => getSemver(release)} />
+                          </ReferenceField>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <CardActions sx={{ p: 0, whiteSpace: 'nowrap' }}>
+                          <DeviceConnectButton
+                            record={record}
+                            label=''
+                            size='small'
+                            variant='outlined'
+                            style={{ minWidth: '0' }}
+                          />
+                          <ShowButton
+                            record={record}
+                            label=''
+                            size='small'
+                            variant='outlined'
+                            style={{ minWidth: '0' }}
+                          />
+                          <EditButton
+                            record={record}
+                            label=''
+                            size='small'
+                            variant='outlined'
+                            style={{ minWidth: '0' }}
+                          />
+                          <EnvVarButton
+                            resource='device'
+                            record={record}
+                            label=''
+                            size='small'
+                            variant='outlined'
+                            style={{ minWidth: '0' }}
+                          />
+                        </CardActions>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         )}

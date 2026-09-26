@@ -21,6 +21,6 @@
       "*": ["src/*", "*"]
     }
   },
-  "include": ["src/**/*", "server/**/*", "types/**/*.d.ts", "types.d.ts", "vite.config.mts"],
+  "include": ["src/**/*", "server/**/*", "test/**/*.ts", "types/**/*.d.ts", "types.d.ts", "vite.config.mts"],
   "exclude": ["node_modules", "dist"]
 }

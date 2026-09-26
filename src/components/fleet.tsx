@@ -33,20 +33,18 @@ import { useCreateFleet } from '../lib/fleet';
 import DeleteFleetButton from '../ui/DeleteFleetButton';
 import Row from '../ui/Row';
 import SemVerChip, { getSemver } from '../ui/SemVerChip';
-import versions from '../versions';
-import environment from '../lib/reactAppEnv';
 import { resolveFleetTargetRelease } from '../lib/targetRelease';
 import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 
-const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const fleetPinField = 'should be running-release';
 
 const FleetTargetReleaseCell: React.FC<{ record: Record<string, any> }> = ({ record }) => {
   if (!record) {
     return null;
   }
 
-  const { targetReleaseId, origin } = resolveFleetTargetRelease({ record, pinField: isPinnedOnRelease });
+  const { targetReleaseId, origin } = resolveFleetTargetRelease({ record, pinField: fleetPinField });
   const targetField = '__targetReleaseId';
   const chipIcon = <TargetReleaseIcon origin={origin} fontSize='small' />;
 
@@ -329,7 +327,7 @@ export const FleetEdit: React.FC = () => {
             !formData['should track latest release'] && (
               <ReferenceInput
                 label='Target Release'
-                source='should be running-release'
+                source={fleetPinField}
                 reference='release'
                 target='id'
                 filter={{ 'belongs to-application': fleetId }}

@@ -1,6 +1,5 @@
 import { Tooltip, useTheme } from '@mui/material';
 import type { Theme } from '@mui/material/styles';
-import { Done, Warning, WarningAmber } from '@mui/icons-material';
 import dateFormat from 'dateformat';
 import * as React from 'react';
 import {
@@ -27,6 +26,7 @@ import {
   TopToolbar,
   required,
   useGetOne,
+  useGetManyReference,
   useRedirect,
   useListContext,
   WithRecord,
@@ -50,9 +50,47 @@ import { resolveDeviceTargetRelease } from '../lib/targetRelease';
 import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
+import DeviceUpdateStatusIcon from '../ui/DeviceUpdateStatusIcon';
+import {
+  deviceOnlineStatusField,
+  getDeviceStatusTimestamp,
+  isDeviceOnline,
+  isDeviceUpdating,
+} from '../lib/deviceStatus';
 
-// Get the proper field name for isPinnedOnRelease based on API version
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const deviceStatusRefreshInterval = 30000;
+
+const parseDeviceDate = (value: unknown): Date | null => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatElapsedTime = (referenceDate: Date): string => {
+  const elapsedMilliseconds = Math.max(0, Date.now() - referenceDate.getTime());
+  const elapsedDays = Math.floor(elapsedMilliseconds / 86400000);
+
+  if (elapsedDays >= 1) {
+    return `${elapsedDays} ${elapsedDays === 1 ? 'day' : 'days'}`;
+  }
+
+  const elapsedMinutes = Math.floor(elapsedMilliseconds / 60000);
+  return `${elapsedMinutes} ${elapsedMinutes === 1 ? 'minute' : 'minutes'}`;
+};
+
+const ElapsedTime: React.FC<{ referenceDate: Date; prefix?: string; suffix?: string }> = ({
+  referenceDate,
+  prefix = '',
+  suffix = '',
+}) => (
+  <Tooltip placement='top' arrow title={dateFormat(referenceDate)}>
+    <span>{`${prefix}${formatElapsedTime(referenceDate)}${suffix}`}</span>
+  </Tooltip>
+);
 
 export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -60,35 +98,50 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
   return (
     <FunctionField
       {...props}
-      render={(record) => {
-        const isOnline = record['is online'] === true;
-        const vpnConnected = record['is connected to vpn'] === true;
-        const color = !isOnline
-          ? theme.palette.error.light // red
-          : vpnConnected
-            ? theme.palette.success.light // green
-            : theme.palette.warning.light; // orange
-        const status = `${isOnline ? 'Online' : 'Offline'}, ${vpnConnected ? 'VPN connected' : 'no VPN connection'}`;
-        const lastEvent = record['last connectivity event'];
-        const title = lastEvent ? (
-          <>
-            {status}
-            <br />
-            (since {dateFormat(new Date(lastEvent))})
-          </>
-        ) : (
-          status
-        );
+      render={(record, source) => {
+        if (!source) {
+          return null;
+        }
+        const online = isDeviceOnline(record);
+        const heartbeatOnline = record['api heartbeat state'] === 'online';
+        const noVpn = !online && heartbeatOnline && record['is connected to vpn'] !== true;
+        const status = online ? 'Online' : noVpn ? 'NO VPN' : 'Offline';
+        const statusColor = online
+          ? theme.palette.success.light
+          : noVpn
+            ? theme.palette.warning.main
+            : theme.palette.error.light;
+        const statusTimestamp = getDeviceStatusTimestamp(record);
+        const statusSince = parseDeviceDate(statusTimestamp);
+        const statusSinceLabel = statusSince ? `Since ${dateFormat(statusSince)}` : '';
 
         return (
-          <Tooltip placement='top' arrow={true} title={title}>
-            <strong style={{ color }}>{isOnline ? 'Online' : 'Offline'}</strong>
+          <Tooltip placement='top' arrow={true} title={statusSinceLabel}>
+            <strong style={{ color: statusColor }}>{status}</strong>
           </Tooltip>
         );
       }}
     />
   );
 };
+
+export const LastOnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => (
+  <FunctionField
+    {...props}
+    render={(record) => {
+      const isOnline = isDeviceOnline(record);
+      const referenceDate = parseDeviceDate(getDeviceStatusTimestamp(record));
+
+      if (!referenceDate) {
+        return isOnline ? '—' : 'Never online';
+      }
+
+      return (
+        <ElapsedTime referenceDate={referenceDate} prefix={isOnline ? 'Up ' : ''} suffix={isOnline ? '' : ' ago'} />
+      );
+    }}
+  />
+);
 
 export const ReleaseField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -117,6 +170,24 @@ const ReleaseFieldContent: React.FC<{
     isPending,
     error,
   } = useGetOne('application', { id: applicationId }, { enabled: shouldFetchFleet });
+  const deviceUpdateReported = isDeviceUpdating(record);
+  const { data: updatingImageInstalls = [] } = useGetManyReference(
+    'image install',
+    {
+      target: 'device',
+      id: record.id,
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: 'id', order: 'ASC' },
+      filter: {
+        'status@in': '(Downloading,Downloaded,Installing,Installed,Starting,Stopping,configuring)',
+      },
+    },
+    {
+      enabled: record.id !== undefined && record.id !== null && !deviceUpdateReported,
+      refetchInterval: deviceStatusRefreshInterval,
+      refetchIntervalInBackground: false,
+    },
+  );
 
   if (shouldFetchFleet && isPending) {
     return <p>Loading</p>;
@@ -132,10 +203,9 @@ const ReleaseFieldContent: React.FC<{
     pinField: isPinnedOnRelease,
   });
 
+  const targetField = '__targetReleaseId';
   const augmentedRecord =
-    targetReleaseId !== undefined && targetReleaseId !== record['should be running-release']
-      ? { ...record, ['should be running-release']: targetReleaseId }
-      : record;
+    targetReleaseId !== record[targetField] ? { ...record, [targetField]: targetReleaseId } : record;
 
   const isTrackingLatest = origin === 'latest';
   const currentRelease = record[source];
@@ -146,8 +216,18 @@ const ReleaseFieldContent: React.FC<{
       : false;
 
   const isUpToDate = hasTarget ? isTargetMatch : isTrackingLatest;
-  const isOnline = record['is online'] === true;
+  const isUpdating = deviceUpdateReported || isDeviceUpdating(record, updatingImageInstalls);
+  const updateStatus = isUpToDate ? undefined : isUpdating ? 'updating' : 'outdated';
   const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
+  const isOnline = isDeviceOnline(record);
+  const updateStatusColor =
+    updateStatus === 'updating'
+      ? theme.palette.info.main
+      : updateStatus === 'outdated'
+        ? isOnline
+          ? theme.palette.warning.main
+          : theme.palette.common.white
+        : theme.palette.text.primary;
 
   return (
     <RecordContextProvider value={augmentedRecord}>
@@ -157,31 +237,31 @@ const ReleaseFieldContent: React.FC<{
 
       {record[source] &&
         (targetReleaseId !== undefined && targetReleaseId !== null ? (
-          <ReferenceField reference='release' target='id' source='should be running-release' link={false}>
-            <TargetReleaseTooltip origin={origin}>
+          <ReferenceField reference='release' target='id' source={targetField} link={false}>
+            <TargetReleaseTooltip origin={origin} status={updateStatus}>
               <span
                 style={{
                   position: 'relative',
                   top: '3px',
                   left: '3px',
-                  color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
+                  color: updateStatusColor,
                 }}
               >
-                {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
+                {updateStatus && <DeviceUpdateStatusIcon status={updateStatus} />}
               </span>
             </TargetReleaseTooltip>
           </ReferenceField>
         ) : (
-          <TargetReleaseTooltip origin={origin} fallbackDetail='Tracking latest release'>
+          <TargetReleaseTooltip origin={origin} status={updateStatus} fallbackDetail='Tracking latest release'>
             <span
               style={{
                 position: 'relative',
                 top: '3px',
                 left: '3px',
-                color: !isUpToDate && isOnline ? theme.palette.error.light : theme.palette.text.primary,
+                color: updateStatusColor,
               }}
             >
-              {isUpToDate ? <Done /> : isOnline ? <Warning /> : <WarningAmber />}
+              {updateStatus && <DeviceUpdateStatusIcon status={updateStatus} />}
             </span>
           </TargetReleaseTooltip>
         ))}
@@ -235,7 +315,7 @@ const DeviceListActions = () => (
           },
         },
         // Hide original text - the text is directly in the button
-        fontSize: 0,
+        'fontSize': 0,
         '&::after': {
           content: '"Save Filters"',
           fontSize: '0.8125rem',
@@ -251,22 +331,29 @@ const DeviceListActions = () => (
 
 export const DeviceList: React.FC<ListProps<any>> = (props) => {
   return (
-    <List {...props} filters={deviceFilters} actions={<DeviceListActions />} pagination={<ExtendedPagination />}>
+    <List
+      {...props}
+      filters={deviceFilters}
+      actions={<DeviceListActions />}
+      sort={{ field: 'connectivity', order: 'DESC' }}
+      pagination={<ExtendedPagination />}
+      queryOptions={{ refetchInterval: deviceStatusRefreshInterval, refetchIntervalInBackground: false }}
+    >
       <Datagrid rowClick={false} bulkActionButtons={<CustomBulkActionButtons />} size='medium'>
         <ReferenceField label='Name' source='id' reference='device' target='id' link='show'>
           <TextField source='device name' />
         </ReferenceField>
 
-        <OnlineField label='Status' />
+        <OnlineField label='Status' source={deviceOnlineStatusField} />
 
         <ReleaseField label='Current Release' source='is running-release' />
 
-        <ReferenceField label='Device Type' source='is of-device type' reference='device type' target='id' link={false}>
-          <TextField source='slug' />
-        </ReferenceField>
-
         <ReferenceField label='Fleet' source='belongs to-application' reference='application' target='id'>
           <TextField source='app name' />
+        </ReferenceField>
+
+        <ReferenceField label='Device Type' source='is of-device type' reference='device type' target='id' link={false}>
+          <TextField source='slug' />
         </ReferenceField>
 
         <FunctionField
@@ -275,6 +362,8 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
             record['os version'] && record['os variant'] ? `${record['os version']}-${record['os variant']}` : ''
           }
         />
+
+        <LastOnlineField label='Connectivity' source='last connectivity event' sortable sortBy='connectivity' />
 
         <FunctionField
           label='UUID'

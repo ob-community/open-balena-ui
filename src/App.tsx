@@ -1,4 +1,28 @@
 import { CssBaseline } from '@mui/material';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import AltRouteIcon from '@mui/icons-material/AltRoute';
+import AppsIcon from '@mui/icons-material/Apps';
+import BusinessIcon from '@mui/icons-material/Business';
+import CategoryIcon from '@mui/icons-material/Category';
+import DeveloperBoardIcon from '@mui/icons-material/DeveloperBoard';
+import DevicesIcon from '@mui/icons-material/Devices';
+import FactoryIcon from '@mui/icons-material/Factory';
+import ImageIcon from '@mui/icons-material/Image';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import KeyIcon from '@mui/icons-material/Key';
+import LabelOutlinedIcon from '@mui/icons-material/LabelOutlined';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import LockIcon from '@mui/icons-material/Lock';
+import MemoryIcon from '@mui/icons-material/Memory';
+import MiscellaneousServicesIcon from '@mui/icons-material/MiscellaneousServices';
+import PeopleIcon from '@mui/icons-material/People';
+import PublicIcon from '@mui/icons-material/Public';
+import SettingsIcon from '@mui/icons-material/Settings';
+import SecurityIcon from '@mui/icons-material/Security';
+import StorageIcon from '@mui/icons-material/Storage';
+import TuneIcon from '@mui/icons-material/Tune';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import * as React from 'react';
 import { Admin, CustomRoutes, Layout, Resource, fetchUtils } from 'react-admin';
 import { Navigate, Route, useParams } from 'react-router-dom';
@@ -95,102 +119,206 @@ const OpenBalenaAdmin: React.FC = () => {
       theme={theme}
     >
       <CustomRoutes>{customRoutes}</CustomRoutes>
-      <Resource name='menu-access' options={{ label: 'Access', isMenuParent: true }} />
-      <Resource name='organization' options={{ label: 'Orgs', menuParent: 'menu-access' }} {...organization} />
-      <Resource name='user' options={{ label: 'Users', menuParent: 'menu-access' }} {...user} />
-      <Resource name='api key' options={{ label: 'API Keys', menuParent: 'menu-access' }} {...apiKey} />
-      <Resource name='user-has-public key' options={{ label: 'SSH Keys', menuParent: 'menu-access' }} {...userKey} />
+      <Resource name='menu-access' icon={SecurityIcon} options={{ label: 'Access', isMenuParent: true }} />
+      <Resource
+        name='organization'
+        icon={BusinessIcon}
+        options={{ label: 'Orgs', menuParent: 'menu-access' }}
+        {...organization}
+      />
+      <Resource name='user' icon={PeopleIcon} options={{ label: 'Users', menuParent: 'menu-access' }} {...user} />
+      <Resource
+        name='api key'
+        icon={VpnKeyIcon}
+        options={{ label: 'API Keys', menuParent: 'menu-access' }}
+        {...apiKey}
+      />
+      <Resource
+        name='user-has-public key'
+        icon={KeyIcon}
+        options={{ label: 'SSH Keys', menuParent: 'menu-access' }}
+        {...userKey}
+      />
 
-      <Resource name='menu-fleet' options={{ label: 'Fleets', isMenuParent: true }} />
-      <Resource name='application' options={{ label: 'Fleets', menuParent: 'menu-fleet' }} {...fleet} />
+      <Resource
+        name='menu-fleet'
+        icon={AccountTreeIcon}
+        options={{ label: 'Fleets', isMenuParent: true, menuRoute: 'application', hideChildren: true }}
+      />
+      <Resource
+        name='application'
+        icon={AppsIcon}
+        options={{ label: 'Fleets', menuParent: 'menu-fleet' }}
+        {...fleet}
+      />
       <Resource
         name='application config variable'
+        icon={TuneIcon}
         options={{ label: 'Config Vars', menuParent: 'menu-fleet' }}
         {...fleetConfigVar}
       />
       <Resource
         name='application environment variable'
+        icon={PublicIcon}
         options={{ label: 'Environment Vars', menuParent: 'menu-fleet' }}
         {...fleetEnvVar}
       />
-      <Resource name='application tag' options={{ label: 'Tags', menuParent: 'menu-fleet' }} {...fleetTag} />
+      <Resource
+        name='application tag'
+        icon={LocalOfferIcon}
+        options={{ label: 'Tags', menuParent: 'menu-fleet' }}
+        {...fleetTag}
+      />
 
-      <Resource name='menu-device' options={{ label: 'Devices', isMenuParent: true }} />
+      <Resource
+        name='menu-device'
+        icon={DevicesIcon}
+        options={{ label: 'Devices', isMenuParent: true, menuRoute: 'device', hideChildren: true }}
+      />
       <Resource
         name='device'
+        icon={DevicesIcon}
         options={{ label: 'Devices', menuParent: 'menu-device' }}
         {...device}
         show={DeviceDashboard}
       />
       <Resource
         name='device config variable'
+        icon={TuneIcon}
         options={{ label: 'Config Vars', menuParent: 'menu-device' }}
         {...deviceConfigVar}
       />
       <Resource
         name='device environment variable'
+        icon={PublicIcon}
         options={{ label: 'Environment Vars', menuParent: 'menu-device' }}
         {...deviceEnvVar}
       />
       <Resource
         name='device service environment variable'
+        icon={MiscellaneousServicesIcon}
         options={{ label: 'Service Vars', menuParent: 'menu-device' }}
         {...deviceServiceVar}
       />
-      <Resource name='device tag' options={{ label: 'Tags', menuParent: 'menu-device' }} {...deviceTag} />
+      <Resource
+        name='device tag'
+        icon={LocalOfferIcon}
+        options={{ label: 'Tags', menuParent: 'menu-device' }}
+        {...deviceTag}
+      />
 
-      <Resource name='menu-image' options={{ label: 'Images', isMenuParent: true }} />
-      <Resource name='image' options={{ label: 'Images', menuParent: 'menu-image' }} {...image} />
+      <Resource name='menu-image' icon={ImageIcon} options={{ label: 'Images', isMenuParent: true }} />
+      <Resource name='image' icon={ImageIcon} options={{ label: 'Images', menuParent: 'menu-image' }} {...image} />
       <Resource
         name='image environment variable'
+        icon={PublicIcon}
         options={{ label: 'Environment Vars', menuParent: 'menu-image' }}
         {...imageEnvVar}
       />
-      <Resource name='image label' options={{ label: 'Labels', menuParent: 'menu-image' }} {...imageLabel} />
+      <Resource
+        name='image label'
+        icon={LabelOutlinedIcon}
+        options={{ label: 'Labels', menuParent: 'menu-image' }}
+        {...imageLabel}
+      />
 
-      <Resource name='menu-release' options={{ label: 'Releases', isMenuParent: true }} />
-      <Resource name='release' options={{ label: 'Releases', menuParent: 'menu-release' }} {...release} />
-      <Resource name='release tag' options={{ label: 'Tags', menuParent: 'menu-release' }} {...releaseTag} />
+      <Resource name='menu-release' icon={Inventory2Icon} options={{ label: 'Releases', isMenuParent: true }} />
+      <Resource
+        name='release'
+        icon={Inventory2Icon}
+        options={{ label: 'Releases', menuParent: 'menu-release' }}
+        {...release}
+      />
+      <Resource
+        name='release tag'
+        icon={LocalOfferIcon}
+        options={{ label: 'Tags', menuParent: 'menu-release' }}
+        {...releaseTag}
+      />
 
-      <Resource name='menu-service' options={{ label: 'Services', isMenuParent: true }} />
-      <Resource name='service' options={{ label: 'Services', menuParent: 'menu-service' }} {...service} />
+      <Resource
+        name='menu-service'
+        icon={MiscellaneousServicesIcon}
+        options={{ label: 'Services', isMenuParent: true }}
+      />
+      <Resource
+        name='service'
+        icon={MiscellaneousServicesIcon}
+        options={{ label: 'Services', menuParent: 'menu-service' }}
+        {...service}
+      />
       <Resource
         name='service environment variable'
+        icon={PublicIcon}
         options={{ label: 'Environment Vars', menuParent: 'menu-service' }}
         {...serviceEnvVar}
       />
-      <Resource name='service label' options={{ label: 'Labels', menuParent: 'menu-service' }} {...serviceLabel} />
+      <Resource
+        name='service label'
+        icon={LabelOutlinedIcon}
+        options={{ label: 'Labels', menuParent: 'menu-service' }}
+        {...serviceLabel}
+      />
 
-      <Resource name='menu-static' options={{ label: 'Static Data', isMenuParent: true }} />
-      <Resource name='config' options={{ label: 'Configs', menuParent: 'menu-static' }} {...config} />
+      <Resource name='menu-static' icon={StorageIcon} options={{ label: 'Static Data', isMenuParent: true }} />
+      <Resource
+        name='config'
+        icon={SettingsIcon}
+        options={{ label: 'Configs', menuParent: 'menu-static' }}
+        {...config}
+      />
       <Resource
         name='cpu architecture'
+        icon={MemoryIcon}
         options={{ label: 'CPU Architectures', menuParent: 'menu-static' }}
         {...cpuArchitecture}
       />
       <Resource
         name='device family'
+        icon={CategoryIcon}
         options={{ label: 'Device Families', menuParent: 'menu-static' }}
         {...deviceFamily}
       />
       <Resource
         name='device manufacturer'
+        icon={FactoryIcon}
         options={{ label: 'Device Mfgs', menuParent: 'menu-static' }}
         {...deviceManufacturer}
       />
-      <Resource name='device type' options={{ label: 'Device Types', menuParent: 'menu-static' }} {...deviceType} />
+      <Resource
+        name='device type'
+        icon={DeveloperBoardIcon}
+        options={{ label: 'Device Types', menuParent: 'menu-static' }}
+        {...deviceType}
+      />
       {deviceTypeAliasVer ? (
         <Resource
           name='device type alias'
+          icon={AltRouteIcon}
           options={{ label: 'DT Aliases', menuParent: 'menu-static' }}
           {...deviceTypeAlias}
         />
       ) : (
         <></>
       )}
-      <Resource name='application type' options={{ label: 'Fleet Types', menuParent: 'menu-static' }} {...fleetType} />
-      <Resource name='permission' options={{ label: 'Permissions', menuParent: 'menu-static' }} {...permission} />
-      <Resource name='role' options={{ label: 'Roles', menuParent: 'menu-static' }} {...role} />
+      <Resource
+        name='application type'
+        icon={CategoryIcon}
+        options={{ label: 'Fleet Types', menuParent: 'menu-static' }}
+        {...fleetType}
+      />
+      <Resource
+        name='permission'
+        icon={LockIcon}
+        options={{ label: 'Permissions', menuParent: 'menu-static' }}
+        {...permission}
+      />
+      <Resource
+        name='role'
+        icon={AdminPanelSettingsIcon}
+        options={{ label: 'Roles', menuParent: 'menu-static' }}
+        {...role}
+      />
 
       {/* Reference tables */}
       <Resource name='actor' />

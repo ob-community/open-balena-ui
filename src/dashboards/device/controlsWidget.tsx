@@ -12,11 +12,12 @@ import {
   useNotify,
   useRecordContext,
 } from 'react-admin';
-import { OnlineField } from '../../components/device';
+import { LastOnlineField, OnlineField } from '../../components/device';
 import utf8decode from '../../lib/utf8decode';
 import environment from '../../lib/reactAppEnv';
 import { ConfirmationDialog, type ConfirmationDialogProps } from '../../ui/ConfirmationDialog';
 import type { RaRecord } from 'react-admin';
+import { deviceOnlineStatusField, isDeviceOnline } from '../../lib/deviceStatus';
 
 const styles = {
   actionCard: {
@@ -37,8 +38,10 @@ type DeviceRecord = RaRecord & {
   'uuid': string;
   'device name': string;
   'api heartbeat state'?: string;
-  'is online'?: boolean;
   'is connected to vpn'?: boolean;
+  'last connectivity event'?: string;
+  'changed api heartbeat state on-date'?: string;
+  'note'?: string;
 };
 
 const ControlsWidget: React.FC = () => {
@@ -112,60 +115,75 @@ const ControlsWidget: React.FC = () => {
 
         <p style={{ margin: 0 }}>
           <b>Status: </b>
-          <OnlineField />
+          <OnlineField source={deviceOnlineStatusField} />
         </p>
+
+        {!isDeviceOnline(record) && (
+          <p style={{ margin: '4px 0 0' }}>
+            <b>Last online: </b>
+            <LastOnlineField source='last connectivity event' />
+          </p>
+        )}
+
+        {record.note && (
+          <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
+            <b>Note: </b>
+            {record.note}
+          </p>
+        )}
       </Box>
 
       <CardActions sx={styles.actionCard}>
         <FunctionField
           render={(fieldRecord: DeviceRecord) => {
-            const vpnDisconnected = fieldRecord['is connected to vpn'] !== true;
+            const isOffline = fieldRecord['is connected to vpn'] !== true;
 
             return (
               <>
                 <EditButton label='Edit' size='medium' variant='outlined' color='secondary' />
 
-                <Button
-                  variant='outlined'
-                  size='medium'
-                  onClick={() => invokeSupervisor(fieldRecord, 'blink')}
-                  startIcon={<LightModeIcon />}
-                  disabled={vpnDisconnected}
-                >
-                  Blink
-                </Button>
+                {!isOffline && (
+                  <>
+                    <Button
+                      variant='outlined'
+                      size='medium'
+                      onClick={() => invokeSupervisor(fieldRecord, 'blink')}
+                      startIcon={<LightModeIcon />}
+                    >
+                      Blink
+                    </Button>
 
-                <Button
-                  variant='outlined'
-                  size='medium'
-                  startIcon={<RestartAltIcon />}
-                  disabled={vpnDisconnected}
-                  onClick={() => {
-                    setConfirmationDialog({
-                      title: 'Reboot Device',
-                      content: 'Are you sure you want to reboot this device?',
-                      onConfirm: () => invokeSupervisor(fieldRecord, 'reboot'),
-                    });
-                  }}
-                >
-                  Reboot
-                </Button>
+                    <Button
+                      variant='outlined'
+                      size='medium'
+                      startIcon={<RestartAltIcon />}
+                      onClick={() => {
+                        setConfirmationDialog({
+                          title: 'Reboot Device',
+                          content: 'Are you sure you want to reboot this device?',
+                          onConfirm: () => invokeSupervisor(fieldRecord, 'reboot'),
+                        });
+                      }}
+                    >
+                      Reboot
+                    </Button>
 
-                <Button
-                  variant='outlined'
-                  size='medium'
-                  startIcon={<PowerSettingsNewIcon />}
-                  disabled={vpnDisconnected}
-                  onClick={() => {
-                    setConfirmationDialog({
-                      title: 'Shutdown Device',
-                      content: 'Are you sure you want to shut down this device?',
-                      onConfirm: () => invokeSupervisor(fieldRecord, 'shutdown'),
-                    });
-                  }}
-                >
-                  Shutdown
-                </Button>
+                    <Button
+                      variant='outlined'
+                      size='medium'
+                      startIcon={<PowerSettingsNewIcon />}
+                      onClick={() => {
+                        setConfirmationDialog({
+                          title: 'Shutdown Device',
+                          content: 'Are you sure you want to shut down this device?',
+                          onConfirm: () => invokeSupervisor(fieldRecord, 'shutdown'),
+                        });
+                      }}
+                    >
+                      Shutdown
+                    </Button>
+                  </>
+                )}
               </>
             );
           }}

@@ -1,6 +1,7 @@
 import type { DataProvider, Identifier, Options, RaRecord } from 'react-admin';
 import { fetchUtils } from 'react-admin';
 import { requestSignal } from './requestSignal';
+import { usesVpnOnlineStatus } from '../lib/deviceStatus';
 
 export type HttpClient = (url: string, options?: Options) => ReturnType<typeof fetchUtils.fetchJson>;
 
@@ -63,6 +64,14 @@ const toODataValue = (value: unknown): string => {
 
 const group = (clauses: string[], operator: 'and' | 'or'): string =>
   clauses.length === 1 ? clauses[0] : `(${clauses.join(` ${operator} `)})`;
+
+const serializeODataQuery = (query: Record<string, string | number>): string =>
+  Object.entries(query)
+    .map(
+      ([key, value]) =>
+        `${key.startsWith('$') ? key : encodeURIComponent(key)}=${encodeURIComponent(String(value)).replace(/%2C/gi, ',')}`,
+    )
+    .join('&');
 
 const comparison = (field: string, operator: string, value: unknown): string => {
   const apiField = toApiField(field);
@@ -317,6 +326,7 @@ export const createODataDataProvider = (
   apiUrl: string,
   httpClient: HttpClient = fetchUtils.fetchJson,
   odataVersion = 'v6',
+  connectivityUsesVpn = usesVpnOnlineStatus,
 ): DataProvider => {
   if (!apiUrl) {
     throw new Error('createODataDataProvider requires an open-balena-api URL.');
@@ -330,9 +340,8 @@ export const createODataDataProvider = (
     return joinUrl(baseUrl, path);
   };
   const collectionUrl = (resource: string, query: Record<string, string | number> = {}): string => {
-    const url = new URL(resourcePath(resource));
-    Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, String(value)));
-    return url.toString();
+    const serializedQuery = serializeODataQuery(query);
+    return `${resourcePath(resource)}${serializedQuery ? `?${serializedQuery}` : ''}`;
   };
   const entityUrl = (resource: string, id: Identifier): string => `${resourcePath(resource)}(${entityId(id)})`;
   const writeOptions = (method: string, data?: unknown): Options => ({
@@ -367,10 +376,70 @@ export const createODataDataProvider = (
         .join(',');
     }
     const options: Options = { signal: requestSignal(params) };
+    const fetchCount = async (countFilter: string): Promise<number> => {
+      const queryString = countFilter ? `?${serializeODataQuery({ $filter: countFilter })}` : '';
+      const response = await httpClient(`${resourcePath(resource)}/$count${queryString}`, options);
+      return extractCount(response.json);
+    };
+    if (resource === 'device' && field === 'connectivity') {
+      const direction = String(order).toLowerCase();
+      const descending = String(order).toUpperCase() === 'DESC';
+      const statusField = connectivityUsesVpn ? 'is connected to vpn' : 'api heartbeat state';
+      const onlineFilter = comparison(statusField, 'eq', connectivityUsesVpn ? true : 'online');
+      const offlineFilter = comparison(statusField, 'ne', connectivityUsesVpn ? true : 'online');
+      const firstStatusFilter = descending ? onlineFilter : offlineFilter;
+      const secondStatusFilter = descending ? offlineFilter : onlineFilter;
+      const addStatusFilter = (statusFilter: string): string =>
+        group(
+          [filter, statusFilter].filter((value) => value.length > 0),
+          'and',
+        );
+      const orderBy = (
+        connectivityUsesVpn
+          ? [`last_vpn_event ${direction}`, `last_connectivity_event ${direction}`, 'device_name asc', 'id asc']
+          : [
+              `changed_api_heartbeat_state_on__date ${direction}`,
+              `last_connectivity_event ${direction}`,
+              'device_name asc',
+              'id asc',
+            ]
+      ).join(',');
+      const [total, firstGroupTotal] = await Promise.all([
+        fetchCount(filter),
+        fetchCount(addStatusFilter(firstStatusFilter)),
+      ]);
+      const offset = (page - 1) * perPage;
+      const requests: Array<Promise<RaRecord[]>> = [];
+      const requestGroup = async (statusFilter: string, skip: number, top: number): Promise<RaRecord[]> => {
+        const { json } = await httpClient(
+          collectionUrl(resource, {
+            ...query,
+            $top: top,
+            $skip: skip,
+            $orderby: orderBy,
+            $filter: addStatusFilter(statusFilter),
+          }),
+          options,
+        );
+        return extractCollection(json).items.map(transformFromApi) as RaRecord[];
+      };
+
+      if (offset < firstGroupTotal) {
+        const firstGroupLimit = Math.min(perPage, firstGroupTotal - offset);
+        requests.push(requestGroup(firstStatusFilter, offset, firstGroupLimit));
+        if (firstGroupLimit < perPage) {
+          requests.push(requestGroup(secondStatusFilter, 0, perPage - firstGroupLimit));
+        }
+      } else {
+        requests.push(requestGroup(secondStatusFilter, offset - firstGroupTotal, perPage));
+      }
+
+      return { data: (await Promise.all(requests)).flat(), total };
+    }
     const [{ json }, countResponse] = await Promise.all([
       httpClient(collectionUrl(resource, query), options),
       httpClient(
-        `${resourcePath(resource)}/$count${filter ? `?${new URLSearchParams({ $filter: filter })}` : ''}`,
+        `${resourcePath(resource)}/$count${filter ? `?${serializeODataQuery({ $filter: filter })}` : ''}`,
         options,
       ),
     ]);

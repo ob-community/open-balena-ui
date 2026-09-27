@@ -12,21 +12,6 @@ const clientEnvironmentVariables = [
   'REACT_APP_OPEN_BALENA_UI_URL',
 ];
 
-const queryStringNamedExportsCompat = () => ({
-  name: 'query-string-named-exports-compat',
-  enforce: 'pre' as const,
-  transform(code: string, id: string) {
-    if (!id.includes('/node_modules/ra-') || !code.includes("from 'query-string'")) {
-      return null;
-    }
-    return code.replace(
-      /import \{ ([^}]+) \} from 'query-string';/g,
-      (_match, imports: string) =>
-        `import queryString from 'query-string';\nconst { ${imports.trim()} } = queryString;`,
-    );
-  },
-});
-
 export default defineConfig(({ mode }) => {
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const rawEnv = loadEnv(mode, process.cwd(), '');
@@ -37,7 +22,7 @@ export default defineConfig(({ mode }) => {
   const previewPort = Number(rawEnv.PORT ?? process.env.PORT ?? 4173);
 
   return {
-    plugins: [queryStringNamedExportsCompat(), react()],
+    plugins: [react()],
     envPrefix: [],
     resolve: {
       alias: {
@@ -51,6 +36,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port,
       open: true,
+      proxy: {
+        '/admin-db': 'http://127.0.0.1:3001',
+      },
     },
     preview: {
       port: previewPort,

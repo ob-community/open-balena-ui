@@ -71,9 +71,9 @@ export const UserList: React.FC = () => {
   );
 };
 
-const CustomCreateToolbar: React.FC<ToolbarProps & { saveDisabled?: boolean }> = (props) => (
+const CustomCreateToolbar: React.FC<ToolbarProps & { saveDisabled?: boolean }> = ({ saveDisabled, ...props }) => (
   <Toolbar {...props} style={{ justifyContent: 'space-between' }}>
-    <SaveButton sx={{ flex: 1 }} disabled={props.saveDisabled} />
+    <SaveButton sx={{ flex: 1 }} disabled={saveDisabled} />
   </Toolbar>
 );
 

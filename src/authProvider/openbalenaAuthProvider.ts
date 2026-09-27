@@ -14,6 +14,7 @@ interface LoginParams {
 interface OpenBalenaJwtPayload extends JwtPayload {
   permissions?: string[];
   id?: number;
+  username?: string;
   [key: string]: unknown;
 }
 
@@ -74,6 +75,21 @@ const authProvider: OpenBalenaAuthProvider = {
   getPermissions: () => {
     const jwt = readToken();
     return jwt ? Promise.resolve(decodeToken(jwt).permissions) : Promise.reject();
+  },
+  getIdentity: () => {
+    const jwt = readToken();
+    if (!jwt) {
+      return Promise.reject();
+    }
+    const payload = decodeToken(jwt);
+    const id = Number(payload.id ?? payload.sub);
+    if (!Number.isInteger(id) || id <= 0) {
+      return Promise.reject(new Error('Authenticated token does not identify a user.'));
+    }
+    return Promise.resolve({
+      id,
+      fullName: typeof payload.username === 'string' ? payload.username : `User ${id}`,
+    });
   },
   checkError: (error: { status?: number; body?: { code?: string } }) => {
     const status = error.status;

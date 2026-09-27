@@ -92,6 +92,8 @@ test('provider generates paginated OData requests and preserves exact counts', a
   });
 
   const url = new URL(requests[0].url);
+  assert.match(requests[0].url, /\?\$top=10&\$skip=10&\$orderby=/);
+  assert.doesNotMatch(requests[0].url, /%24(?:top|skip|orderby|filter)/);
   assert.equal(url.pathname, '/v6/device');
   assert.equal(url.searchParams.has('$count'), false);
   assert.equal(url.searchParams.get('$top'), '10');
@@ -99,6 +101,56 @@ test('provider generates paginated OData requests and preserves exact counts', a
   assert.equal(url.searchParams.get('$orderby'), 'device_name desc');
   assert.equal(url.searchParams.get('$filter'), 'belongs_to__application eq 3');
   assert.deepEqual(result, { data: [{ 'id': 4, 'device name': 'test' }], total: 31 });
+});
+
+test('provider groups synthetic connectivity sorting into retry-safe OData requests', async () => {
+  const requests: string[] = [];
+  const provider = createODataDataProvider(
+    'https://api.example.test',
+    async (url) => {
+      requests.push(url);
+      const parsed = new URL(url);
+      const filter = parsed.searchParams.get('$filter') ?? '';
+      if (parsed.pathname.endsWith('/$count')) {
+        return response(filter.includes("api_heartbeat_state eq 'online'") ? 1 : 3);
+      }
+      return response({
+        d: [
+          {
+            id: filter.includes("api_heartbeat_state eq 'online'") ? 1 : 2,
+            api_heartbeat_state: filter.includes("api_heartbeat_state eq 'online'") ? 'online' : 'offline',
+          },
+        ],
+      });
+    },
+    'v7',
+    false,
+  );
+
+  const result = await provider.getList('device', {
+    pagination: { page: 1, perPage: 2 },
+    sort: { field: 'connectivity', order: 'DESC' },
+    filter: { 'belongs to-application': 7 },
+  });
+
+  assert.deepEqual(result, {
+    data: [
+      { 'id': 1, 'api heartbeat state': 'online' },
+      { 'id': 2, 'api heartbeat state': 'offline' },
+    ],
+    total: 3,
+  });
+  assert.equal(requests.length, 4);
+  assert.ok(requests.every((url) => !url.includes('%24')));
+  const listRequests = requests.filter((url) => !url.includes('/$count'));
+  assert.ok(listRequests.every((url) => !url.includes('%2C')));
+  assert.ok(
+    listRequests.every(
+      (url) =>
+        new URL(url).searchParams.get('$orderby') ===
+        'changed_api_heartbeat_state_on__date desc,last_connectivity_event desc,device_name asc,id asc',
+    ),
+  );
 });
 
 test('provider obtains an exact count from the legacy count endpoint', async () => {

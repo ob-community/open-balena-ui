@@ -425,9 +425,6 @@ export const authorizeResource = (
   if (!DIRECT_DATABASE_RESOURCES.has(resource)) {
     throw new Error('This resource is not available through direct database access.');
   }
-  if (resource === 'user-has-public key' && ['PATCH', 'DELETE'].includes(method)) {
-    return context.ownPublicKeyIds;
-  }
   if (!context.enforcementEnabled || context.globalAdmin) {
     return undefined;
   }
@@ -439,6 +436,9 @@ export const authorizeResource = (
   }
   if (!context.organizationAdmin) {
     throw new Error('Administrator access is required.');
+  }
+  if (resource === 'user-has-public key' && ['PATCH', 'DELETE'].includes(method)) {
+    return context.ownPublicKeyIds;
   }
   if (method === 'POST' && ['actor', 'organization', 'user'].includes(resource)) {
     throw new Error('Organization administrators cannot create this resource through direct database access.');
@@ -500,7 +500,7 @@ export const authorizeMutationBody = (
     }
     requireAllowedReference(record, 'is of-actor', credentialActorIds);
   }
-  if (resource === 'user-has-public key') {
+  if (resource === 'user-has-public key' && context.enforcementEnabled && !context.globalAdmin) {
     if (method === 'POST' && numberField(record, 'user') == null) {
       throw new Error('New public keys require the authenticated user.');
     }
@@ -557,6 +557,24 @@ const queryIds = (query: Record<string, unknown>): Set<number> | undefined => {
     }
   }
   return result.size ? result : undefined;
+};
+
+export const authorizeScopedMutation = (
+  allowedIds: Set<number> | undefined,
+  resource: string,
+  method: string,
+  query: Record<string, unknown>,
+): void => {
+  if (!allowedIds || !['PATCH', 'DELETE'].includes(method)) {
+    return;
+  }
+  const targetIds = queryIds(query);
+  if (!targetIds) {
+    throw new Error(`${resource} updates and deletions require an explicit ID.`);
+  }
+  if ([...targetIds].some((id) => !allowedIds.has(id))) {
+    throw new Error(`The ${resource} is outside the administrator scope.`);
+  }
 };
 
 export const authorizeProtectedRoleMutation = (
@@ -651,7 +669,12 @@ const redactRecord = (
     ) {
       continue;
     }
-    if (key === 'public key' && numberField(record, 'user') !== context.userId) {
+    if (
+      key === 'public key' &&
+      context.enforcementEnabled &&
+      !context.globalAdmin &&
+      numberField(record, 'user') !== context.userId
+    ) {
       continue;
     }
     output[key] = redactSecrets(resource, value, context);

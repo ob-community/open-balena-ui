@@ -15,6 +15,13 @@ const installLocalStorage = () => {
   return values;
 };
 
+const unsignedToken = (payload: Record<string, unknown>): string =>
+  [
+    Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
+    Buffer.from(JSON.stringify(payload)).toString('base64url'),
+    '',
+  ].join('.');
+
 test('authentication failures clear the stored token and reject', async () => {
   const values = installLocalStorage();
   values.set('auth', 'expired-token');
@@ -29,4 +36,14 @@ test('administrator authorization denials preserve the stored token', async () =
 
   await authProvider.checkError({ status: 403, body: { code: 'ADMIN_DB_FORBIDDEN' } });
   assert.equal(values.get('auth'), 'valid-token');
+});
+
+test('identity is derived from the authenticated JWT', async () => {
+  const values = installLocalStorage();
+  values.set('auth', unsignedToken({ id: 42, username: 'test-user' }));
+
+  assert.deepEqual(await authProvider.getIdentity!(), {
+    id: 42,
+    fullName: 'test-user',
+  });
 });

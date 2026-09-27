@@ -54,6 +54,27 @@ test('hybrid provider routes identity resources through PostgREST', async () => 
   assert.match(requests[0], /^\/admin-db\/user\?/);
 });
 
+test('hybrid provider retrieves the authenticated administrator access context', async () => {
+  const requests: string[] = [];
+  const provider = openBalenaDataProvider('https://api.example.test', async (url) => {
+    requests.push(url);
+    return response({
+      enforcementEnabled: false,
+      globalAdmin: true,
+      organizationAdmin: true,
+      userId: 2,
+    });
+  });
+
+  assert.deepEqual(await provider.getAdminAccessContext(), {
+    enforcementEnabled: false,
+    globalAdmin: true,
+    organizationAdmin: true,
+    userId: 2,
+  });
+  assert.deepEqual(requests, ['/admin-db/actions/access-context']);
+});
+
 test('hybrid provider fails closed for unknown resources', async () => {
   const provider = openBalenaDataProvider('https://api.example.test', async () => response([]));
 

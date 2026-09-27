@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useGetList, useInput } from 'react-admin';
+import { sanitizeInputRestProps, useGetList, useInput } from 'react-admin';
 import type { AutocompleteInputProps } from 'react-admin';
 import { Autocomplete, AutocompleteRenderInputParams, TextField, useTheme } from '@mui/material';
 
@@ -70,7 +70,7 @@ const VarNameInput: React.FC<VarNameInputProps> = ({
 
   return (
     <Autocomplete
-      {...rest}
+      {...sanitizeInputRestProps(rest)}
       fullWidth
       freeSolo
       options={choices}

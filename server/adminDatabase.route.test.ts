@@ -172,3 +172,48 @@ test('orphaned actor cleanup succeeds when retried after a transient actor delet
     assert.equal(actorDeletionAttempts, 2);
   });
 });
+
+test('non-JSON PostgREST responses report an explicit upstream configuration error', async () => {
+  const upstreamFetch: typeof fetch = async () =>
+    new Response('<!DOCTYPE html><title>Not PostgREST</title>', {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' },
+    });
+
+  await withAdminDatabaseRoute(upstreamFetch, async (url, authorization, requestFetch) => {
+    const response = await requestFetch(`${url}/admin-db/user?limit=10`, {
+      headers: { Authorization: authorization },
+    });
+
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), {
+      code: 'ADMIN_DB_UPSTREAM_ERROR',
+      message: 'PostgREST returned a non-JSON response. Verify OPEN_BALENA_POSTGREST_URL points directly to PostgREST.',
+    });
+  });
+});
+
+test('access-context action reports intentional legacy global access', async () => {
+  const upstreamFetch: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const response = (init?.method ?? 'GET') === 'GET' ? legacyContextResponse(url) : undefined;
+    if (response) {
+      return response;
+    }
+    throw new Error(`Unexpected upstream request: ${init?.method ?? 'GET'} ${url}`);
+  };
+
+  await withAdminDatabaseRoute(upstreamFetch, async (url, authorization, requestFetch) => {
+    const response = await requestFetch(`${url}/admin-db/actions/access-context`, {
+      headers: { Authorization: authorization },
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      enforcementEnabled: false,
+      globalAdmin: true,
+      organizationAdmin: true,
+      userId: 1,
+    });
+  });
+});

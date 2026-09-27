@@ -8,6 +8,7 @@ import {
   authorizePreActivationAssignment,
   authorizeProtectedRoleMutation,
   authorizeResource,
+  authorizeScopedMutation,
   authorizeSelfLockoutMutation,
   buildAccessContext,
   organizationAssignableRoleNames,
@@ -210,18 +211,35 @@ test('organization mutations reject cross-organization references', async () => 
   );
 });
 
-test('public-key mutations remain self-service for global and legacy administrators', async () => {
-  const contexts = [
-    { context: await buildAccessContext({ id: 1 }, reader()), ownKeyIds: [] },
-    { context: await buildAccessContext({ id: 2 }, reader({ role: [] })), ownKeyIds: [701] },
-  ];
-  for (const { context, ownKeyIds } of contexts) {
-    assert.deepEqual([...authorizeResource(context, 'user-has-public key', 'PATCH')!], ownKeyIds);
-    assert.throws(
-      () => authorizeMutationBody(context, 'user-has-public key', 'POST', { 'user': 4, 'public key': 'other' }),
-      /outside the administrator's organization scope/,
+test('global and legacy administrators may manage every public key', async () => {
+  for (const context of [
+    await buildAccessContext({ id: 1 }, reader()),
+    await buildAccessContext({ id: 2 }, reader({ role: [] })),
+  ]) {
+    assert.equal(authorizeResource(context, 'user-has-public key', 'PATCH'), undefined);
+    assert.doesNotThrow(() =>
+      authorizeMutationBody(context, 'user-has-public key', 'POST', { 'user': 4, 'public key': 'other' }),
     );
+    assert.deepEqual(redactSecrets('user-has-public key', records['user-has-public key'], context), [
+      { 'id': 701, 'user': 2, 'public key': 'self' },
+      { 'id': 702, 'user': 4, 'public key': 'other' },
+    ]);
   }
+});
+
+test('scoped mutations require explicit allowed record IDs', async () => {
+  const context = await buildAccessContext({ id: 2 }, reader());
+  const allowedIds = authorizeResource(context, 'user-has-public key', 'PATCH');
+
+  assert.doesNotThrow(() => authorizeScopedMutation(allowedIds, 'user-has-public key', 'PATCH', { id: 'eq.701' }));
+  assert.throws(
+    () => authorizeScopedMutation(allowedIds, 'user-has-public key', 'PATCH', { id: 'eq.702' }),
+    /outside the administrator scope/,
+  );
+  assert.throws(
+    () => authorizeScopedMutation(allowedIds, 'user-has-public key', 'DELETE', {}),
+    /require an explicit ID/,
+  );
 });
 
 test('organization administrators may manage only explicitly configured safe roles', async () => {

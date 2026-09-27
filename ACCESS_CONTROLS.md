@@ -80,9 +80,12 @@ create users, actors, or organizations through the current direct-database workf
 records because a user may have relationships in other organizations. Those workflows start with unscoped records and
 require a future transactional server endpoint to bind new records to an organization safely.
 
-SSH public-key metadata remains visible for in-scope organization members, but public-key creation, replacement, and
-deletion are self-service only at every access level, including global-administrator and legacy modes. This prevents an
-administrator for one organization from taking over or disrupting a member's account in their other organizations.
+SSH public-key metadata remains visible for in-scope organization members, but organization administrators may create,
+replace, or delete only their own keys. This prevents an administrator for one organization from taking over or
+disrupting a member's account in their other organizations. Global administrators may view and manage every SSH public
+key, including creating a key for another user. Intentional legacy mode grants that same global access to every
+authenticated user. Rows whose key material is redacted for organization administrators are labeled read-only in the UI
+and their edit/delete controls are omitted.
 
 Only global administrators may change direct user permissions or API-key roles/permissions. Organization administrators
 may create, update, or delete user-role assignments only when both the user is in their organization scope and the
@@ -105,13 +108,13 @@ deployment would otherwise accept their JWT.
 
 Redaction is applied in both legacy and enforced modes:
 
-| Data                             | Behavior                                                                                 |
-| -------------------------------- | ---------------------------------------------------------------------------------------- |
-| User `password`                  | Never returned                                                                           |
-| User `jwt_secret` / `jwt secret` | Never returned                                                                           |
-| Human user API key `key`         | Returned only when the key belongs to the authenticated user's actor                     |
-| Fleet/device API key `key`       | Returned to global admins and organization admins authorized to manage that fleet/device |
-| SSH `public key`                 | Returned only for the authenticated user's own key; other records expose metadata only   |
+| Data                             | Behavior                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| User `password`                  | Never returned                                                                                              |
+| User `jwt_secret` / `jwt secret` | Never returned                                                                                              |
+| Human user API key `key`         | Returned only when the key belongs to the authenticated user's actor                                        |
+| Fleet/device API key `key`       | Returned to global admins and organization admins authorized to manage that fleet/device                    |
+| SSH `public key`                 | Returned globally in legacy/global-admin mode; enforced organization admins see only their own key material |
 
 Credential fields are also rejected in query parameters to prevent filter-based inference. Generic user POST, PATCH, and
 PUT requests cannot set password/JWT-secret fields, and generic API-key creation or key-material mutation is rejected.

@@ -11,6 +11,7 @@ import {
   authorizePreActivationAssignment,
   authorizeProtectedRoleMutation,
   authorizeResource,
+  authorizeScopedMutation,
   authorizeSelfLockoutMutation,
   buildAccessContext,
   queryReferencesCredential,
@@ -145,11 +146,19 @@ const databaseReader = (authorization: string) => ({
       headers: requestHeaders(authorization),
     });
     if (!response.ok) {
-      throw new Error(`Unable to resolve administrator access (${response.status}).`);
+      throw new UpstreamRequestError(`Unable to resolve administrator access (${response.status}).`);
     }
-    const jsonBody: unknown = await response.json();
+    const text = await response.text();
+    let jsonBody: unknown;
+    try {
+      jsonBody = JSON.parse(text);
+    } catch {
+      throw new UpstreamRequestError(
+        'PostgREST returned a non-JSON response. Verify OPEN_BALENA_POSTGREST_URL points directly to PostgREST.',
+      );
+    }
     if (!Array.isArray(jsonBody)) {
-      throw new Error('Administrator access lookup returned an invalid response.');
+      throw new UpstreamRequestError('Administrator access lookup returned an invalid response.');
     }
     return jsonBody as Array<Record<string, unknown>>;
   },
@@ -199,6 +208,21 @@ const requirePositiveIds = (value: unknown, field: string): number[] => {
   }
   return ids;
 };
+
+router.get('/admin-db/actions/access-context', ...dosProtect, authorize, async (req, res) => {
+  try {
+    const authorization = req.headers.authorization!;
+    const context = await buildAccessContext((res.locals as AuthorizedLocals).auth, databaseReader(authorization));
+    res.json({
+      enforcementEnabled: context.enforcementEnabled,
+      globalAdmin: context.globalAdmin,
+      organizationAdmin: context.organizationAdmin,
+      userId: context.userId,
+    });
+  } catch (error) {
+    sendDenied(res, error);
+  }
+});
 
 router.post('/admin-db/actions/change-password', ...dosProtect, authorize, async (req, res) => {
   try {
@@ -739,6 +763,7 @@ router.all('/admin-db/:resource', ...dosProtect, authorize, async (req, res) => 
     const resource = decodeURIComponent(req.params.resource);
     const context = await buildAccessContext((res.locals as AuthorizedLocals).auth, databaseReader(authorization));
     const allowedIds = authorizeResource(context, resource, req.method);
+    authorizeScopedMutation(allowedIds, resource, req.method, req.query);
     authorizeMutationBody(context, resource, req.method, req.body);
     authorizePreActivationAssignment(context, resource, req.method, req.body);
     authorizeProtectedRoleMutation(context, resource, req.method, req.body, req.query);
@@ -802,7 +827,15 @@ router.all('/admin-db/:resource', ...dosProtect, authorize, async (req, res) => 
       return;
     }
 
-    const body = redactSecrets(resource, JSON.parse(text), context);
+    let jsonBody: unknown;
+    try {
+      jsonBody = JSON.parse(text);
+    } catch {
+      throw new UpstreamRequestError(
+        'PostgREST returned a non-JSON response. Verify OPEN_BALENA_POSTGREST_URL points directly to PostgREST.',
+      );
+    }
+    const body = redactSecrets(resource, jsonBody, context);
     res.json(body);
   } catch (error) {
     sendDenied(res, error);

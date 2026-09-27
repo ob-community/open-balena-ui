@@ -4,6 +4,12 @@ import postgrestDataProvider from './postgrestDataProvider';
 import createODataDataProvider, { ODATA_RESOURCES, type HttpClient } from './odataDataProvider';
 
 export type OpenBalenaDataProvider = DataProvider & {
+  getAdminAccessContext(params?: { signal?: AbortSignal }): Promise<{
+    enforcementEnabled: boolean;
+    globalAdmin: boolean;
+    organizationAdmin: boolean;
+    userId: number;
+  }>;
   authorizeResourceActorDeletions(params: {
     records: Array<{
       resource: 'application' | 'device' | 'user';
@@ -102,6 +108,15 @@ export const openBalenaDataProvider = (
 
   return {
     supportAbortSignal: true,
+    getAdminAccessContext: async ({ signal } = {}) => {
+      const { json } = await httpClient('/admin-db/actions/access-context', { signal });
+      return json as {
+        enforcementEnabled: boolean;
+        globalAdmin: boolean;
+        organizationAdmin: boolean;
+        userId: number;
+      };
+    },
     getList: async (resource, params) => route(resource).getList(resource, params),
     getOne: async (resource, params) => route(resource).getOne(resource, params),
     getMany: async (resource, params) => route(resource).getMany(resource, params),

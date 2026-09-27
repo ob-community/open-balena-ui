@@ -19,7 +19,8 @@ There are a number of environment variables used to configure the ui:
 - `PORT` - The port that the ui will listen on
 
 - `OPEN_BALENA_POSTGREST_URL` The internal URL (accessible to the UI server, not browsers) of the
-  `open-balena-postgrest` instance, i.e. `http://postgrest.openbalena.local:8000`
+  `open-balena-postgrest` instance, i.e. `http://postgrest.openbalena.local:8000`. It must point directly to a PostgREST
+  endpoint that returns JSON, not to an older open-balena-ui deployment or its HTML fallback.
 
 - `OPEN_BALENA_BOOTSTRAP_USER_ID` The trusted existing user ID allowed to create and receive the first `global-admin`
   role at server startup. This must be the positive numeric `user.id` (for example `2`), not a username or email
@@ -29,6 +30,11 @@ There are a number of environment variables used to configure the ui:
 - `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` Optional comma-separated exact role names that `organization-admin`
   users may view and assign to users inside their organization scope. Administrator roles are always excluded. Leave
   unset to prevent organization administrators from changing user role assignments.
+
+For local development, `npm run dev` starts both Vite on port 3000 and the UI server on port 3001. Vite proxies
+`/admin-db` requests to the local UI server; operational OData requests continue to use `REACT_APP_OPEN_BALENA_API_URL`.
+The configured `OPEN_BALENA_POSTGREST_URL` must still be reachable from the local machine and point directly to a
+PostgREST endpoint.
 
 - `REACT_APP_OPEN_BALENA_REMOTE_URL` The URL (accessible to API) of the `open-balena-remote` instance, i.e.
   `http://remote.openbalena.local:10000`

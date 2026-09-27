@@ -23,6 +23,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import StorageIcon from '@mui/icons-material/Storage';
 import TuneIcon from '@mui/icons-material/Tune';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import * as React from 'react';
 import { Admin, CustomRoutes, Layout, Resource, fetchUtils } from 'react-admin';
 import { Navigate, Route, useParams } from 'react-router-dom';
@@ -58,6 +59,7 @@ import serviceEnvVar from './components/serviceEnvVar';
 import serviceLabel from './components/serviceLabel';
 import user from './components/user';
 import userKey from './components/userKey';
+import balenaOs from './components/balenaOs';
 import DeviceDashboard from './dashboards/device';
 import MainDashboard from './dashboards/main';
 import openBalenaDataProvider from './dataProvider/openBalenaDataProvider';
@@ -258,6 +260,12 @@ const OpenBalenaAdmin: React.FC = () => {
         icon={LabelOutlinedIcon}
         options={{ label: 'Labels', menuParent: 'menu-service' }}
         {...serviceLabel}
+      />
+      <Resource
+        name='balena-os'
+        icon={SystemUpdateAltIcon}
+        options={{ label: 'BalenaOS', menuParent: 'menu-service' }}
+        {...balenaOs}
       />
 
       <Resource name='menu-static' icon={StorageIcon} options={{ label: 'Static Data', isMenuParent: true }} />

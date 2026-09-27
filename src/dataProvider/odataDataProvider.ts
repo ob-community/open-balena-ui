@@ -349,7 +349,6 @@ export const createODataDataProvider = (
     headers: new Headers({
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'Prefer': 'return=representation',
     }),
     ...(data === undefined ? {} : { body: JSON.stringify(transformToApi(data)) }),
   });

@@ -337,9 +337,14 @@ export const FleetEdit: React.FC = () => {
                 reference='release'
                 target='id'
                 filter={{ 'belongs to-application': fleetId }}
-                allowEmpty
               >
-                <SelectInput optionText={(o) => getSemver(o)} optionValue='id' fullWidth={true} />
+                <SelectInput
+                  label='Target Release'
+                  optionText={(o) => getSemver(o)}
+                  optionValue='id'
+                  validate={required()}
+                  fullWidth={true}
+                />
               </ReferenceInput>
             )
           }

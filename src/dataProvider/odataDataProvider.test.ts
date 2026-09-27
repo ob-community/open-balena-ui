@@ -218,6 +218,7 @@ test('provider serializes writes and uses entity URLs for mutations', async () =
 
   assert.equal(requests[0].url, 'https://api.example.test/v6/device(7)');
   assert.equal(requests[0].options?.method, 'PATCH');
+  assert.equal(new Headers(requests[0].options?.headers).has('Prefer'), false);
   assert.deepEqual(JSON.parse(String(requests[0].options?.body)), {
     device_name: 'renamed',
     belongs_to__application: 2,

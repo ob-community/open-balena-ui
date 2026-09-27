@@ -5,6 +5,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import serialize from 'serialize-javascript';
 import registryImageRoutes from './routes/registryImage';
 import adminDatabaseRoutes from './routes/adminDatabase';
+import deviceUpdateRoutes from './routes/deviceUpdates';
+import balenaOsRoutes from './routes/balenaOs';
 import { bootstrapGlobalAdminFromEnvironment } from './bootstrapGlobalAdmin';
 
 dotenv.config();
@@ -26,6 +28,8 @@ const app = express();
 
 app.use('/', registryImageRoutes);
 app.use('/', adminDatabaseRoutes);
+app.use('/', deviceUpdateRoutes);
+app.use('/', balenaOsRoutes);
 app.use(express.static(CLIENT_DIR, { index: false }));
 app.get(/.*/, (_req, res) => {
   const indexPath = path.join(process.cwd(), CLIENT_DIR, 'index.html');

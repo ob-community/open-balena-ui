@@ -32,10 +32,11 @@ test('hybrid provider routes operational resources through open-balena-api', asy
 test('hybrid provider selects v7 for newer servers and v6 for legacy servers', () => {
   assert.equal(resolveODataVersion('v0.139.0'), 'v6');
   assert.equal(resolveODataVersion('v25.2.7'), 'v6');
-  assert.equal(resolveODataVersion('v25.2.8'), 'v7');
-  assert.equal(resolveODataVersion('v26.0.0'), 'v7');
-  assert.equal(resolveODataVersion('v25.2.8', '6'), 'v6');
-  assert.throws(() => resolveODataVersion('v25.2.8', 'v8'), /must be v6 or v7/);
+  assert.equal(resolveODataVersion('v25.2.8'), 'v6');
+  assert.equal(resolveODataVersion('v26.0.2'), 'v6');
+  assert.equal(resolveODataVersion('v26.1.0'), 'v7');
+  assert.equal(resolveODataVersion('v26.1.0', '6'), 'v6');
+  assert.throws(() => resolveODataVersion('v26.1.0', 'v8'), /must be v6 or v7/);
 });
 
 test('hybrid provider routes identity resources through PostgREST', async () => {
@@ -73,6 +74,90 @@ test('hybrid provider retrieves the authenticated administrator access context',
     userId: 2,
   });
   assert.deepEqual(requests, ['/admin-db/actions/access-context']);
+});
+
+test('hybrid provider retrieves filtered device update options through the UI server', async () => {
+  const requests: Array<{ url: string; options?: Options }> = [];
+  const controller = new AbortController();
+  const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
+    requests.push({ url, options });
+    return response({
+      operatingSystems: [{ id: 10, version: '6.0.0' }],
+      supervisors: [{ id: 20, version: '16.1.0' }],
+    });
+  });
+
+  assert.deepEqual(
+    await provider.getDeviceUpdateOptions({
+      deviceTypeId: 1,
+      currentOsVersion: '5.1.0',
+      currentSupervisorVersion: '15.0.4',
+      signal: controller.signal,
+    }),
+    {
+      operatingSystems: [{ id: 10, version: '6.0.0' }],
+      supervisors: [{ id: 20, version: '16.1.0' }],
+    },
+  );
+  assert.equal(
+    requests[0].url,
+    '/device-update-options?deviceTypeId=1&currentOsVersion=5.1.0&currentSupervisorVersion=15.0.4',
+  );
+  assert.equal(requests[0].options?.signal, controller.signal);
+});
+
+test('hybrid provider assigns Supervisor targets through the UI server', async () => {
+  let request: { url: string; options?: Options } | undefined;
+  const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
+    request = { url, options };
+    return response({ releaseId: 123, version: '19.2.1' });
+  });
+
+  assert.deepEqual(await provider.setDeviceSupervisorTarget({ deviceId: 25, version: '19.2.1' }), {
+    releaseId: 123,
+    version: '19.2.1',
+  });
+  assert.equal(request?.url, '/device-supervisor-target');
+  assert.equal(request?.options?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(request?.options?.body)), { deviceId: 25, version: '19.2.1' });
+});
+
+test('hybrid provider exposes BalenaOS catalog synchronization actions', async () => {
+  const requests: Array<{ url: string; options?: Options }> = [];
+  const provider = openBalenaDataProvider('https://api.example.test', async (url, options) => {
+    requests.push({ url, options });
+    return response(
+      url.endsWith('/catalog')
+        ? {
+            deviceTypes: [],
+            organizations: [],
+            totals: { availableVersions: 0, localApplications: 0, localReleases: 0 },
+          }
+        : {
+            state: 'running',
+            phase: 'Discovering catalog',
+            processed: 0,
+            total: 0,
+            created: 0,
+            updated: 0,
+            unchanged: 0,
+          },
+    );
+  });
+
+  await provider.getBalenaOsCatalog();
+  await provider.getBalenaOsSyncStatus();
+  await provider.startBalenaOsSync({ mode: 'newer-and-in-use', version: '6.5.0' });
+
+  assert.deepEqual(
+    requests.map(({ url }) => url),
+    ['/balena-os/catalog', '/balena-os/status', '/balena-os/sync'],
+  );
+  assert.equal(requests[2].options?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(requests[2].options?.body)), {
+    mode: 'newer-and-in-use',
+    version: '6.5.0',
+  });
 });
 
 test('hybrid provider fails closed for unknown resources', async () => {
@@ -164,14 +249,56 @@ test('hybrid provider strips immutable credential fields from metadata updates',
   });
   await provider.update('device', {
     id: 7,
-    data: { 'id': 7, 'actor': 70, 'device name': 'renamed' },
+    data: {
+      'id': 7,
+      'actor': 70,
+      'device name': 'renamed',
+      'api secret': 'hidden',
+      'status': 'Idle',
+      'is pinned on-release': 123,
+      'should be operated by-release': 456,
+      'should be managed by-release': 789,
+      'supervisor version': '19.2.1',
+    },
     previousData: { 'id': 7, 'actor': 70, 'device name': 'old' },
   });
 
   assert.deepEqual(JSON.parse(String(requests[0].options?.body)), { name: 'renamed' });
   assert.deepEqual(JSON.parse(String(requests[1].options?.body)), { username: 'renamed' });
   assert.deepEqual(JSON.parse(String(requests[2].options?.body)), { name: 'bulk-renamed' });
-  assert.deepEqual(JSON.parse(String(requests[3].options?.body)), { device_name: 'renamed' });
+  assert.deepEqual(JSON.parse(String(requests[3].options?.body)), {
+    device_name: 'renamed',
+    is_pinned_on__release: 123,
+    should_be_operated_by__release: 456,
+    should_be_managed_by__release: 789,
+  });
+});
+
+test('hybrid provider writes only the legacy device release pin field on legacy APIs', async () => {
+  let options: Options | undefined;
+  const provider = openBalenaDataProvider(
+    'https://api.example.test',
+    async (_url, requestOptions) => {
+      options = requestOptions;
+      return response(null);
+    },
+    'v0.139.0',
+  );
+
+  await provider.update('device', {
+    id: 7,
+    data: {
+      'device name': 'legacy-device',
+      'is pinned on-release': 100,
+      'should be running-release': 200,
+    },
+    previousData: { id: 7 },
+  });
+
+  assert.deepEqual(JSON.parse(String(options?.body)), {
+    device_name: 'legacy-device',
+    should_be_running__release: 200,
+  });
 });
 
 test('hybrid provider creates users through the dedicated action', async () => {

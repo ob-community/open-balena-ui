@@ -19,8 +19,8 @@ Changing the same row through PostgREST does not send that notification; the dev
 poll. Consequently, fleets, devices, releases, services, images, variables, tags, installs, and static device metadata
 must use OData.
 
-The provider uses OData v6 for servers older than v25.2.8 because it is available on the oldest supported
-open-balena-api release (v0.139.0). It selects OData v7 on v25.2.8 and newer, enabling newer query behavior while the
+The provider uses OData v6 for servers older than v26.1.0 because it is available on the oldest supported
+open-balena-api release (v0.139.0). It selects OData v7 on v26.1.0 and newer, enabling newer query behavior while the
 existing UI compatibility mappings reduce functionality for older installations. `REACT_APP_OPEN_BALENA_ODATA_VERSION`
 can override that selection, but this is separate from `REACT_APP_OPEN_BALENA_API_VERSION`, which is the server software
 version.
@@ -45,6 +45,11 @@ The direct-access allowlist is therefore limited to:
 - organizations and memberships;
 - identity/authorization join tables;
 - configuration and PineJS migration/model metadata already exposed by the legacy admin UI.
+
+The `balena_os` system organization and its initial administrative membership are deployment bootstrap records because
+open-balena-api does not expose organization creation. The Mapped Pulumi `Org` provider creates or adopts those records
+through protected PostgREST. Host OS and Supervisor application, release, service, image, and device-target writes then
+use open-balena-api exclusively.
 
 Human-user API key material remains visible only to its owner. Fleet and device key material is visible to global
 administrators and to organization administrators whose server-computed scope includes that fleet/device, because those

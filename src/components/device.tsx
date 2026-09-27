@@ -6,8 +6,6 @@ import {
   Create,
   CreateButton,
   Datagrid,
-  Edit,
-  EditButton,
   ExportButton,
   FilterButton,
   FormDataConsumer,
@@ -36,7 +34,7 @@ import {
   ListProps,
 } from 'react-admin';
 import { v4 as uuidv4 } from 'uuid';
-import { useCreateDevice, useModifyDevice, useSetServicesForNewDevice } from '../lib/device';
+import { useCreateDevice, useSetServicesForNewDevice } from '../lib/device';
 import CopyChip from '../ui/CopyChip';
 import DeleteDeviceButton, { DeleteDeviceButtonProps } from '../ui/DeleteDeviceButton';
 import DeviceConnectButton from '../ui/DeviceConnectButton';
@@ -373,7 +371,6 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
 
         <Toolbar sx={{ background: 'none', padding: '0' }}>
           <ShowButton variant='outlined' label='' size='small' />
-          <EditButton variant='outlined' label='' size='small' />
           <WithRecord
             render={(device) => (
               <>
@@ -462,9 +459,11 @@ export const DeviceCreate: React.FC = () => {
                   reference='release'
                   target='id'
                   filter={{ 'belongs to-application': formData['belongs to-application'] }}
+                  perPage={1000}
+                  sort={{ field: 'id', order: 'DESC' }}
                   allowEmpty
                 >
-                  <SelectInput optionText={(o) => getSemver(o)} optionValue='id' />
+                  <SelectInput label='Target Release' optionText={(o) => getSemver(o)} optionValue='id' />
                 </ReferenceInput>
               )
             }
@@ -477,84 +476,9 @@ export const DeviceCreate: React.FC = () => {
   );
 };
 
-export const DeviceEdit: React.FC = () => {
-  const modifyDevice = useModifyDevice();
-
-  return (
-    <Edit title='Edit Device' actions={false} transform={modifyDevice}>
-      <SimpleForm>
-        <Row>
-          <TextInput label='UUID' source='uuid' size='large' readOnly={true} />
-
-          <TextInput label='Device Name' source='device name' size='large' />
-        </Row>
-
-        <TextInput label='Note' source='note' size='large' fullWidth={true} />
-
-        <Row>
-          <ReferenceInput
-            label='Device Type'
-            source='is of-device type'
-            reference='device type'
-            target='id'
-            perPage={1000}
-            sort={{ field: 'slug', order: 'ASC' }}
-          >
-            <SelectInput optionText='slug' optionValue='id' validate={required()} />
-          </ReferenceInput>
-
-          <ReferenceInput
-            label='Managed by Device'
-            source='is managed by-device'
-            reference='device'
-            target='id'
-            allowEmpty
-          >
-            <SelectInput optionText='device name' optionValue='id' />
-          </ReferenceInput>
-        </Row>
-
-        <Row>
-          <ReferenceInput
-            label='Fleet'
-            source='belongs to-application'
-            reference='application'
-            target='id'
-            perPage={1000}
-            sort={{ field: 'app name', order: 'ASC' }}
-            filter={applicationClass ? { [applicationClass]: 'fleet' } : {}}
-          >
-            <SelectInput optionText='app name' optionValue='id' validate={required()} />
-          </ReferenceInput>
-
-          <FormDataConsumer>
-            {({ formData, ...rest }) =>
-              formData['belongs to-application'] && (
-                <ReferenceInput
-                  label='Target Release'
-                  source={isPinnedOnRelease}
-                  reference='release'
-                  target='id'
-                  filter={{ 'belongs to-application': formData['belongs to-application'] }}
-                  allowEmpty
-                >
-                  <SelectInput optionText={(o) => getSemver(o)} optionValue='id' />
-                </ReferenceInput>
-              )
-            }
-          </FormDataConsumer>
-
-          <SelectOperatingSystem label='Target OS' source='should be operated by-release' />
-        </Row>
-      </SimpleForm>
-    </Edit>
-  );
-};
-
 const device = {
   list: DeviceList,
   create: DeviceCreate,
-  edit: DeviceEdit,
 };
 
 export default device;

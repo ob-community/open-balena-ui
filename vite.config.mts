@@ -38,6 +38,9 @@ export default defineConfig(({ mode }) => {
       open: true,
       proxy: {
         '/admin-db': 'http://127.0.0.1:3001',
+        '/device-update-options': 'http://127.0.0.1:3001',
+        '/device-supervisor-target': 'http://127.0.0.1:3001',
+        '/balena-os': 'http://127.0.0.1:3001',
       },
     },
     preview: {

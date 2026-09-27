@@ -11,7 +11,7 @@ import {
   useRecordContext,
   RecordContextProvider,
 } from 'react-admin';
-import { styled, Box, Tooltip, Chip } from '@mui/material';
+import { styled, Alert, Box, Tooltip, Chip } from '@mui/material';
 import dateFormat from 'dateformat';
 import SemVerChip from '../../ui/SemVerChip';
 import React from 'react';
@@ -22,9 +22,95 @@ import environment from '../../lib/reactAppEnv';
 import TargetReleaseTooltip from '../../ui/TargetReleaseTooltip';
 import { getDeviceOverallState } from '../../lib/deviceStatus';
 import type { ResourceRecord } from '../../types/resource';
+import {
+  DeviceFieldEditor,
+  loadOperatingSystemChoices,
+  loadSupervisorChoices,
+  loadTargetReleaseChoices,
+  saveSupervisorTarget,
+  UnsupportedDeviceField,
+} from '../../ui/DeviceFieldEditor';
+import { queuedOsUpdateMode } from '../../lib/deviceServicePresentation';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const deviceStateRefreshInterval = 30000;
+
+export const formatOsVariant = (variant: unknown): string => {
+  if (variant === 'prod') return 'Production';
+  if (variant === 'dev') return 'Development';
+  return typeof variant === 'string' ? variant : '';
+};
+
+const normalizedDeviceVersion = (value: unknown): string =>
+  typeof value === 'string' ? value.replace(/^balenaOS\s+/i, '') : '';
+
+const expandedRelease = (value: unknown): ResourceRecord | undefined => {
+  if (Array.isArray(value)) return expandedRelease(value[0]);
+  return value && typeof value === 'object' ? (value as ResourceRecord) : undefined;
+};
+
+const releaseVersion = (record: ResourceRecord | undefined): unknown => record?.['raw version'] ?? record?.raw_version;
+
+const releaseId = (value: unknown): number | undefined => {
+  if (typeof value === 'number') return value;
+  const expanded = expandedRelease(value);
+  const id = expanded?.id ?? expanded?.__id;
+  return typeof id === 'number' ? id : undefined;
+};
+
+const QueuedOsUpdateNotice: React.FC<{ supervisorVersion: unknown }> = ({ supervisorVersion }) => {
+  const mode = queuedOsUpdateMode(supervisorVersion);
+
+  return (
+    <Box>
+      <Alert severity='info' sx={{ mb: 1, mt: 1 }}>
+        Though we always advise updating to the latest OS version, it&apos;s crucial to test compatibility with your
+        application before proceeding. Stay up-to-date, but remember to verify first!
+      </Alert>
+      {mode === 'supervisor' ? (
+        <Alert severity='info' sx={{ mb: 1 }}>
+          This queued update is pulled and retried by Supervisor 19+ when the device next polls target state; Cloudlink
+          is not required.
+        </Alert>
+      ) : mode === 'cloudlink' ? (
+        <Alert severity='warning' sx={{ mb: 1 }}>
+          This Supervisor cannot pull a queued Host OS update. Delivery requires the API-side transitional Cloudlink
+          push mechanism; use Supervisor 19+ for pull-based updates and automatic retries.
+        </Alert>
+      ) : null}
+    </Box>
+  );
+};
+
+const DeviceVersionTransition: React.FC<{ reportedField: string; targetField: string }> = ({
+  reportedField,
+  targetField,
+}) => {
+  const record = useRecordContext<ResourceRecord>();
+  const { data: refreshedDevice } = useGetOne<ResourceRecord>(
+    'device',
+    { id: record?.id ?? 0 },
+    { enabled: record != null, refetchInterval: deviceStateRefreshInterval },
+  );
+  const currentRecord = refreshedDevice ?? record;
+  const targetValue = currentRecord?.[targetField];
+  const targetRecord = expandedRelease(targetValue);
+  const targetReleaseId = releaseId(targetValue);
+  const { data: fetchedTarget } = useGetOne<ResourceRecord>(
+    'release',
+    { id: targetReleaseId ?? 0 },
+    { enabled: targetReleaseId != null && releaseVersion(targetRecord) == null },
+  );
+  if (!currentRecord) return null;
+  const reportedVersion = normalizedDeviceVersion(currentRecord[reportedField]);
+  const targetVersion = normalizedDeviceVersion(releaseVersion(targetRecord) ?? releaseVersion(fetchedTarget));
+  return (
+    <>
+      {reportedVersion}
+      {targetVersion && targetVersion !== reportedVersion ? ` \u2192 ${targetVersion}` : ''}
+    </>
+  );
+};
 
 const DeviceState: React.FC = () => {
   const record = useRecordContext<ResourceRecord>();
@@ -111,7 +197,7 @@ const TargetRelease: React.FC = () => {
 };
 
 const SummaryWidget: React.FC = () => {
-  const record = useRecordContext();
+  const record = useRecordContext<ResourceRecord>();
 
   if (!record) {
     return <Loading />;
@@ -151,27 +237,6 @@ const SummaryWidget: React.FC = () => {
               </td>
 
               <td>
-                <Label>Device Type</Label>
-                <ReferenceField source='is of-device type' reference='device type' link={false}>
-                  <TextField source='slug' />
-                </ReferenceField>
-              </td>
-            </tr>
-
-            <tr>
-              <td>
-                <Label>OS Version</Label>
-                <Link to='https://github.com/balena-os/meta-balena/blob/master/CHANGELOG.md' target='_blank'>
-                  {record['os version']}
-                </Link>
-              </td>
-
-              <td>
-                <Label>OS Variant</Label>
-                {record['os variant']}
-              </td>
-
-              <td>
                 <Label>VPN State</Label>
                 <FunctionField
                   render={(fieldRecord) => (
@@ -189,8 +254,60 @@ const SummaryWidget: React.FC = () => {
 
             <tr>
               <td>
-                <Label>Supervisor Version</Label>
-                <TextField source='supervisor version' />
+                <Label>
+                  Host OS Version
+                  <DeviceFieldEditor
+                    source='should be operated by-release'
+                    title='Host OS version'
+                    currentValue={record['should be operated by-release'] as number | null | undefined}
+                    emptyLabel={`${record['os version']} (current)`}
+                    emptyChoiceLast
+                    defaultToFirstChoice
+                    notice={<QueuedOsUpdateNotice supervisorVersion={record['supervisor version']} />}
+                    loadChoices={loadOperatingSystemChoices}
+                    iconOnly
+                  />
+                </Label>
+                <DeviceVersionTransition reportedField='os version' targetField='should be operated by-release' /> (
+                <Link to='https://github.com/balena-os/meta-balena/blob/master/CHANGELOG.md' target='_blank'>
+                  Changelog
+                </Link>
+                )
+              </td>
+
+              <td>
+                <Label>OS Variant</Label>
+                {formatOsVariant(record['os variant'])}
+              </td>
+
+              <td>
+                <Label>Device Type</Label>
+                <ReferenceField source='is of-device type' reference='device type' link={false}>
+                  <TextField source='slug' />
+                </ReferenceField>
+              </td>
+            </tr>
+
+            <tr>
+              <td>
+                <Label>
+                  Supervisor Version
+                  <DeviceFieldEditor
+                    source='should be managed by-release'
+                    title='Supervisor version'
+                    currentValue={record['should be managed by-release'] as number | null | undefined}
+                    emptyLabel={`${record['supervisor version']} (current)`}
+                    emptyChoiceLast
+                    defaultToFirstChoice
+                    loadChoices={loadSupervisorChoices}
+                    saveChoice={saveSupervisorTarget}
+                    iconOnly
+                  />
+                </Label>
+                <DeviceVersionTransition
+                  reportedField='supervisor version'
+                  targetField='should be managed by-release'
+                />
               </td>
 
               <td>
@@ -201,7 +318,17 @@ const SummaryWidget: React.FC = () => {
               </td>
 
               <td>
-                <Label>Target Release</Label>
+                <Label>
+                  Target Release
+                  <DeviceFieldEditor
+                    source={isPinnedOnRelease}
+                    title='Target release'
+                    currentValue={record[isPinnedOnRelease] as number | null | undefined}
+                    emptyLabel='Track fleet target'
+                    loadChoices={loadTargetReleaseChoices}
+                    iconOnly
+                  />
+                </Label>
                 <TargetRelease />
               </td>
             </tr>
@@ -217,34 +344,39 @@ const SummaryWidget: React.FC = () => {
               <td>
                 <Label>Local IP Addresses</Label>
                 {record['ip address']?.split(' ').map((ip) => (
-                  <CopyChip
-                    key={ip}
-                    placement='left'
-                    style={{ marginBottom: '5px' }}
-                    title={ip}
-                    label={ip.length > 15 ? ip.slice(0, 14) + '...' : ip}
-                  />
+                  <CopyChip key={ip} placement='left' style={{ marginBottom: '5px' }} title={ip} label={ip} />
                 ))}
               </td>
 
               <td>
                 <Label>Public IP Addresses</Label>
-                {record['public address']?.split(' ').map((ip) => (
-                  <CopyChip
-                    key={ip}
-                    placement='left'
-                    style={{ marginBottom: '5px' }}
-                    title={ip}
-                    label={ip.length > 15 ? ip.slice(0, 15) + '...' : ip}
-                  />
-                ))}
+                {record['public address']
+                  ? record['public address']
+                      .split(' ')
+                      .map((ip) => (
+                        <CopyChip key={ip} placement='left' style={{ marginBottom: '5px' }} title={ip} label={ip} />
+                      ))
+                  : 'Unavailable'}
               </td>
             </tr>
 
             <tr>
-              <td colSpan={3}>
-                <Label>Notes</Label>
-                <p>{record.note}</p>
+              <td>
+                <Label>Support Access</Label>
+                <UnsupportedDeviceField>Unavailable</UnsupportedDeviceField>
+              </td>
+              <td colSpan={2}>
+                <Label>
+                  Notes
+                  <DeviceFieldEditor
+                    source='note'
+                    title='Notes'
+                    currentValue={record.note as string | undefined}
+                    multiline
+                    iconOnly
+                  />
+                </Label>
+                <p>{record.note || 'No notes'}</p>
               </td>
             </tr>
           </tbody>
@@ -257,9 +389,11 @@ const SummaryWidget: React.FC = () => {
 const Label = styled('span')(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: '11px',
-  display: 'block',
+  display: 'flex',
+  alignItems: 'center',
+  minHeight: '24px',
   textTransform: 'uppercase',
-  marginBottom: '6px',
+  marginBottom: '2px',
 }));
 
 export default SummaryWidget;

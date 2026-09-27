@@ -104,6 +104,17 @@ administer every member and fleet in each organization to which they belong.
 After activation, users without either administrative role cannot access `/admin-db`, even if the underlying PostgREST
 deployment would otherwise accept their JWT.
 
+## BalenaOS catalog administration
+
+Only global administrators may inspect or synchronize the Services > BalenaOS catalog. In legacy mode, every
+authenticated user retains that effective global-administrator access. Organization administrators cannot start a
+synchronization because it creates public Host OS applications and releases with installation-wide effects.
+
+PostgREST is used only to resolve the caller's effective administrator role. All synchronized application, release,
+service, image, and release-image writes are sent to open-balena-api with the caller's token so its validation, ACLs,
+hooks, and notifications remain in force. A caller that is a UI global administrator but lacks the required
+open-balena-api permissions receives an explicit synchronization failure; the server does not bypass the API.
+
 ## Credential handling
 
 Redaction is applied in both legacy and enforced modes:

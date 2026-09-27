@@ -47,3 +47,26 @@ test('identity is derived from the authenticated JWT', async () => {
     fullName: 'test-user',
   });
 });
+
+test('identity loads the current username when the JWT omits it', async () => {
+  const values = installLocalStorage();
+  values.set('auth', unsignedToken({ id: 2 }));
+  const originalFetch = globalThis.fetch;
+  let authorization: string | null = null;
+  globalThis.fetch = async (_input, init) => {
+    authorization = new Headers(init?.headers).get('Authorization');
+    return new Response(JSON.stringify({ userId: 2, username: 'admin' }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    assert.deepEqual(await authProvider.getIdentity!(), {
+      id: 2,
+      fullName: 'admin',
+    });
+    assert.equal(authorization, `Bearer ${values.get('auth')}`);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

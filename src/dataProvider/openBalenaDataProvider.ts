@@ -1,9 +1,61 @@
 import type { DataProvider } from 'react-admin';
-import semver from 'semver';
 import postgrestDataProvider from './postgrestDataProvider';
 import createODataDataProvider, { ODATA_RESOURCES, type HttpClient } from './odataDataProvider';
+import versions from '../versions';
+
+export type BalenaOsSyncMode = 'all' | 'latest-and-in-use' | 'newer-and-in-use' | 'in-use' | 'single';
 
 export type OpenBalenaDataProvider = DataProvider & {
+  getBalenaOsCatalog(params?: { signal?: AbortSignal }): Promise<{
+    deviceTypes: Array<{
+      id: number;
+      slug: string;
+      availableVersions: number;
+      localApplications: number;
+      localReleases: number;
+      latestAvailable?: string;
+      latestLocal?: string;
+    }>;
+    organizations: Array<{ id: number; name: string }>;
+    totals: {
+      availableVersions: number;
+      localApplications: number;
+      localReleases: number;
+    };
+  }>;
+  getBalenaOsSyncStatus(params?: { signal?: AbortSignal }): Promise<{
+    state: 'idle' | 'running' | 'completed' | 'failed';
+    phase: string;
+    processed: number;
+    total: number;
+    created: number;
+    updated: number;
+    unchanged: number;
+    mode?: BalenaOsSyncMode;
+    version?: string;
+    startedAt?: string;
+    finishedAt?: string;
+    error?: string;
+  }>;
+  startBalenaOsSync(params: { mode: BalenaOsSyncMode; version?: string }): Promise<void>;
+  getDeviceUpdateOptions(params: {
+    deviceTypeId: number;
+    currentOsVersion: string;
+    currentSupervisorVersion: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    operatingSystems: Array<{ id: number; version: string; knownIssues?: string[] }>;
+    supervisors: Array<{
+      id: number | string;
+      version: string;
+      knownIssues?: string[];
+      target?: 'release' | 'version';
+    }>;
+  }>;
+  setDeviceSupervisorTarget(params: { deviceId: number; version: string }): Promise<{
+    releaseId: number;
+    version: string;
+  }>;
   getAdminAccessContext(params?: { signal?: AbortSignal }): Promise<{
     enforcementEnabled: boolean;
     globalAdmin: boolean;
@@ -62,8 +114,7 @@ export const resolveODataVersion = (serverVersion?: string, override?: string): 
     }
     return normalizedOverride;
   }
-  const normalized = serverVersion ? semver.coerce(serverVersion) : null;
-  return normalized && semver.gte(normalized, '25.2.8') ? 'v7' : 'v6';
+  return versions.odataVersion(serverVersion);
 };
 
 export const openBalenaDataProvider = (
@@ -77,6 +128,7 @@ export const openBalenaDataProvider = (
   }
   const apiProvider = createODataDataProvider(apiUrl, httpClient, resolveODataVersion(serverVersion, odataVersion));
   const databaseProvider = postgrestDataProvider('/admin-db', httpClient);
+  const pinnedReleaseField = versions.resource('isPinnedOnRelease', serverVersion);
   const route = (resource: string): DataProvider => {
     if (DIRECT_DB_RESOURCES.has(resource)) {
       return databaseProvider;
@@ -100,14 +152,67 @@ export const openBalenaDataProvider = (
       delete sanitized['is of-actor'];
       delete sanitized.key;
     }
-    if (resource === 'application' || resource === 'device') {
+    if (resource === 'application') {
       delete sanitized.actor;
+    }
+    if (resource === 'device') {
+      const writableFields = new Set([
+        'device name',
+        'note',
+        'is of-device type',
+        'is managed by-device',
+        'belongs to-application',
+        pinnedReleaseField,
+        'should be operated by-release',
+        'should be managed by-release',
+      ]);
+      return Object.fromEntries(Object.entries(sanitized).filter(([field]) => writableFields.has(field)));
     }
     return sanitized;
   };
 
   return {
     supportAbortSignal: true,
+    getBalenaOsCatalog: async ({ signal } = {}) => {
+      const { json } = await httpClient('/balena-os/catalog', { signal });
+      return json as Awaited<ReturnType<OpenBalenaDataProvider['getBalenaOsCatalog']>>;
+    },
+    getBalenaOsSyncStatus: async ({ signal } = {}) => {
+      const { json } = await httpClient('/balena-os/status', { signal });
+      return json as Awaited<ReturnType<OpenBalenaDataProvider['getBalenaOsSyncStatus']>>;
+    },
+    startBalenaOsSync: async ({ mode, version }) => {
+      await httpClient('/balena-os/sync', {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ mode, ...(version ? { version } : {}) }),
+      });
+    },
+    getDeviceUpdateOptions: async ({ deviceTypeId, currentOsVersion, currentSupervisorVersion, signal }) => {
+      const query = new URLSearchParams({
+        deviceTypeId: String(deviceTypeId),
+        currentOsVersion,
+        currentSupervisorVersion,
+      });
+      const { json } = await httpClient(`/device-update-options?${query}`, { signal });
+      return json as {
+        operatingSystems: Array<{ id: number; version: string; knownIssues?: string[] }>;
+        supervisors: Array<{
+          id: number | string;
+          version: string;
+          knownIssues?: string[];
+          target?: 'release' | 'version';
+        }>;
+      };
+    },
+    setDeviceSupervisorTarget: async ({ deviceId, version }) => {
+      const { json } = await httpClient('/device-supervisor-target', {
+        method: 'POST',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ deviceId, version }),
+      });
+      return json as { releaseId: number; version: string };
+    },
     getAdminAccessContext: async ({ signal } = {}) => {
       const { json } = await httpClient('/admin-db/actions/access-context', { signal });
       return json as {

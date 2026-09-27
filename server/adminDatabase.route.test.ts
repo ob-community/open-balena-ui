@@ -64,7 +64,7 @@ const legacyContextResponse = (url: URL): Response | undefined => {
     return jsonResponse([]);
   }
   if (resource === 'user' && url.searchParams.get('id') === 'eq.1') {
-    return jsonResponse([{ id: 1, actor: 10 }]);
+    return jsonResponse([{ id: 1, actor: 10, username: 'admin' }]);
   }
   if (resource === 'user-has-public key' && url.searchParams.get('user') === 'eq.1') {
     return jsonResponse([]);
@@ -214,6 +214,7 @@ test('access-context action reports intentional legacy global access', async () 
       globalAdmin: true,
       organizationAdmin: true,
       userId: 1,
+      username: 'admin',
     });
   });
 });

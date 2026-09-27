@@ -1,7 +1,6 @@
 import { json, Router, type Response } from 'express';
 import { randomBytes } from 'node:crypto';
 import base32Encode from 'base32-encode';
-import semver from 'semver';
 import {
   type AccessContext,
   authorizeAdministratorRoleCreation,
@@ -22,6 +21,7 @@ import authorize, { type AuthorizedLocals } from '../middleware/authorize';
 import dosProtect from '../middleware/dosProtect';
 import { hashPassword } from '../../src/lib/password';
 import { isValidPassword } from '../../src/lib/passwordPolicy';
+import versions from '../../src/versions';
 
 const router = Router();
 router.use(json());
@@ -53,8 +53,7 @@ const getODataVersion = (): string => {
     }
     return normalized;
   }
-  const serverVersion = semver.coerce(process.env.REACT_APP_OPEN_BALENA_API_VERSION);
-  return serverVersion && semver.gte(serverVersion, '25.2.8') ? 'v7' : 'v6';
+  return versions.odataVersion(process.env.REACT_APP_OPEN_BALENA_API_VERSION);
 };
 
 const toApiField = (field: string): string => field.replace(/-/g, '__').replace(/ /g, '_');
@@ -140,7 +139,7 @@ export const bodyContainsUserCredentials = (body: unknown): boolean =>
       ('password' in record || 'jwt secret' in record || 'jwt_secret' in record),
   );
 
-const databaseReader = (authorization: string) => ({
+export const databaseReader = (authorization: string) => ({
   list: async (resource: string, query = new URLSearchParams()) => {
     const response = await fetch(`${getPostgrestUrl()}/${encodeURIComponent(resource)}?${query}`, {
       headers: requestHeaders(authorization),
@@ -218,6 +217,7 @@ router.get('/admin-db/actions/access-context', ...dosProtect, authorize, async (
       globalAdmin: context.globalAdmin,
       organizationAdmin: context.organizationAdmin,
       userId: context.userId,
+      username: context.username,
     });
   } catch (error) {
     sendDenied(res, error);

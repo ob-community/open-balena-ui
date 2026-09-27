@@ -59,7 +59,7 @@ const DashboardLayout: React.FC = () => {
           </Card>
 
           <Card sx={{ padding: '15px', marginTop: '15px' }}>
-            <DeviceServices device={record} />
+            <DeviceServices device={record} showLogSelection />
           </Card>
         </div>
 

@@ -35,6 +35,7 @@ export interface AccessContext {
   globalAdmin: boolean;
   organizationAdmin: boolean;
   userId: number;
+  username?: string;
   ownActorId?: number;
   allowedIds: Record<string, Set<number>>;
   allowedApplicationIds: Set<number>;
@@ -275,6 +276,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     'id',
   );
   const ownUser = await database.list('user', new URLSearchParams({ id: `eq.${userId}` }));
+  const username = typeof ownUser[0]?.username === 'string' ? ownUser[0].username : undefined;
   const ownActorId = ownUser[0] ? numberField(ownUser[0], 'actor') : undefined;
   const ownPublicKeyIds = ids(
     await database.list('user-has-public key', new URLSearchParams({ user: `eq.${userId}` })),
@@ -290,6 +292,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       globalAdmin: true,
       organizationAdmin: true,
       userId,
+      username,
       ownActorId,
       allowedIds: {},
       allowedApplicationIds: new Set(),
@@ -322,6 +325,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       globalAdmin,
       organizationAdmin,
       userId,
+      username,
       ownActorId,
       allowedIds: {},
       allowedApplicationIds: new Set(),

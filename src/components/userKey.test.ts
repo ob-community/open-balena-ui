@@ -10,15 +10,33 @@ test('only records containing visible SSH key material are manageable', () => {
 
 test('legacy and global administrators may manage all SSH keys', () => {
   assert.equal(
-    canManageAllUserKeys({ enforcementEnabled: false, globalAdmin: true, organizationAdmin: true, userId: 2 }),
+    canManageAllUserKeys({
+      enforcementEnabled: false,
+      globalAdmin: true,
+      organizationAdmin: true,
+      userId: 2,
+      manageableApiKeyIds: [],
+    }),
     true,
   );
   assert.equal(
-    canManageAllUserKeys({ enforcementEnabled: true, globalAdmin: true, organizationAdmin: false, userId: 1 }),
+    canManageAllUserKeys({
+      enforcementEnabled: true,
+      globalAdmin: true,
+      organizationAdmin: false,
+      userId: 1,
+      manageableApiKeyIds: [],
+    }),
     true,
   );
   assert.equal(
-    canManageAllUserKeys({ enforcementEnabled: true, globalAdmin: false, organizationAdmin: true, userId: 2 }),
+    canManageAllUserKeys({
+      enforcementEnabled: true,
+      globalAdmin: false,
+      organizationAdmin: true,
+      userId: 2,
+      manageableApiKeyIds: [],
+    }),
     false,
   );
 });

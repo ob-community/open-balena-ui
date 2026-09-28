@@ -58,11 +58,12 @@ jobs:
         run: npm run lint
 
       - name: Testing
-        if: false # Jest (or similar) needs added to dev-dependencies and configured properly...
         run: npm run test
 
       - name: Build
         run: npm run build
+        env:
+          REACT_APP_OPEN_BALENA_UI_VERSION: ${{ steps.vtl.outputs.ver_semVerNoMeta }}
 
   # Build the docker container in all branches (without pushing)
   build-docker:
@@ -97,6 +98,8 @@ jobs:
           provenance: false
           file: ./Dockerfile
           push: false
+          build-args: |
+            OPEN_BALENA_UI_VERSION=${{ steps.vtl.outputs.ver_semVerNoMeta }}
           tags: ${{ steps.vtl.outputs.docker_dtag || format('{0}:{1}', github.event.pull_request.head.repo.full_name, github.event.pull_request.number) }}
           labels: ${{ steps.vtl.outputs.oci_labels || 'org.opencontainers.image.title=open-balena-ui' }}
 
@@ -141,6 +144,8 @@ jobs:
           sbom: true
           file: ./Dockerfile
           push: ${{ steps.vtl.outputs.docker_push }}
+          build-args: |
+            OPEN_BALENA_UI_VERSION=${{ steps.vtl.outputs.ver_semVerNoMeta }}
           tags: ${{ steps.vtl.outputs.docker_tags }}
           labels: ${{ steps.vtl.outputs.oci_labels }}
 

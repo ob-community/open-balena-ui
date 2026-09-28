@@ -66,10 +66,11 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
           return null;
         }
         const status = getDeviceOverallState(record);
+        const normalizedStatus = status.toLowerCase();
         const statusColor =
-          status === 'Operational'
+          normalizedStatus === 'operational'
             ? theme.palette.success.light
-            : status === 'Disconnected' || status === 'Update Failed'
+            : normalizedStatus === 'disconnected' || normalizedStatus === 'update failed'
               ? theme.palette.error.light
               : theme.palette.warning.main;
         return <strong style={{ color: statusColor }}>{status}</strong>;

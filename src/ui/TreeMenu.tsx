@@ -259,7 +259,7 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
         {resRenderGroup}
       </div>
       <div className='menu-environment' aria-label='System version information'>
-        <div>ob-ui: {packageMetadata.version}</div>
+        <div>ob-ui: {environment.REACT_APP_OPEN_BALENA_UI_VERSION ?? packageMetadata.version}</div>
         <div>ob-api: {environment.REACT_APP_OPEN_BALENA_API_VERSION ?? 'Unavailable'}</div>
         <div>auth mode: {authMode}</div>
       </div>

@@ -10,6 +10,7 @@ const clientEnvironmentVariables = [
   'REACT_APP_OPEN_BALENA_ODATA_VERSION',
   'REACT_APP_OPEN_BALENA_REMOTE_URL',
   'REACT_APP_OPEN_BALENA_UI_URL',
+  'REACT_APP_OPEN_BALENA_UI_VERSION',
 ];
 
 export default defineConfig(({ mode }) => {

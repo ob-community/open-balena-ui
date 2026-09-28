@@ -1,10 +1,21 @@
 import { useDataProvider } from 'react-admin';
+import type { DataProvider } from 'react-admin';
 import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 
 export function useModifyUser() {
   const dataProvider = useDataProvider();
+  return (data) => modifyUser(dataProvider, data);
+}
 
+export const modifyUser = async (
+  dataProvider: Pick<DataProvider, 'getList' | 'create' | 'delete'>,
+  input: Record<string, any>,
+) => {
+  const data = { ...input };
   const modifyMappingTable = async (data, field, table, sourceField, destField) => {
+    if (!Array.isArray(data[field])) {
+      return;
+    }
     let existingMappings = await dataProvider.getList(table, {
       pagination: { page: 1, perPage: 1000 },
       sort: { field: 'id', order: 'ASC' },
@@ -23,31 +34,29 @@ export function useModifyUser() {
     await Promise.all(deleteIds.map((deleteId) => dataProvider.delete(table, { id: deleteId })));
   };
 
-  return async (data) => {
-    const mappings = {
-      roleMapping: { field: 'roleArray', table: 'user-has-role', sourceField: 'user', destField: 'role' },
-      permissionMapping: {
-        field: 'permissionArray',
-        table: 'user-has-permission',
-        sourceField: 'user',
-        destField: 'permission',
-      },
-      organizationMapping: {
-        field: 'organizationArray',
-        table: 'organization membership',
-        sourceField: 'user',
-        destField: 'is member of-organization',
-      },
-    };
-    await Promise.all(
-      Object.keys(mappings).map((x) =>
-        modifyMappingTable(data, mappings[x].field, mappings[x].table, mappings[x].sourceField, mappings[x].destField),
-      ),
-    );
-    Object.keys(mappings).forEach((x) => delete data[mappings[x].field]);
-    return data;
+  const mappings = {
+    roleMapping: { field: 'roleArray', table: 'user-has-role', sourceField: 'user', destField: 'role' },
+    permissionMapping: {
+      field: 'permissionArray',
+      table: 'user-has-permission',
+      sourceField: 'user',
+      destField: 'permission',
+    },
+    organizationMapping: {
+      field: 'organizationArray',
+      table: 'organization membership',
+      sourceField: 'user',
+      destField: 'is member of-organization',
+    },
   };
-}
+  await Promise.all(
+    Object.values(mappings).map((mapping) =>
+      modifyMappingTable(data, mapping.field, mapping.table, mapping.sourceField, mapping.destField),
+    ),
+  );
+  Object.values(mappings).forEach(({ field }) => delete data[field]);
+  return data;
+};
 
 export function useDeleteUser() {
   const dataProvider = useDataProvider<OpenBalenaDataProvider>();

@@ -216,6 +216,7 @@ test('access-context action reports intentional legacy global access', async () 
       userId: 1,
       username: 'admin',
       ownActorId: 10,
+      manageableApiKeyIds: [],
     });
   });
 });

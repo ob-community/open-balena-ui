@@ -58,6 +58,9 @@ const env = {
   get REACT_APP_OPEN_BALENA_UI_URL() {
     return readEnv('REACT_APP_OPEN_BALENA_UI_URL');
   },
+  get REACT_APP_OPEN_BALENA_UI_VERSION() {
+    return readEnv('REACT_APP_OPEN_BALENA_UI_VERSION');
+  },
 };
 
 export default env;

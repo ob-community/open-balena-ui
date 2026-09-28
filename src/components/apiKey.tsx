@@ -122,6 +122,21 @@ const CustomBulkActionButtons: React.FC = (props) => {
   );
 };
 
+const ApiKeyActions: React.FC<{ manageableIds: Set<number> }> = ({ manageableIds }) => {
+  const record = useRecordContext<RaRecord<Identifier>>();
+  const recordId = Number(record?.id);
+  if (!record || !Number.isInteger(recordId) || !manageableIds.has(recordId)) {
+    return null;
+  }
+
+  return (
+    <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
+      <EditButton label='' size='small' variant='outlined' />
+      <DeleteApiKeyButton size='small' variant='outlined' />
+    </Toolbar>
+  );
+};
+
 const ActorFieldWrapper: React.FC<Omit<ActorFieldProps, 'record'>> = (props) => {
   const record = useRecordContext<RaRecord<Identifier>>();
   if (!record) {
@@ -135,10 +150,19 @@ export const ApiKeyList: React.FC = () => {
   const canAccessGlobalResources = context != null && (!context.enforcementEnabled || context.globalAdmin);
   const canEditActors =
     context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
+  const manageableApiKeyIds = React.useMemo(
+    () => new Set(context?.manageableApiKeyIds ?? []),
+    [context?.manageableApiKeyIds],
+  );
 
   return (
     <List filters={apiKeyFilters} sx={{ '& .RaList-actions': { marginBottom: 2 } }}>
-      <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
+      <Datagrid
+        size='medium'
+        rowClick={false}
+        isRowSelectable={(record) => manageableApiKeyIds.has(Number(record.id))}
+        bulkActionButtons={<CustomBulkActionButtons />}
+      >
         <FunctionField
           label='API Key'
           render={(record) =>
@@ -157,10 +181,7 @@ export const ApiKeyList: React.FC = () => {
           </SingleFieldList>
         </ReferenceManyField>
 
-        <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteApiKeyButton size='small' variant='outlined' />
-        </Toolbar>
+        <ApiKeyActions manageableIds={manageableApiKeyIds} />
       </Datagrid>
     </List>
   );

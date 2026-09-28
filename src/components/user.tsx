@@ -133,20 +133,26 @@ export const UserCreate: React.FC<CreateProps> = (props) => {
   );
 };
 
-const CustomToolbar: React.FC<ToolbarProps & { alwaysEnableSaveButton?: boolean }> = ({
+const CustomToolbar: React.FC<ToolbarProps & { alwaysEnableSaveButton?: boolean; canDelete?: boolean }> = ({
   alwaysEnableSaveButton,
+  canDelete = true,
   ...props
 }) => (
   <Toolbar {...props} style={{ justifyContent: 'space-between' }}>
     <SaveButton alwaysEnable={alwaysEnableSaveButton} sx={{ flex: 1 }} />
-    <DeleteUserButton variant='contained' size='large' sx={{ flex: 0.3, marginLeft: '40px' }}>
-      Delete
-    </DeleteUserButton>
+    {canDelete ? (
+      <DeleteUserButton variant='contained' size='large' sx={{ flex: 0.3, marginLeft: '40px' }}>
+        Delete
+      </DeleteUserButton>
+    ) : null}
   </Toolbar>
 );
 
 export const UserEdit: React.FC<EditProps> = (props) => {
   const modifyUser = useModifyUser();
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canManageGlobalControls = !context.enforcementEnabled || context.globalAdmin;
 
   return (
     <Edit
@@ -159,17 +165,19 @@ export const UserEdit: React.FC<EditProps> = (props) => {
         },
       }}
     >
-      <SimpleForm toolbar={<CustomToolbar />}>
+      <SimpleForm toolbar={<CustomToolbar canDelete={canManageGlobalControls} />}>
         <Row>
           <TextInput name='email' source='email' size='large' type='email' validate={[required(), email()]} />
           <TextInput name='username' source='username' size='large' validate={required()} readOnly={true} />
         </Row>
-        <ChangePasswordButton />
+        {canManageGlobalControls ? <ChangePasswordButton /> : null}
 
         <br />
 
         <ManageOrganizations source='organizationArray' reference='organization membership' target='user' />
-        <ManagePermissions source='permissionArray' reference='user-has-permission' target='user' />
+        {canManageGlobalControls ? (
+          <ManagePermissions source='permissionArray' reference='user-has-permission' target='user' />
+        ) : null}
         <ManageRoles source='roleArray' reference='user-has-role' target='user' />
 
         <br />

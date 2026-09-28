@@ -12,6 +12,7 @@ export interface AdminAccessContext {
   userId: number;
   username?: string;
   ownActorId?: number;
+  manageableApiKeyIds: number[];
 }
 
 export type OpenBalenaDataProvider = DataProvider & {

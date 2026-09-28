@@ -219,6 +219,7 @@ router.get('/admin-db/actions/access-context', ...dosProtect, authorize, async (
       userId: context.userId,
       username: context.username,
       ownActorId: context.ownActorId,
+      manageableApiKeyIds: [...context.manageableApiKeyIds].sort((left, right) => left - right),
     });
   } catch (error) {
     sendDenied(res, error);

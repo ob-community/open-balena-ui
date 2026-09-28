@@ -8,15 +8,14 @@ export interface AuthorizedLocals {
 
 const authorize: RequestHandler = async (req, res, next) => {
   try {
-    const authorizationHeader = req.headers.authorization;
     const secret = process.env.OPEN_BALENA_JWT_SECRET;
 
-    if (!authorizationHeader || !authorizationHeader.startsWith('Bearer ') || !secret) {
+    if (!secret) {
       res.status(401).json({ success: false, message: 'Invalid token' });
       return;
     }
 
-    const token = authorizationHeader.split('Bearer ')[1];
+    const token = /^Bearer ([^\s]+)$/.exec(req.headers.authorization ?? '')?.[1] ?? '';
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
       algorithms: ['HS256'],
     });

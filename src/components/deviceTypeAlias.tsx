@@ -16,21 +16,28 @@ import {
   required,
 } from 'react-admin';
 import Row from '../ui/Row';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 export const DeviceTypeAliasList: React.FC = () => {
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canManage = !context.enforcementEnabled || context.globalAdmin;
+
   return (
-    <List title='Device Type Aliases'>
-      <Datagrid size='medium' rowClick={false}>
+    <List title='Device Type Aliases' actions={canManage ? undefined : false}>
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={canManage ? undefined : false}>
         <ReferenceField label='Device Type' source='device type' reference='device type'>
           <TextField source='slug' />
         </ReferenceField>
 
         <TextField label='Alias' source='is referenced by-alias' />
 
-        <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
-        </Toolbar>
+        {canManage ? (
+          <Toolbar>
+            <EditButton label='' size='small' variant='outlined' />
+            <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          </Toolbar>
+        ) : null}
       </Datagrid>
     </List>
   );

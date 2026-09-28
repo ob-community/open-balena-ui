@@ -30,6 +30,7 @@ import ManageRoles from '../ui/ManageRoles';
 import Row from '../ui/Row';
 import PasswordChecklist from 'react-password-checklist';
 import { isPasswordWithinBcryptLimit, maxPasswordBytes } from '../lib/passwordPolicy';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 const CustomBulkActionButtons: React.FC<DeleteUserButtonProps> = (props) => (
   <React.Fragment>
@@ -40,15 +41,26 @@ const CustomBulkActionButtons: React.FC<DeleteUserButtonProps> = (props) => (
 );
 
 export const UserList: React.FC = () => {
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canEdit = !context.enforcementEnabled || context.globalAdmin || context.organizationAdmin;
+  const canCreate = !context.enforcementEnabled || context.globalAdmin;
+  const canDelete = canCreate;
+  const canAccessGlobalResources = canCreate;
+
   return (
-    <List>
-      <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
+    <List actions={canCreate ? undefined : false}>
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={canDelete ? <CustomBulkActionButtons /> : false}>
         <TextField source='username' />
         <EmailField source='email' />
 
         <ReferenceManyField label='Organizations' source='id' reference='organization membership' target='user'>
           <SingleFieldList linkType={false}>
-            <ReferenceField source='is member of-organization' reference='organization'>
+            <ReferenceField
+              source='is member of-organization'
+              reference='organization'
+              link={canEdit ? undefined : false}
+            >
               <TextField source='name' />
             </ReferenceField>
           </SingleFieldList>
@@ -56,16 +68,18 @@ export const UserList: React.FC = () => {
 
         <ReferenceManyField label='Roles' source='id' reference='user-has-role' target='user'>
           <SingleFieldList linkType={false}>
-            <ReferenceField source='role' reference='role'>
+            <ReferenceField source='role' reference='role' link={canAccessGlobalResources ? undefined : false}>
               <TextField source='name' />
             </ReferenceField>
           </SingleFieldList>
         </ReferenceManyField>
 
-        <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteUserButton size='small' variant='outlined' />
-        </Toolbar>
+        {canEdit ? (
+          <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
+            <EditButton label='' size='small' variant='outlined' />
+            {canDelete ? <DeleteUserButton size='small' variant='outlined' /> : null}
+          </Toolbar>
+        ) : null}
       </Datagrid>
     </List>
   );

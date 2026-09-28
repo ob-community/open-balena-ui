@@ -3,6 +3,15 @@
 User interface for [open-balena-admin](https://github.com/ob-community/open-balena-admin), an admin interface for
 open-balena.
 
+## Documentation
+
+- [Access controls](ACCESS_CONTROLS.md) explains Legacy and RBAC modes, administrator roles, organization scope, and
+  credential protections.
+- [API versions](API_VERSIONS.md) documents the supported open-balena-api versions and compatibility behavior.
+- [Direct database access](DIRECT_DB_ACCESS.md) explains which resources require protected PostgREST access and why.
+- [Host OS and Supervisor updates](OS_AND_SUPERVISOR_UPDATES.md) covers catalog synchronization, image delivery, update
+  behavior, and deployment requirements.
+
 ## Dependencies
 
 This project uses `open-balena-api` for operational data and depends on

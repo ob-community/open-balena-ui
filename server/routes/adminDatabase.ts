@@ -145,7 +145,7 @@ export const databaseReader = (authorization: string) => ({
       headers: requestHeaders(authorization),
     });
     if (!response.ok) {
-      throw new UpstreamRequestError(`Unable to resolve administrator access (${response.status}).`);
+      throw new UpstreamRequestError(`Unable to resolve administrator access from ${resource} (${response.status}).`);
     }
     const text = await response.text();
     let jsonBody: unknown;
@@ -218,6 +218,7 @@ router.get('/admin-db/actions/access-context', ...dosProtect, authorize, async (
       organizationAdmin: context.organizationAdmin,
       userId: context.userId,
       username: context.username,
+      ownActorId: context.ownActorId,
     });
   } catch (error) {
     sendDenied(res, error);

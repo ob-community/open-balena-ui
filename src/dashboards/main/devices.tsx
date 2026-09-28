@@ -24,7 +24,7 @@ import {
 import { EditButton } from 'react-admin';
 import EnvVarButton from '../../ui/EnvVarButton';
 import DeviceConnectButton from '../../ui/DeviceConnectButton';
-import { LastOnlineField, OnlineField } from '../../components/device';
+import { OnlineField, VpnLastConnectedField } from '../../components/device';
 import CopyChip from '../../ui/CopyChip';
 import { getSemver } from '../../ui/SemVerChip';
 import versions from '../../versions';
@@ -58,7 +58,7 @@ export const DeviceCards: React.FC = () => (
                     <TableCell>Fleet</TableCell>
                     <TableCell>UUID</TableCell>
                     <TableCell>Connection status</TableCell>
-                    <TableCell>Connectivity</TableCell>
+                    <TableCell>VPN last connected</TableCell>
                     <TableCell>Release</TableCell>
                     <TableCell>Pinned release</TableCell>
                     <TableCell />
@@ -106,7 +106,7 @@ export const DeviceCards: React.FC = () => (
                         <OnlineField record={record} source={deviceOnlineStatusField} />
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        <LastOnlineField record={record} />
+                        <VpnLastConnectedField record={record} />
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         <ReferenceField record={record} source='is running-release' reference='release' link={false}>

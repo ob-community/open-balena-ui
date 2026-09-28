@@ -5,6 +5,15 @@ import versions from '../versions';
 
 export type BalenaOsSyncMode = 'all' | 'latest-and-in-use' | 'newer-and-in-use' | 'in-use' | 'single';
 
+export interface AdminAccessContext {
+  enforcementEnabled: boolean;
+  globalAdmin: boolean;
+  organizationAdmin: boolean;
+  userId: number;
+  username?: string;
+  ownActorId?: number;
+}
+
 export type OpenBalenaDataProvider = DataProvider & {
   getBalenaOsCatalog(params?: { signal?: AbortSignal }): Promise<{
     deviceTypes: Array<{
@@ -56,12 +65,7 @@ export type OpenBalenaDataProvider = DataProvider & {
     releaseId: number;
     version: string;
   }>;
-  getAdminAccessContext(params?: { signal?: AbortSignal }): Promise<{
-    enforcementEnabled: boolean;
-    globalAdmin: boolean;
-    organizationAdmin: boolean;
-    userId: number;
-  }>;
+  getAdminAccessContext(params?: { signal?: AbortSignal }): Promise<AdminAccessContext>;
   authorizeResourceActorDeletions(params: {
     records: Array<{
       resource: 'application' | 'device' | 'user';
@@ -215,12 +219,7 @@ export const openBalenaDataProvider = (
     },
     getAdminAccessContext: async ({ signal } = {}) => {
       const { json } = await httpClient('/admin-db/actions/access-context', { signal });
-      return json as {
-        enforcementEnabled: boolean;
-        globalAdmin: boolean;
-        organizationAdmin: boolean;
-        userId: number;
-      };
+      return json as AdminAccessContext;
     },
     getList: async (resource, params) => route(resource).getList(resource, params),
     getOne: async (resource, params) => route(resource).getOne(resource, params),

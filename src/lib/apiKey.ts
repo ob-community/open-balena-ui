@@ -10,8 +10,18 @@ export function useCreateApiKey() {
 
 export function useModifyApiKey() {
   const dataProvider = useDataProvider();
+  return (data) => modifyApiKey(dataProvider, data);
+}
 
+export const modifyApiKey = async (
+  dataProvider: Pick<DataProvider, 'getList' | 'create' | 'delete'>,
+  input: Record<string, any>,
+) => {
+  const data = { ...input };
   const modifyMappingTable = async (data, field, table, sourceField, destField) => {
+    if (!Array.isArray(data[field])) {
+      return;
+    }
     let existingMappings = await dataProvider.getList(table, {
       pagination: { page: 1, perPage: 1000 },
       sort: { field: 'id', order: 'ASC' },
@@ -28,25 +38,23 @@ export function useModifyApiKey() {
     await Promise.all(deleteIds.map((deleteId) => dataProvider.delete(table, { id: deleteId })));
   };
 
-  return async (data) => {
-    const mappings = {
-      roleMapping: { field: 'roleArray', table: 'api key-has-role', sourceField: 'api key', destField: 'role' },
-      permissionMapping: {
-        field: 'permissionArray',
-        table: 'api key-has-permission',
-        sourceField: 'api key',
-        destField: 'permission',
-      },
-    };
-    await Promise.all(
-      Object.keys(mappings).map((x) =>
-        modifyMappingTable(data, mappings[x].field, mappings[x].table, mappings[x].sourceField, mappings[x].destField),
-      ),
-    );
-    Object.keys(mappings).forEach((x) => delete data[mappings[x].field]);
-    return data;
+  const mappings = {
+    roleMapping: { field: 'roleArray', table: 'api key-has-role', sourceField: 'api key', destField: 'role' },
+    permissionMapping: {
+      field: 'permissionArray',
+      table: 'api key-has-permission',
+      sourceField: 'api key',
+      destField: 'permission',
+    },
   };
-}
+  await Promise.all(
+    Object.values(mappings).map((mapping) =>
+      modifyMappingTable(data, mapping.field, mapping.table, mapping.sourceField, mapping.destField),
+    ),
+  );
+  Object.values(mappings).forEach(({ field }) => delete data[field]);
+  return data;
+};
 
 export function useDeleteApiKey() {
   const dataProvider = useDataProvider();

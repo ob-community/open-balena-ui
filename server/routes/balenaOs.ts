@@ -1,6 +1,6 @@
 import { json, Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { buildAccessContext } from '../accessControl';
+import { buildAccessContext, canManageBalenaOsCatalog } from '../accessControl';
 import { BalenaOsSyncValidationError, balenaOsSyncManager, type BalenaOsSyncMode } from '../balenaOsSync';
 import authorize, { type AuthorizedLocals } from '../middleware/authorize';
 import dosProtect from '../middleware/dosProtect';
@@ -14,31 +14,41 @@ const statusProtect = rateLimit({
   max: 600,
 });
 
-const requireGlobalAdmin = async (authorization: string, auth: AuthorizedLocals['auth']): Promise<void> => {
-  const context = await buildAccessContext(auth, databaseReader(authorization));
-  if (!context.globalAdmin) {
-    throw new Error('Only global administrators can manage the BalenaOS catalog.');
+const requireBalenaOsAccess = async (
+  authorization: string,
+  auth: AuthorizedLocals['auth'],
+): Promise<number | undefined> => {
+  const database = databaseReader(authorization);
+  const context = await buildAccessContext(auth, database);
+  if (!context.enforcementEnabled || context.globalAdmin) {
+    return undefined;
   }
+  const organizations = await database.list('organization', new URLSearchParams({ name: 'eq.balena_os' }));
+  const organizationId = Number(organizations[0]?.id);
+  if (!Number.isInteger(organizationId) || !canManageBalenaOsCatalog(context, organizationId)) {
+    throw new Error('BalenaOS catalog access requires membership in the balena_os organization.');
+  }
+  return organizationId;
 };
 
 router.get('/balena-os/status', statusProtect, authorize, async (req, res) => {
   try {
-    await requireGlobalAdmin(req.headers.authorization!, (res.locals as AuthorizedLocals).auth);
+    await requireBalenaOsAccess(req.headers.authorization!, (res.locals as AuthorizedLocals).auth);
     res.json(balenaOsSyncManager.getStatus());
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to read BalenaOS synchronization status.';
-    res.status(message.includes('Only global administrators') ? 403 : 502).json({ message });
+    res.status(message.includes('requires membership') ? 403 : 502).json({ message });
   }
 });
 
 router.get('/balena-os/catalog', ...dosProtect, authorize, async (req, res) => {
   try {
     const authorization = req.headers.authorization!;
-    await requireGlobalAdmin(authorization, (res.locals as AuthorizedLocals).auth);
+    await requireBalenaOsAccess(authorization, (res.locals as AuthorizedLocals).auth);
     res.json(await balenaOsSyncManager.getCatalog(authorization));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to inspect the BalenaOS catalog.';
-    res.status(message.includes('Only global administrators') ? 403 : 502).json({ message });
+    res.status(message.includes('requires membership') ? 403 : 502).json({ message });
   }
 });
 
@@ -52,12 +62,9 @@ router.post('/balena-os/sync', ...dosProtect, authorize, async (req, res) => {
     const version = typeof req.body?.version === 'string' ? req.body.version.trim() : undefined;
     const authorization = req.headers.authorization!;
     const auth = (res.locals as AuthorizedLocals).auth;
-    const context = await buildAccessContext(auth, databaseReader(authorization));
-    if (!context.globalAdmin) {
-      res.status(403).json({ message: 'Only global administrators can synchronize the BalenaOS catalog.' });
-      return;
-    }
-    const organizationId = await balenaOsSyncManager.getBalenaOsOrganizationId(authorization);
+    const authorizedOrganizationId = await requireBalenaOsAccess(authorization, auth);
+    const organizationId =
+      authorizedOrganizationId ?? (await balenaOsSyncManager.getBalenaOsOrganizationId(authorization));
     if (!organizationId) {
       res.status(400).json({
         message:
@@ -73,7 +80,13 @@ router.post('/balena-os/sync', ...dosProtect, authorize, async (req, res) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to start BalenaOS synchronization.';
-    const status = message.includes('already running') ? 409 : error instanceof BalenaOsSyncValidationError ? 400 : 502;
+    const status = message.includes('requires membership')
+      ? 403
+      : message.includes('already running')
+        ? 409
+        : error instanceof BalenaOsSyncValidationError
+          ? 400
+          : 502;
     res.status(status).json({ message });
   }
 });

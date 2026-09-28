@@ -37,6 +37,7 @@ import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 import versions from '../versions';
 import environment from '../lib/reactAppEnv';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
@@ -82,6 +83,10 @@ const CustomBulkActionButtons: React.FC = (props) => (
 );
 
 export const FleetList: React.FC = () => {
+  const { context } = useAdminAccessContext();
+  const canEditOrganizations =
+    context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
+
   return (
     <List>
       <Datagrid
@@ -99,7 +104,12 @@ export const FleetList: React.FC = () => {
       >
         <TextField label='Name' source='app name' />
 
-        <ReferenceField label='Organization' source='organization' reference='organization'>
+        <ReferenceField
+          label='Organization'
+          source='organization'
+          reference='organization'
+          link={canEditOrganizations ? undefined : false}
+        >
           <TextField source='name' />
         </ReferenceField>
 

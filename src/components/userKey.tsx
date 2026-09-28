@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Alert, Stack } from '@mui/material';
+import { Alert, Stack, TextField as MuiTextField } from '@mui/material';
 import {
   Create,
   Datagrid,
@@ -14,46 +14,15 @@ import {
   SimpleForm,
   TextField,
   TextInput,
-  useDataProvider,
   useGetIdentity,
-  useNotify,
   useRecordContext,
   required,
   type RaRecord,
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
-import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
-
-interface AdminAccessContext {
-  enforcementEnabled: boolean;
-  globalAdmin: boolean;
-  organizationAdmin: boolean;
-  userId: number;
-}
-
-const useAdminAccessContext = (): AdminAccessContext | undefined => {
-  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
-  const notify = useNotify();
-  const [context, setContext] = React.useState<AdminAccessContext>();
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    dataProvider
-      .getAdminAccessContext({ signal: controller.signal })
-      .then(setContext)
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          notify(error instanceof Error ? error.message : 'Unable to determine administrator access.', {
-            type: 'error',
-          });
-        }
-      });
-    return () => controller.abort();
-  }, [dataProvider, notify]);
-
-  return context;
-};
+import type { AdminAccessContext } from '../dataProvider/openBalenaDataProvider';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 export const canManageUserKey = (record: RaRecord | undefined): boolean => typeof record?.['public key'] === 'string';
 export const canManageAllUserKeys = (context: AdminAccessContext): boolean =>
@@ -75,10 +44,14 @@ const UserKeyActions: React.FC = () => {
 };
 
 export const UserKeysList: React.FC = () => {
+  const { context } = useAdminAccessContext();
+  const canEditUsers =
+    context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
+
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
-        <ReferenceField label='User' source='user' reference='user'>
+        <ReferenceField label='User' source='user' reference='user' link={canEditUsers ? undefined : false}>
           <TextField source='username' />
         </ReferenceField>
 
@@ -125,8 +98,8 @@ const UserKeyOwnerInput: React.FC<{ disabled?: boolean }> = ({ disabled = false 
 
 export const UserKeysCreate: React.FC = () => {
   const { data: identity, isPending } = useGetIdentity();
-  const accessContext = useAdminAccessContext();
-  if (isPending || !identity || !accessContext) {
+  const { context: accessContext, isPending: accessPending } = useAdminAccessContext();
+  if (isPending || accessPending || !identity || !accessContext) {
     return null;
   }
   const canManageAllKeys = canManageAllUserKeys(accessContext);
@@ -139,7 +112,11 @@ export const UserKeysCreate: React.FC = () => {
     >
       <SimpleForm sx={formStyles} defaultValues={{ user: identity.id }}>
         <Row>
-          <UserKeyOwnerInput disabled={!canManageAllKeys} />
+          {canManageAllKeys ? (
+            <UserKeyOwnerInput />
+          ) : (
+            <MuiTextField label='User' value={identity.fullName ?? identity.id} disabled fullWidth />
+          )}
           <TextInput label='Title' source='title' validate={required()} size='large' />
         </Row>
 

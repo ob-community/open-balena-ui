@@ -1,6 +1,5 @@
-import { Tooltip, useTheme } from '@mui/material';
+import { useTheme } from '@mui/material';
 import type { Theme } from '@mui/material/styles';
-import dateFormat from 'dateformat';
 import * as React from 'react';
 import {
   Create,
@@ -49,47 +48,12 @@ import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
 import DeviceUpdateStatusIcon from '../ui/DeviceUpdateStatusIcon';
-import {
-  deviceOnlineStatusField,
-  getDeviceStatusTimestamp,
-  isDeviceOnline,
-  isDeviceUpdating,
-} from '../lib/deviceStatus';
+import { deviceOnlineStatusField, getDeviceOverallState, isDeviceOnline, isDeviceUpdating } from '../lib/deviceStatus';
+import ConnectionLastConnected from '../ui/ConnectionLastConnected';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const deviceStatusRefreshInterval = 30000;
-
-const parseDeviceDate = (value: unknown): Date | null => {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const formatElapsedTime = (referenceDate: Date): string => {
-  const elapsedMilliseconds = Math.max(0, Date.now() - referenceDate.getTime());
-  const elapsedDays = Math.floor(elapsedMilliseconds / 86400000);
-
-  if (elapsedDays >= 1) {
-    return `${elapsedDays} ${elapsedDays === 1 ? 'day' : 'days'}`;
-  }
-
-  const elapsedMinutes = Math.floor(elapsedMilliseconds / 60000);
-  return `${elapsedMinutes} ${elapsedMinutes === 1 ? 'minute' : 'minutes'}`;
-};
-
-const ElapsedTime: React.FC<{ referenceDate: Date; prefix?: string; suffix?: string }> = ({
-  referenceDate,
-  prefix = '',
-  suffix = '',
-}) => (
-  <Tooltip placement='top' arrow title={dateFormat(referenceDate)}>
-    <span>{`${prefix}${formatElapsedTime(referenceDate)}${suffix}`}</span>
-  </Tooltip>
-);
 
 export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -101,44 +65,28 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
         if (!source) {
           return null;
         }
-        const online = isDeviceOnline(record);
-        const heartbeatOnline = record['api heartbeat state'] === 'online';
-        const noVpn = !online && heartbeatOnline && record['is connected to vpn'] !== true;
-        const status = online ? 'Online' : noVpn ? 'NO VPN' : 'Offline';
-        const statusColor = online
-          ? theme.palette.success.light
-          : noVpn
-            ? theme.palette.warning.main
-            : theme.palette.error.light;
-        const statusTimestamp = getDeviceStatusTimestamp(record);
-        const statusSince = parseDeviceDate(statusTimestamp);
-        const statusSinceLabel = statusSince ? `Since ${dateFormat(statusSince)}` : '';
-
-        return (
-          <Tooltip placement='top' arrow={true} title={statusSinceLabel}>
-            <strong style={{ color: statusColor }}>{status}</strong>
-          </Tooltip>
-        );
+        const status = getDeviceOverallState(record);
+        const statusColor =
+          status === 'Operational'
+            ? theme.palette.success.light
+            : status === 'Disconnected' || status === 'Update Failed'
+              ? theme.palette.error.light
+              : theme.palette.warning.main;
+        return <strong style={{ color: statusColor }}>{status}</strong>;
       }}
     />
   );
 };
 
-export const LastOnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => (
+export const VpnLastConnectedField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => (
   <FunctionField
     {...props}
-    render={(record) => {
-      const isOnline = isDeviceOnline(record);
-      const referenceDate = parseDeviceDate(getDeviceStatusTimestamp(record));
-
-      if (!referenceDate) {
-        return isOnline ? '—' : 'Never online';
-      }
-
-      return (
-        <ElapsedTime referenceDate={referenceDate} prefix={isOnline ? 'Up ' : ''} suffix={isOnline ? '' : ' ago'} />
-      );
-    }}
+    render={(record) => (
+      <ConnectionLastConnected
+        connected={record['is connected to vpn'] === true}
+        timestamp={record['last vpn event']}
+      />
+    )}
   />
 );
 
@@ -362,7 +310,7 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
           }
         />
 
-        <LastOnlineField label='Connectivity' source='last connectivity event' sortable sortBy='connectivity' />
+        <VpnLastConnectedField label='VPN last connected' source='last vpn event' sortable sortBy='last vpn event' />
 
         <FunctionField
           label='UUID'

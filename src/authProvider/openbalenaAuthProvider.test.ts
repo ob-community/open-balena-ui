@@ -30,12 +30,14 @@ test('authentication failures clear the stored token and reject', async () => {
   assert.equal(values.has('auth'), false);
 });
 
-test('administrator authorization denials preserve the stored token', async () => {
-  const values = installLocalStorage();
-  values.set('auth', 'valid-token');
+test('authorization denials preserve the stored token regardless of endpoint', async () => {
+  for (const body of [{ code: 'ADMIN_DB_FORBIDDEN' }, undefined]) {
+    const values = installLocalStorage();
+    values.set('auth', 'valid-token');
 
-  await authProvider.checkError({ status: 403, body: { code: 'ADMIN_DB_FORBIDDEN' } });
-  assert.equal(values.get('auth'), 'valid-token');
+    await authProvider.checkError({ status: 403, body });
+    assert.equal(values.get('auth'), 'valid-token');
+  }
 });
 
 test('identity is derived from the authenticated JWT', async () => {

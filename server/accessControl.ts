@@ -316,9 +316,11 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
   );
   const globalAdmin = [...globalRoleIds].some((id) => assignedRoleIds.has(id));
   const organizationAdmin = [...organizationRoleIds].some((id) => assignedRoleIds.has(id));
+  const ownMemberships = await database.list('organization membership', new URLSearchParams({ user: `eq.${userId}` }));
+  const organizationIds = ids(ownMemberships, 'is member of-organization');
 
-  if (globalAdmin || !organizationAdmin) {
-    const manageableApiKeyActorIds = globalAdmin ? await getManagedCredentialActors(database) : new Set<number>();
+  if (globalAdmin) {
+    const manageableApiKeyActorIds = await getManagedCredentialActors(database);
     const manageableApiKeyIds = await getVisibleApiKeyIds(database, ownActorId, manageableApiKeyActorIds);
     return {
       enforcementEnabled: true,
@@ -341,8 +343,52 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     };
   }
 
-  const ownMemberships = await database.list('organization membership', new URLSearchParams({ user: `eq.${userId}` }));
-  const organizationIds = ids(ownMemberships, 'is member of-organization');
+  if (!organizationAdmin) {
+    const ownUserIds = new Set([userId]);
+    const ownActorIds = ownActorId == null ? new Set<number>() : new Set([ownActorId]);
+    const manageableApiKeyActorIds = new Set<number>();
+    const manageableApiKeyIds = await getVisibleApiKeyIds(database, ownActorId, manageableApiKeyActorIds);
+    const [apiKeyRoles, apiKeyPermissions, ownPermissions] = await Promise.all([
+      listByIds(database, 'api key-has-role', 'api key', manageableApiKeyIds),
+      listByIds(database, 'api key-has-permission', 'api key', manageableApiKeyIds),
+      database.list('user-has-permission', new URLSearchParams({ user: `eq.${userId}` })),
+    ]);
+    const visibleRoleIds = new Set([...assignedRoleIds, ...ids(apiKeyRoles, 'role')]);
+
+    return {
+      enforcementEnabled: true,
+      globalAdmin: false,
+      organizationAdmin: false,
+      userId,
+      username,
+      ownActorId,
+      allowedApplicationIds: new Set(),
+      globalRoleIds,
+      ownGlobalRoleAssignmentIds,
+      protectedRoleIds,
+      organizationAssignableRoleIds,
+      manageableUserRoleAssignmentIds: new Set(),
+      ownPublicKeyIds,
+      manageableApiKeyActorIds,
+      manageableApiKeyIds,
+      visibleApiKeyIds: manageableApiKeyIds,
+      allowedIds: {
+        'actor': ownActorIds,
+        'api key': manageableApiKeyIds,
+        'api key-has-permission': ids(apiKeyPermissions, 'id'),
+        'api key-has-role': ids(apiKeyRoles, 'id'),
+        'organization': organizationIds,
+        'organization membership': ids(ownMemberships, 'id'),
+        'role': visibleRoleIds,
+        'user': ownUserIds,
+        'user-has-direct access to-application': new Set(),
+        'user-has-permission': ids(ownPermissions, 'id'),
+        'user-has-public key': ownPublicKeyIds,
+        'user-has-role': ids(assignments, 'id'),
+      },
+    };
+  }
+
   const organizationMemberships = await listByIds(
     database,
     'organization membership',
@@ -374,15 +420,13 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     'id',
   );
 
-  const [userRoles, userPermissions, userPublicKeys, directApplicationAccess, apiKeyRoles, apiKeyPermissions] =
-    await Promise.all([
-      listByIds(database, 'user-has-role', 'user', userIds),
-      listByIds(database, 'user-has-permission', 'user', userIds),
-      listByIds(database, 'user-has-public key', 'user', userIds),
-      listByIds(database, 'user-has-direct access to-application', 'user', userIds),
-      listByIds(database, 'api key-has-role', 'api key', apiKeyIds),
-      listByIds(database, 'api key-has-permission', 'api key', apiKeyIds),
-    ]);
+  const [userRoles, userPermissions, userPublicKeys, apiKeyRoles, apiKeyPermissions] = await Promise.all([
+    listByIds(database, 'user-has-role', 'user', userIds),
+    listByIds(database, 'user-has-permission', 'user', userIds),
+    listByIds(database, 'user-has-public key', 'user', userIds),
+    listByIds(database, 'api key-has-role', 'api key', apiKeyIds),
+    listByIds(database, 'api key-has-permission', 'api key', apiKeyIds),
+  ]);
 
   const assignableUserRoles = userRoles.filter((assignment) =>
     organizationAssignableRoleIds.has(numberField(assignment, 'role') ?? -1),
@@ -394,6 +438,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
     globalAdmin: false,
     organizationAdmin: true,
     userId,
+    username,
     ownActorId,
     allowedApplicationIds: applicationIds,
     globalRoleIds,
@@ -413,7 +458,7 @@ export const buildAccessContext = async (payload: JWTPayload, database: Database
       'organization': organizationIds,
       'organization membership': ids(memberships, 'id'),
       'user': userIds,
-      'user-has-direct access to-application': ids(directApplicationAccess, 'id'),
+      'user-has-direct access to-application': new Set(),
       'user-has-permission': ids(userPermissions, 'id'),
       'user-has-public key': ids(userPublicKeys, 'id'),
       'user-has-role': ids(assignableUserRoles, 'id'),
@@ -432,13 +477,30 @@ export const authorizeResource = (
   if (!context.enforcementEnabled || context.globalAdmin) {
     return undefined;
   }
-  if (resource === 'role' && method === 'GET' && context.organizationAdmin) {
-    return context.organizationAssignableRoleIds;
+  if (resource === 'role' && method === 'GET') {
+    return context.organizationAdmin
+      ? new Set([...(context.allowedIds.role ?? []), ...context.organizationAssignableRoleIds])
+      : (context.allowedIds.role ?? new Set());
   }
   if (GLOBAL_ONLY_RESOURCES.has(resource) || !ORGANIZATION_SCOPED_RESOURCES.has(resource)) {
     throw new Error('Global administrator access is required.');
   }
   if (!context.organizationAdmin) {
+    if (method === 'GET' && resource in context.allowedIds) {
+      return context.allowedIds[resource];
+    }
+    if (resource === 'api key' && method === 'POST') {
+      return context.manageableApiKeyIds;
+    }
+    if (resource === 'api key' && ['PATCH', 'DELETE'].includes(method)) {
+      return context.manageableApiKeyIds;
+    }
+    if (resource === 'user-has-public key' && method === 'POST') {
+      return context.ownPublicKeyIds;
+    }
+    if (resource === 'user-has-public key' && ['PATCH', 'DELETE'].includes(method)) {
+      return context.ownPublicKeyIds;
+    }
     throw new Error('Administrator access is required.');
   }
   if (resource === 'user-has-public key' && ['PATCH', 'DELETE'].includes(method)) {
@@ -644,6 +706,9 @@ export const authorizePasswordChange = (context: AccessContext, targetUserId: nu
     throw new Error('Organization administrators can change only their own password.');
   }
 };
+
+export const canManageBalenaOsCatalog = (context: AccessContext, organizationId: number): boolean =>
+  !context.enforcementEnabled || context.globalAdmin || (context.allowedIds.organization?.has(organizationId) ?? false);
 
 export const authorizeCredentialActorProvision = (context: AccessContext): void => {
   if (context.enforcementEnabled && !context.globalAdmin) {

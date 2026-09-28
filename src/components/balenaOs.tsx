@@ -48,6 +48,7 @@ export const BalenaOsPage: React.FC = () => {
   const [syncMode, setSyncMode] = React.useState<BalenaOsSyncMode>('all');
   const [version, setVersion] = React.useState('');
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string>();
   const [confirming, setConfirming] = React.useState(false);
 
   const loadCatalog = React.useCallback(
@@ -64,7 +65,9 @@ export const BalenaOsPage: React.FC = () => {
       .then(([, nextStatus]) => setStatus(nextStatus))
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          notify(error instanceof Error ? error.message : 'Unable to load the BalenaOS catalog.', { type: 'error' });
+          const message = error instanceof Error ? error.message : 'Unable to load the BalenaOS catalog.';
+          setLoadError(message);
+          notify(message, { type: 'error' });
         }
       })
       .finally(() => {
@@ -102,6 +105,28 @@ export const BalenaOsPage: React.FC = () => {
       window.clearInterval(interval);
     };
   }, [dataProvider, loadCatalog, notify, status.state]);
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Title title='BalenaOS Catalog' />
+        <Stack spacing={2}>
+          <Typography variant='h4'>BalenaOS Catalog</Typography>
+          <Typography color='text.secondary'>Loading local and upstream catalog details…</Typography>
+          <LinearProgress aria-label='Loading BalenaOS catalog' />
+        </Stack>
+      </Box>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Title title='BalenaOS Catalog' />
+        <Alert severity='error'>{loadError}</Alert>
+      </Box>
+    );
+  }
 
   const startSync = async () => {
     if (!balenaOsOrganization) return;
@@ -284,100 +309,6 @@ export const BalenaOsPage: React.FC = () => {
               {status.state === 'completed' && (
                 <Alert severity='success'>BalenaOS catalog synchronization completed.</Alert>
               )}
-            </Stack>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <Stack spacing={2}>
-              <Typography variant='h6'>Synchronization and image delivery</Typography>
-              <Typography color='text.secondary'>
-                Database writes are performed through open-balena-api; PostgREST is used only to verify global
-                administrator access. Synchronization copies catalog metadata, not image blobs. Balena Cloud registry
-                hostnames are replaced with <code>OPEN_BALENA_OS_REGISTRY_HOST</code> when image records are
-                synchronized, and open-balena-api later returns those stored locations to devices. Setting it to{' '}
-                <code>registry2.balena-cloud.com</code> preserves the original location. Restart the UI server and rerun
-                synchronization after changing that setting.
-              </Typography>
-              <Alert severity='info'>
-                Choose either direct Balena Cloud pulls or a local pull-through proxy. In both cases, verify image
-                access before targeting a synchronized Host OS release.
-              </Alert>
-              <Typography variant='subtitle1'>Option 1: direct Balena Cloud pulls</Typography>
-              <Typography color='text.secondary'>
-                Set <code>OPEN_BALENA_OS_REGISTRY_HOST=registry2.balena-cloud.com</code>. The rewrite then produces the
-                same location published by Balena Cloud, and no local registry or proxy is involved in Host OS image
-                pulls. Devices must be able to make outbound HTTPS requests to <code>registry2.balena-cloud.com</code>{' '}
-                for manifests, the token realm at <code>api.balena-cloud.com</code>, and{' '}
-                <code>registry-data.balena-cloud.com</code> for redirected image blobs. Balena Cloud&apos;s public
-                registry issues anonymous pull tokens for these images.
-              </Typography>
-              <Alert severity='info'>
-                This only removes the local registry requirement from synchronized Host OS image delivery. An openBalena
-                installation still uses its normal private registry for user application images and other locally
-                produced releases.
-              </Alert>
-              <Typography variant='subtitle1'>Option 2: local pull-through proxy</Typography>
-              <Typography color='text.secondary'>
-                Stock openBalena provides a private registry but does not configure this Cloud fallback. Use this option
-                when devices cannot directly reach Balena Cloud, outbound hostnames are restricted, or local caching is
-                desired.
-              </Typography>
-              <Box
-                component='pre'
-                sx={{
-                  bgcolor: 'action.hover',
-                  borderRadius: 1,
-                  m: 0,
-                  overflowX: 'auto',
-                  p: 2,
-                  whiteSpace: 'pre',
-                }}
-              >
-                {'device → your registry hostname → local openBalena registry\n' +
-                  '                                ↘ registry2.balena-cloud.com (pull fallback)'}
-              </Box>
-              <Box component='ol' sx={{ m: 0, pl: 3 }}>
-                <li>
-                  <Typography color='text.secondary'>
-                    Put an authentication-aware routing proxy in front of the local registry and expose that proxy at
-                    the registry hostname used by devices.
-                  </Typography>
-                </li>
-                <li>
-                  <Typography color='text.secondary'>
-                    Send all pushes, deletes, and other mutating requests only to the local registry. For pulls, prefer
-                    local content and fall back to registry2.balena-cloud.com only when it is absent locally.
-                  </Typography>
-                </li>
-                <li>
-                  <Typography color='text.secondary'>
-                    Authenticate devices against the local registry. Strip their credentials from Cloud requests, obtain
-                    and cache Balena Cloud&apos;s public registry token inside the proxy, and never return the Cloud
-                    authentication challenge or hostname to a device.
-                  </Typography>
-                </li>
-                <li>
-                  <Typography color='text.secondary'>
-                    Configure <code>OPEN_BALENA_OS_REGISTRY_HOST</code> with the externally reachable proxy hostname,
-                    including any required port but no protocol or path, then restart the UI server and synchronize.
-                  </Typography>
-                </li>
-                <li>
-                  <Typography color='text.secondary'>
-                    Before assigning a release, verify that the proxy returns the synchronized manifest and blobs even
-                    when they are not present in local registry storage.
-                  </Typography>
-                </li>
-              </Box>
-              <Alert severity='info'>
-                A plain Distribution <code>proxy.remoteurl</code> setting is generally not a drop-in solution:
-                openBalena must still accept private image pushes, while the Cloud fallback uses a separate token
-                exchange. Use a routing proxy that keeps the private write path and public pull authentication separate.
-                The helper&apos;s <code>/download</code> route is for provisioning images and does not proxy these Host
-                OS update pulls.
-              </Alert>
             </Stack>
           </CardContent>
         </Card>

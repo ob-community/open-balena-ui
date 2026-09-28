@@ -14,11 +14,17 @@ import {
   Toolbar,
   required,
 } from 'react-admin';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 export const OrganizationList: React.FC = () => {
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canEdit = !context.enforcementEnabled || context.globalAdmin || context.organizationAdmin;
+  const canCreate = !context.enforcementEnabled || context.globalAdmin;
+
   return (
-    <List>
-      <Datagrid size='medium' rowClick={false}>
+    <List actions={canCreate ? undefined : false}>
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={canEdit ? undefined : false}>
         <TextField source='name' />
         <TextField source='handle' />
 
@@ -28,10 +34,12 @@ export const OrganizationList: React.FC = () => {
           </SingleFieldList>
         </ReferenceManyField>
 
-        <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
-        </Toolbar>
+        {canEdit ? (
+          <Toolbar>
+            <EditButton label='' size='small' variant='outlined' />
+            <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          </Toolbar>
+        ) : null}
       </Datagrid>
     </List>
   );

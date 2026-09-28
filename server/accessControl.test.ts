@@ -11,6 +11,7 @@ import {
   authorizeScopedMutation,
   authorizeSelfLockoutMutation,
   buildAccessContext,
+  canManageBalenaOsCatalog,
   organizationAssignableRoleNames,
   queryReferencesCredential,
   queryUsesUnsafeEmbedding,
@@ -152,9 +153,57 @@ test('organization administrators are restricted to their organization records',
   assert.deepEqual([...authorizeResource(context, 'user-has-role', 'DELETE')!], []);
 });
 
-test('ordinary users cannot access direct database resources after activation', async () => {
+test('ordinary users receive only self-service and organization-membership scope', async () => {
   const context = await buildAccessContext({ id: 4 }, reader());
-  assert.throws(() => authorizeResource(context, 'user', 'GET'), /Administrator access/);
+  assert.deepEqual([...authorizeResource(context, 'user', 'GET')!], [4]);
+  assert.deepEqual([...authorizeResource(context, 'organization', 'GET')!], [401]);
+  assert.deepEqual([...authorizeResource(context, 'organization membership', 'GET')!], [302]);
+  assert.deepEqual([...authorizeResource(context, 'role', 'GET')!].sort(), [3, 4]);
+  assert.deepEqual([...authorizeResource(context, 'api key', 'GET')!], [203]);
+  assert.deepEqual([...authorizeResource(context, 'user-has-public key', 'GET')!], [702]);
+  assert.deepEqual([...authorizeResource(context, 'api key', 'PATCH')!], [203]);
+  assert.deepEqual([...authorizeResource(context, 'user-has-public key', 'DELETE')!], [702]);
+  assert.throws(() => authorizeResource(context, 'organization', 'PATCH'), /Administrator access/);
+  assert.throws(() => authorizeResource(context, 'permission', 'GET'), /Global administrator access/);
+});
+
+test('ordinary self-service credential submissions reject tampered owners', async () => {
+  const context = await buildAccessContext({ id: 4 }, reader());
+
+  assert.doesNotThrow(() => {
+    authorizeResource(context, 'api key', 'POST');
+    authorizeMutationBody(context, 'api key', 'POST', { 'is of-actor': 104 });
+  });
+  assert.throws(
+    () => authorizeMutationBody(context, 'api key', 'POST', { 'is of-actor': 102 }),
+    /outside the administrator's organization scope/,
+  );
+  assert.doesNotThrow(() => {
+    authorizeResource(context, 'user-has-public key', 'POST');
+    authorizeMutationBody(context, 'user-has-public key', 'POST', {
+      'user': 4,
+      'public key': 'ssh-ed25519 self',
+    });
+  });
+  assert.throws(
+    () =>
+      authorizeMutationBody(context, 'user-has-public key', 'POST', {
+        'user': 2,
+        'public key': 'ssh-ed25519 tampered',
+      }),
+    /outside the administrator's organization scope/,
+  );
+});
+
+test('BalenaOS catalog access follows balena_os organization membership', async () => {
+  const ordinary = await buildAccessContext({ id: 4 }, reader());
+  const global = await buildAccessContext({ id: 1 }, reader());
+  const legacy = await buildAccessContext({ id: 2 }, reader({ role: [] }));
+
+  assert.equal(canManageBalenaOsCatalog(ordinary, 401), true);
+  assert.equal(canManageBalenaOsCatalog(ordinary, 402), false);
+  assert.equal(canManageBalenaOsCatalog(global, 402), true);
+  assert.equal(canManageBalenaOsCatalog(legacy, 402), true);
 });
 
 test('organization mutations reject cross-organization references', async () => {

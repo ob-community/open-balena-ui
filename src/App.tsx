@@ -272,7 +272,7 @@ const OpenBalenaAdmin: React.FC = () => {
       <Resource
         name='config'
         icon={SettingsIcon}
-        options={{ label: 'Configs', menuParent: 'menu-static' }}
+        options={{ label: 'Configs', menuParent: 'menu-static', globalAdminOnly: true }}
         {...config}
       />
       <Resource
@@ -318,13 +318,13 @@ const OpenBalenaAdmin: React.FC = () => {
       <Resource
         name='permission'
         icon={LockIcon}
-        options={{ label: 'Permissions', menuParent: 'menu-static' }}
+        options={{ label: 'Permissions', menuParent: 'menu-static', globalAdminOnly: true }}
         {...permission}
       />
       <Resource
         name='role'
         icon={AdminPanelSettingsIcon}
-        options={{ label: 'Roles', menuParent: 'menu-static' }}
+        options={{ label: 'Roles', menuParent: 'menu-static', globalAdminOnly: true }}
         {...role}
       />
 

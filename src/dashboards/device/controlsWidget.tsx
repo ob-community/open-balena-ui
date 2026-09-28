@@ -4,7 +4,7 @@ import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { Box, Button, CardActions, Typography } from '@mui/material';
 import { FunctionField, ReferenceField, TextField, useAuthProvider, useNotify, useRecordContext } from 'react-admin';
-import { LastOnlineField, OnlineField } from '../../components/device';
+import { OnlineField } from '../../components/device';
 import { useReconcileDeviceServices } from '../../lib/device';
 import environment from '../../lib/reactAppEnv';
 import utf8decode from '../../lib/utf8decode';
@@ -12,6 +12,7 @@ import { ConfirmationDialog, type ConfirmationDialogProps } from '../../ui/Confi
 import type { RaRecord } from 'react-admin';
 import { deviceOnlineStatusField, isDeviceOnline } from '../../lib/deviceStatus';
 import { DeviceFieldEditor, loadFleetChoices } from '../../ui/DeviceFieldEditor';
+import { HeartbeatStatusIcon, VpnStatusIcon } from '../../ui/DeviceConnectivityStatusIcon';
 import versions from '../../versions';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
@@ -113,7 +114,12 @@ const ControlsWidget: React.FC = () => {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, minmax(0, 1fr))',
+            md: 'minmax(0, 1.25fr) minmax(0, 1fr) minmax(max-content, 0.75fr)',
+            lg: 'repeat(4, minmax(0, 1fr))',
+          },
           columnGap: 4,
           rowGap: 1,
         }}
@@ -146,13 +152,26 @@ const ControlsWidget: React.FC = () => {
           <OnlineField source={deviceOnlineStatusField} />
         </Box>
 
-        <Box>
-          <b>Last online: </b>
-          <LastOnlineField source='last connectivity event' />
+        <Box
+          sx={{
+            display: { xs: 'flex', lg: 'contents' },
+            flexDirection: 'column',
+            gap: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <b>Heartbeat:</b>
+            <FunctionField render={(fieldRecord) => <HeartbeatStatusIcon record={fieldRecord} />} />
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <b>VPN:</b>
+            <FunctionField render={(fieldRecord) => <VpnStatusIcon record={fieldRecord} />} />
+          </Box>
         </Box>
 
         {record.note && (
-          <Box sx={{ flexBasis: '100%', whiteSpace: 'pre-wrap' }}>
+          <Box sx={{ gridColumn: '1 / -1', whiteSpace: 'pre-wrap' }}>
             <b>Note: </b>
             {record.note}
           </Box>

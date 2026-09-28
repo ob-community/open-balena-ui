@@ -11,8 +11,7 @@ import {
   useRecordContext,
   RecordContextProvider,
 } from 'react-admin';
-import { styled, Alert, Box, Tooltip, Chip } from '@mui/material';
-import dateFormat from 'dateformat';
+import { styled, Alert, Box, Chip } from '@mui/material';
 import SemVerChip from '../../ui/SemVerChip';
 import React from 'react';
 import { resolveDeviceTargetRelease } from '../../lib/targetRelease';
@@ -31,6 +30,7 @@ import {
   UnsupportedDeviceField,
 } from '../../ui/DeviceFieldEditor';
 import { queuedOsUpdateMode } from '../../lib/deviceServicePresentation';
+import ConnectionLastConnected from '../../ui/ConnectionLastConnected';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const deviceStateRefreshInterval = 30000;
@@ -232,21 +232,18 @@ const SummaryWidget: React.FC = () => {
               </td>
 
               <td>
-                <Label>State</Label>
+                <Label>Status</Label>
                 <DeviceState />
               </td>
 
               <td>
-                <Label>VPN State</Label>
+                <Label>VPN Last Connected</Label>
                 <FunctionField
                   render={(fieldRecord) => (
-                    <Tooltip
-                      placement='top'
-                      arrow={true}
-                      title={'Since ' + dateFormat(new Date(fieldRecord['last vpn event']))}
-                    >
-                      <span>{fieldRecord['is connected to vpn'] ? 'Connected' : 'Disconnected'}</span>
-                    </Tooltip>
+                    <ConnectionLastConnected
+                      connected={fieldRecord['is connected to vpn'] === true}
+                      timestamp={fieldRecord['last vpn event']}
+                    />
                   )}
                 />
               </td>

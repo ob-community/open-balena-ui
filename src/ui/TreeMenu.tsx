@@ -13,6 +13,9 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import { DashboardMenuItem, MenuItemLink, useResourceDefinitions, useSidebarState, useTranslate } from 'react-admin';
 import CustomMenuItem from './CustomMenuItem';
 import logo from '../logo.svg';
+import packageMetadata from '../../package.json';
+import environment from '../lib/reactAppEnv';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 const PREFIX = 'RaTreeMenu';
 
@@ -33,6 +36,8 @@ const StyledMenu = styled('div')(({ theme }) => {
   return {
     'background': backgroundColor,
     'position': 'fixed',
+    'display': 'flex',
+    'flexDirection': 'column',
     'left': 0,
     'top': 0,
     'bottom': 0,
@@ -67,6 +72,18 @@ const StyledMenu = styled('div')(({ theme }) => {
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'flex-start',
+      flex: 1,
+      minHeight: 0,
+      overflowY: 'auto',
+    },
+
+    '& .menu-environment': {
+      color: mutedText,
+      borderTop: `1px solid ${hoverColor}`,
+      padding: '10px 12px 12px',
+      fontSize: '0.75rem',
+      lineHeight: 1.5,
+      flexShrink: 0,
     },
   };
 });
@@ -98,9 +115,23 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
 
   const translate = useTranslate();
   const [open] = useSidebarState();
+  const { context: accessContext, error: accessError, isPending: accessPending } = useAdminAccessContext();
+  const authMode = accessPending
+    ? 'Loading…'
+    : accessError
+      ? 'Unavailable'
+      : accessContext?.enforcementEnabled
+        ? 'RBAC'
+        : 'Legacy';
   const pathname = window.location.hash;
   let allResources = useResourceDefinitions();
-  const resources = Object.keys(allResources).map((name) => allResources[name]);
+  const resources = Object.keys(allResources)
+    .map((name) => allResources[name])
+    .filter(
+      (resource) =>
+        !resource.options?.globalAdminOnly ||
+        (accessContext != null && (!accessContext.enforcementEnabled || accessContext.globalAdmin)),
+    );
   const hasList = (resource) => resource.hasList;
 
   const handleToggle = (parent) => {
@@ -226,6 +257,11 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
       >
         <DashboardMenuItem onClick={onMenuClick} dense={dense} sidebarIsOpen={open} primaryText={dashboardlabel} />
         {resRenderGroup}
+      </div>
+      <div className='menu-environment' aria-label='System version information'>
+        <div>ob-ui: {packageMetadata.version}</div>
+        <div>ob-api: {environment.REACT_APP_OPEN_BALENA_API_VERSION ?? 'Unavailable'}</div>
+        <div>auth mode: {authMode}</div>
       </div>
     </StyledMenu>
   );

@@ -68,7 +68,7 @@ members. Scope includes:
 - actors for member users, organization fleets, and their devices;
 - API-key metadata and assignment rows for those actors;
 - API-key material for fleets and devices in the administered organization;
-- user role and permission metadata, SSH-key metadata, and direct-fleet-access rows for members.
+- user role and permission metadata and SSH-key metadata for members.
 
 Global role definitions, permissions, role-permission mappings, configuration, and migration/model metadata remain
 global-admin-only. Role metadata explicitly named by `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` is the sole
@@ -101,19 +101,44 @@ administer every member and fleet in each organization to which they belong.
 
 ### Ordinary users
 
-After activation, users without either administrative role cannot access `/admin-db`, even if the underlying PostgREST
-deployment would otherwise accept their JWT.
+After activation, users without either administrative role receive a narrow self-service and membership scope through
+`/admin-db`. They may:
+
+- read their own user record, role assignments, API keys, and SSH keys;
+- read their own organization memberships and the corresponding organization records;
+- create, update, and delete API keys belonging to their own actor;
+- create, update, and delete SSH keys belonging to their own user.
+
+They cannot read other users or credentials, mutate organizations or memberships, assign roles or permissions, or use
+global direct-database resources. The API-key and SSH-key creation forms display the authenticated account instead of
+loading an administrator-only user selector, and the server independently rejects a submitted owner or actor outside the
+authenticated user's scope.
 
 ## BalenaOS catalog administration
 
-Only global administrators may inspect or synchronize the Services > BalenaOS catalog. In legacy mode, every
-authenticated user retains that effective global-administrator access. Organization administrators cannot start a
-synchronization because it creates public Host OS applications and releases with installation-wide effects.
+Global administrators and enforced-mode users who are members of the `balena_os` organization may inspect and
+synchronize the Services > BalenaOS catalog. In legacy mode, every authenticated user retains effective
+global-administrator access.
 
 PostgREST is used only to resolve the caller's effective administrator role. All synchronized application, release,
 service, image, and release-image writes are sent to open-balena-api with the caller's token so its validation, ACLs,
 hooks, and notifications remain in force. A caller that is a UI global administrator but lacks the required
 open-balena-api permissions receives an explicit synchronization failure; the server does not bypass the API.
+
+Membership in `balena_os` authorizes the UI server route but does not grant open-balena-api write permissions. The
+member's open-balena-api role must separately permit the application, release, service, image, and relationship writes
+performed by synchronization.
+
+## RBAC-aware navigation and read-only resources
+
+In enforced mode, ordinary users can list their organizations and their own user record, but those pages omit create,
+edit, and delete controls. Installation-wide direct-database pages (`Configs`, `Permissions`, and `Roles`) are hidden
+from non-global administrators. Direct URL access remains server-enforced.
+
+CPU architectures, device families, device manufacturers, device types, device-type aliases, and fleet types are read
+through open-balena-api. They remain visible to ordinary users when the API permits reads, but the UI treats them as
+read-only for non-global users because they are installation-wide catalogs. Their underlying API ACLs remain the final
+authority.
 
 ## Credential handling
 

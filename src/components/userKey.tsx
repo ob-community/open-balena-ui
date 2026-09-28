@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Alert, Stack, TextField as MuiTextField } from '@mui/material';
 import {
   Create,
   Datagrid,
@@ -13,104 +14,144 @@ import {
   SimpleForm,
   TextField,
   TextInput,
-  Toolbar,
+  useGetIdentity,
+  useRecordContext,
   required,
+  type RaRecord,
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
+import type { AdminAccessContext } from '../dataProvider/openBalenaDataProvider';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
+
+export const canManageUserKey = (record: RaRecord | undefined): boolean => typeof record?.['public key'] === 'string';
+export const canManageAllUserKeys = (context: AdminAccessContext): boolean =>
+  !context.enforcementEnabled || context.globalAdmin;
+
+const UserKeyActions: React.FC = () => {
+  const record = useRecordContext();
+
+  if (!canManageUserKey(record)) {
+    return <>Read only</>;
+  }
+
+  return (
+    <Stack direction='row' spacing={1}>
+      <EditButton label='' variant='outlined' size='small' />
+      <DeleteButton mutationMode='pessimistic' label='' variant='outlined' size='small' />
+    </Stack>
+  );
+};
 
 export const UserKeysList: React.FC = () => {
+  const { context } = useAdminAccessContext();
+  const canEditUsers =
+    context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
+
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
-        <ReferenceField label='User' source='user' reference='user' target='id'>
+        <ReferenceField label='User' source='user' reference='user' link={canEditUsers ? undefined : false}>
           <TextField source='username' />
         </ReferenceField>
 
         <TextField label='Key Name' source='title' />
 
         <FunctionField
-          render={(record) => (
-            <CopyChip title={record['public key']} label={record['public key'].slice(0, 70) + '...'} />
-          )}
+          render={(record) => {
+            const publicKey = record['public key'];
+            return typeof publicKey === 'string' ? (
+              <CopyChip title={publicKey} label={`${publicKey.slice(0, 70)}...`} />
+            ) : (
+              'Hidden'
+            );
+          }}
         />
 
-        <Toolbar>
-          <EditButton label='' variant='outlined' size='small' />
-          <DeleteButton mutationMode='optimistic' label='' variant='outlined' size='small' />
-        </Toolbar>
+        <FunctionField label='Actions' render={() => <UserKeyActions />} />
       </Datagrid>
     </List>
   );
 };
 
-export const UserKeysCreate: React.FC = () => (
-  <Create title='Create SSH Key' redirect='list'>
-    <SimpleForm
-      sx={{
-        '.MuiFormControl-root': {
-          marginTop: '0',
-        },
-        '.MuiFormHelperText-root': {
-          display: 'none',
-        },
-      }}
+const formStyles = {
+  '.MuiFormControl-root': {
+    marginTop: '0',
+  },
+  '.MuiFormHelperText-root': {
+    display: 'none',
+  },
+};
+
+const UserKeyOwnerInput: React.FC<{ disabled?: boolean }> = ({ disabled = false }) => (
+  <ReferenceInput source='user' reference='user' target='id' perPage={1000} sort={{ field: 'username', order: 'ASC' }}>
+    <SelectInput
+      optionText='username'
+      optionValue='id'
+      validate={required()}
+      fullWidth={true}
+      variant='outlined'
+      disabled={disabled}
+    />
+  </ReferenceInput>
+);
+
+export const UserKeysCreate: React.FC = () => {
+  const { data: identity, isPending } = useGetIdentity();
+  const { context: accessContext, isPending: accessPending } = useAdminAccessContext();
+  if (isPending || accessPending || !identity || !accessContext) {
+    return null;
+  }
+  const canManageAllKeys = canManageAllUserKeys(accessContext);
+
+  return (
+    <Create
+      title='Create SSH Key'
+      redirect='list'
+      transform={(data) => ({ ...data, user: canManageAllKeys ? data.user : identity.id })}
     >
+      <SimpleForm sx={formStyles} defaultValues={{ user: identity.id }}>
+        <Row>
+          {canManageAllKeys ? (
+            <UserKeyOwnerInput />
+          ) : (
+            <MuiTextField label='User' value={identity.fullName ?? identity.id} disabled fullWidth />
+          )}
+          <TextInput label='Title' source='title' validate={required()} size='large' />
+        </Row>
+
+        <br />
+        <TextInput multiline label='Key' source='public key' validate={required()} size='large' fullWidth={true} />
+      </SimpleForm>
+    </Create>
+  );
+};
+
+const UserKeyEditForm: React.FC = () => {
+  const record = useRecordContext();
+  if (!record) {
+    return null;
+  }
+  if (!canManageUserKey(record)) {
+    return <Alert severity='warning'>You can only edit your own SSH keys.</Alert>;
+  }
+
+  return (
+    <SimpleForm sx={formStyles}>
       <Row>
-        <ReferenceInput
-          source='user'
-          reference='user'
-          target='id'
-          perPage={1000}
-          sort={{ field: 'username', order: 'ASC' }}
-        >
-          <SelectInput
-            optionText='username'
-            optionValue='id'
-            validate={required()}
-            fullWidth={true}
-            variant='outlined'
-          />
-        </ReferenceInput>
+        <UserKeyOwnerInput disabled />
         <TextInput label='Title' source='title' validate={required()} size='large' />
       </Row>
 
       <br />
-      <TextInput multiline label='Key' source='public key' validate={required()} size='large' fullWidth={true} />
+      <TextInput label='Key' source='public key' validate={required()} size='large' fullWidth={true} />
     </SimpleForm>
-  </Create>
-);
+  );
+};
 
 export const UserKeysEdit: React.FC = () => (
   <Edit title='Edit SSH Key'>
-    <SimpleForm
-      sx={{
-        '.MuiFormControl-root': {
-          marginTop: '0',
-        },
-        '.MuiFormHelperText-root': {
-          display: 'none',
-        },
-      }}
-    >
-      <Row>
-        <ReferenceInput
-          source='user'
-          reference='user'
-          target='id'
-          perPage={1000}
-          sort={{ field: 'username', order: 'ASC' }}
-        >
-          <SelectInput optionText='username' optionValue='id' validate={required()} size='large' />
-        </ReferenceInput>
-
-        <TextInput label='Title' source='title' validate={required()} size='large' />
-      </Row>
-
-      <br />
-
-      <TextInput label='Key' source='public key' validate={required()} size='large' fullWidth={true} />
-    </SimpleForm>
+    <UserKeyEditForm />
   </Edit>
 );
 

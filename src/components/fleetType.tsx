@@ -15,6 +15,7 @@ import {
 } from 'react-admin';
 import type { FunctionFieldProps, RaRecord } from 'react-admin';
 import Row from '../ui/Row';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 type BooleanBinaryFieldProps = Omit<FunctionFieldProps<RaRecord>, 'render'>;
 
@@ -32,9 +33,13 @@ const BooleanBinaryField: React.FC<BooleanBinaryFieldProps> = ({ source = 'enabl
 );
 
 export const FleetTypeList: React.FC = () => {
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canManage = !context.enforcementEnabled || context.globalAdmin;
+
   return (
-    <List>
-      <Datagrid size='medium' rowClick={false}>
+    <List actions={canManage ? undefined : false}>
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={canManage ? undefined : false}>
         <TextField label='Slug' source='slug' />
         <TextField label='Name' source='name' />
         <TextField label='OS Version Range' source='needs-os version range' />
@@ -50,10 +55,12 @@ export const FleetTypeList: React.FC = () => {
 
         <BooleanBinaryField label='Multi Container' source='supports multicontainer' />
 
-        <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
-        </Toolbar>
+        {canManage ? (
+          <Toolbar>
+            <EditButton label='' size='small' variant='outlined' />
+            <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          </Toolbar>
+        ) : null}
       </Datagrid>
     </List>
   );

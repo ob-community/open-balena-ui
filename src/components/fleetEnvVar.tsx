@@ -28,7 +28,7 @@ export const FleetEnvVarList: React.FC = () => {
   return (
     <List title='Fleet Environment Variables'>
       <Datagrid size='medium' rowClick={false}>
-        <ReferenceField label='Fleet' source='application' reference='application' target='id'>
+        <ReferenceField label='Fleet' source='application' reference='application'>
           <TextField source='app name' />
         </ReferenceField>
 

@@ -106,6 +106,14 @@ export const getDeviceOverallState = (device: DeviceStatusRecord, imageInstalls:
     return 'Unknown';
   }
 
+  const apiOverallStatus = normalizeStatus(device['overall status']);
+  if (apiOverallStatus) {
+    return apiOverallStatus
+      .split('-')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
   const heartbeatState = normalizeStatus(device['api heartbeat state']);
   const updateStatus = normalizeStatus(device['update status']);
   const provisioningState = normalizeStatus(device['provisioning state']);

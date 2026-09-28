@@ -21,7 +21,7 @@ import {
   CreateProps,
   EditProps,
 } from 'react-admin';
-import { useCreateUser, useModifyUser } from '../lib/user';
+import { useModifyUser } from '../lib/user';
 import ChangePasswordButton from '../ui/ChangePasswordButton';
 import DeleteUserButton, { DeleteUserButtonProps } from '../ui/DeleteUserButton';
 import ManageOrganizations from '../ui/ManageOrganizations';
@@ -29,6 +29,8 @@ import ManagePermissions from '../ui/ManagePermissions';
 import ManageRoles from '../ui/ManageRoles';
 import Row from '../ui/Row';
 import PasswordChecklist from 'react-password-checklist';
+import { isPasswordWithinBcryptLimit, maxPasswordBytes } from '../lib/passwordPolicy';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 const CustomBulkActionButtons: React.FC<DeleteUserButtonProps> = (props) => (
   <React.Fragment>
@@ -39,15 +41,26 @@ const CustomBulkActionButtons: React.FC<DeleteUserButtonProps> = (props) => (
 );
 
 export const UserList: React.FC = () => {
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canEdit = !context.enforcementEnabled || context.globalAdmin || context.organizationAdmin;
+  const canCreate = !context.enforcementEnabled || context.globalAdmin;
+  const canDelete = canCreate;
+  const canAccessGlobalResources = canCreate;
+
   return (
-    <List>
-      <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
+    <List actions={canCreate ? undefined : false}>
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={canDelete ? <CustomBulkActionButtons /> : false}>
         <TextField source='username' />
         <EmailField source='email' />
 
         <ReferenceManyField label='Organizations' source='id' reference='organization membership' target='user'>
           <SingleFieldList linkType={false}>
-            <ReferenceField source='is member of-organization' reference='organization' target='id'>
+            <ReferenceField
+              source='is member of-organization'
+              reference='organization'
+              link={canEdit ? undefined : false}
+            >
               <TextField source='name' />
             </ReferenceField>
           </SingleFieldList>
@@ -55,35 +68,37 @@ export const UserList: React.FC = () => {
 
         <ReferenceManyField label='Roles' source='id' reference='user-has-role' target='user'>
           <SingleFieldList linkType={false}>
-            <ReferenceField source='role' reference='role' target='id'>
+            <ReferenceField source='role' reference='role' link={canAccessGlobalResources ? undefined : false}>
               <TextField source='name' />
             </ReferenceField>
           </SingleFieldList>
         </ReferenceManyField>
 
-        <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteUserButton size='small' variant='outlined' />
-        </Toolbar>
+        {canEdit ? (
+          <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
+            <EditButton label='' size='small' variant='outlined' />
+            {canDelete ? <DeleteUserButton size='small' variant='outlined' /> : null}
+          </Toolbar>
+        ) : null}
       </Datagrid>
     </List>
   );
 };
 
-const CustomCreateToolbar: React.FC<ToolbarProps & { saveDisabled?: boolean }> = (props) => (
+const CustomCreateToolbar: React.FC<ToolbarProps & { saveDisabled?: boolean }> = ({ saveDisabled, ...props }) => (
   <Toolbar {...props} style={{ justifyContent: 'space-between' }}>
-    <SaveButton sx={{ flex: 1 }} disabled={props.saveDisabled} />
+    <SaveButton sx={{ flex: 1 }} disabled={saveDisabled} />
   </Toolbar>
 );
 
 export const UserCreate: React.FC<CreateProps> = (props) => {
-  const createUser = useCreateUser();
   const [password, setPassword] = React.useState('');
-  const [password_valid, setPasswordValid] = React.useState(false);
+  const [passwordChecklistValid, setPasswordChecklistValid] = React.useState(false);
+  const passwordValid = passwordChecklistValid && isPasswordWithinBcryptLimit(password);
 
   return (
-    <Create title='Create User' transform={createUser} {...props}>
-      <SimpleForm toolbar={<CustomCreateToolbar saveDisabled={!password_valid} />}>
+    <Create title='Create User' {...props}>
+      <SimpleForm toolbar={<CustomCreateToolbar saveDisabled={!passwordValid} />}>
         <TextInput
           name='email'
           source='email'
@@ -98,7 +113,7 @@ export const UserCreate: React.FC<CreateProps> = (props) => {
           <PasswordInput
             name='password'
             source='password'
-            validate={required()}
+            validate={[required(), maxPasswordBytes]}
             size='large'
             fullWidth={true}
             onChange={(e) => setPassword(e.target.value)}
@@ -110,7 +125,7 @@ export const UserCreate: React.FC<CreateProps> = (props) => {
           minLength={8}
           value={password}
           onChange={(isValid) => {
-            setPasswordValid(isValid);
+            setPasswordChecklistValid(isValid);
           }}
         />
       </SimpleForm>
@@ -118,20 +133,26 @@ export const UserCreate: React.FC<CreateProps> = (props) => {
   );
 };
 
-const CustomToolbar: React.FC<ToolbarProps & { alwaysEnableSaveButton?: boolean }> = ({
+const CustomToolbar: React.FC<ToolbarProps & { alwaysEnableSaveButton?: boolean; canDelete?: boolean }> = ({
   alwaysEnableSaveButton,
+  canDelete = true,
   ...props
 }) => (
   <Toolbar {...props} style={{ justifyContent: 'space-between' }}>
     <SaveButton alwaysEnable={alwaysEnableSaveButton} sx={{ flex: 1 }} />
-    <DeleteUserButton variant='contained' size='large' sx={{ flex: 0.3, marginLeft: '40px' }}>
-      Delete
-    </DeleteUserButton>
+    {canDelete ? (
+      <DeleteUserButton variant='contained' size='large' sx={{ flex: 0.3, marginLeft: '40px' }}>
+        Delete
+      </DeleteUserButton>
+    ) : null}
   </Toolbar>
 );
 
 export const UserEdit: React.FC<EditProps> = (props) => {
   const modifyUser = useModifyUser();
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canManageGlobalControls = !context.enforcementEnabled || context.globalAdmin;
 
   return (
     <Edit
@@ -144,18 +165,19 @@ export const UserEdit: React.FC<EditProps> = (props) => {
         },
       }}
     >
-      <SimpleForm toolbar={<CustomToolbar />}>
+      <SimpleForm toolbar={<CustomToolbar canDelete={canManageGlobalControls} />}>
         <Row>
           <TextInput name='email' source='email' size='large' type='email' validate={[required(), email()]} />
           <TextInput name='username' source='username' size='large' validate={required()} readOnly={true} />
         </Row>
-        <TextInput disabled name='jwt secret' source='jwt secret' size='large' fullWidth={true} />
-        <ChangePasswordButton />
+        {canManageGlobalControls ? <ChangePasswordButton /> : null}
 
         <br />
 
         <ManageOrganizations source='organizationArray' reference='organization membership' target='user' />
-        <ManagePermissions source='permissionArray' reference='user-has-permission' target='user' />
+        {canManageGlobalControls ? (
+          <ManagePermissions source='permissionArray' reference='user-has-permission' target='user' />
+        ) : null}
         <ManageRoles source='roleArray' reference='user-has-role' target='user' />
 
         <br />

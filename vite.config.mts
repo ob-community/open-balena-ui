@@ -3,33 +3,53 @@ import react from '@vitejs/plugin-react-swc';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const clientEnvironmentVariables = [
+  'REACT_APP_BANNER_IMAGE',
+  'REACT_APP_OPEN_BALENA_API_URL',
+  'REACT_APP_OPEN_BALENA_API_VERSION',
+  'REACT_APP_OPEN_BALENA_ODATA_VERSION',
+  'REACT_APP_OPEN_BALENA_REMOTE_URL',
+  'REACT_APP_OPEN_BALENA_UI_URL',
+  'REACT_APP_OPEN_BALENA_UI_VERSION',
+];
+
 export default defineConfig(({ mode }) => {
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const rawEnv = loadEnv(mode, process.cwd(), '');
+  const clientBuildEnvironment = Object.fromEntries(
+    clientEnvironmentVariables.flatMap((key) => (rawEnv[key] ? [[key, rawEnv[key]]] : [])),
+  );
   const port = Number(rawEnv.PORT ?? process.env.PORT ?? 3000);
   const previewPort = Number(rawEnv.PORT ?? process.env.PORT ?? 4173);
 
   return {
     plugins: [react()],
-    envPrefix: ['REACT_APP_', 'VITE_'],
+    envPrefix: [],
     resolve: {
       alias: {
         '@': resolve(currentDir, 'src'),
       },
     },
     define: {
+      __OBUI_BUILD_ENV__: JSON.stringify(clientBuildEnvironment),
       global: 'globalThis',
     },
     server: {
       port,
       open: true,
+      proxy: {
+        '/admin-db': 'http://127.0.0.1:3001',
+        '/device-update-options': 'http://127.0.0.1:3001',
+        '/device-supervisor-target': 'http://127.0.0.1:3001',
+        '/balena-os': 'http://127.0.0.1:3001',
+      },
     },
     preview: {
       port: previewPort,
     },
     build: {
       outDir: 'dist/client',
-      emptyOutDir: false,
+      emptyOutDir: true,
       sourcemap: true,
       rollupOptions: {
         output: {

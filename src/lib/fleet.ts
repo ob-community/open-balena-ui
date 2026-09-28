@@ -2,53 +2,23 @@ import { useDataProvider } from 'react-admin';
 import { useDeleteRelease } from './release';
 import { useDeleteDevice } from './device';
 import { useDeleteService } from '../lib/service';
-import { useGenerateApiKey, useDeleteApiKey } from './apiKey';
 import { deleteAllRelated } from './delete';
-
-export function useCreateFleet() {
-  const dataProvider = useDataProvider();
-  const generateApiKey = useGenerateApiKey();
-
-  return async (data) => {
-    const roles = await dataProvider.getList('role', {
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: {},
-    });
-    // create fleet actor and provisioning API key
-    const fleetActor = await dataProvider.create('actor', { data: {} });
-    data.actor = fleetActor.data.id;
-    const provisioningRole = roles.data.find((x) => x.name === 'provisioning-api-key');
-    const provisioningApiKey = await dataProvider.create('api key', {
-      data: { 'key': generateApiKey(), 'is of-actor': fleetActor.data.id },
-    });
-    await dataProvider.create('api key-has-role', {
-      data: { 'api key': provisioningApiKey.data.id, 'role': provisioningRole.id },
-    });
-    return data;
-  };
-}
-
+import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 export function useDeleteFleet() {
-  const dataProvider = useDataProvider();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const deleteRelease = useDeleteRelease();
   const deleteDevice = useDeleteDevice();
   const deleteService = useDeleteService();
-  const deleteApiKey = useDeleteApiKey();
 
-  return async (fleet) => {
+  return async (fleet, authorizationChecked = false) => {
+    if (!authorizationChecked) {
+      await dataProvider.authorizeResourceActorDeletion({
+        resource: 'application',
+        id: fleet['id'],
+        actorId: fleet['actor'],
+      });
+    }
     // to do: set "should be running-release" to null
-    let relatedIndirectLookups = [
-      {
-        remoteResource: 'api key',
-        remoteField: 'is of-actor',
-        viaRemoteField: 'id',
-        viaResource: 'actor',
-        viaLocalField: 'id',
-        localField: 'actor',
-        deleteFunction: deleteApiKey,
-      },
-    ];
     let relatedDirectLookups = [
       { remoteResource: 'service', remoteField: 'application', localField: 'id', deleteFunction: deleteService },
       {
@@ -67,19 +37,29 @@ export function useDeleteFleet() {
       { remoteResource: 'application environment variable', remoteField: 'application', localField: 'id' },
       { remoteResource: 'application tag', remoteField: 'application', localField: 'id' },
     ];
-    await deleteAllRelated(dataProvider, fleet, relatedIndirectLookups, relatedDirectLookups);
-    await dataProvider.delete('application', { id: fleet['id'] });
-    await dataProvider.delete('actor', { id: fleet['actor'] });
+    await deleteAllRelated(dataProvider, fleet, [], relatedDirectLookups);
+    await dataProvider.deleteResourceActor({
+      resource: 'application',
+      id: fleet['id'],
+      actorId: fleet['actor'],
+    });
     return Promise.resolve();
   };
 }
 
 export function useDeleteFleetBulk() {
-  const dataProvider = useDataProvider();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const deleteFleet = useDeleteFleet();
 
   return async (fleetIds) => {
     const selectedFleets = await dataProvider.getMany('application', { ids: fleetIds });
-    return Promise.all(selectedFleets.data.map((fleet) => deleteFleet(fleet)));
+    await dataProvider.authorizeResourceActorDeletions({
+      records: selectedFleets.data.map((fleet) => ({
+        resource: 'application',
+        id: fleet.id,
+        actorId: fleet.actor,
+      })),
+    });
+    return Promise.all(selectedFleets.data.map((fleet) => deleteFleet(fleet, true)));
   };
 }

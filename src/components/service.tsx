@@ -7,7 +7,7 @@ export const ServiceList: React.FC = () => {
       <Datagrid size='medium' bulkActionButtons={false} rowClick={false}>
         <TextField source='id' />
         <TextField label='Name' source='service name' />
-        <ReferenceField label='Fleet' source='application' reference='application' target='id'>
+        <ReferenceField label='Fleet' source='application' reference='application'>
           <TextField source='app name' />
         </ReferenceField>
       </Datagrid>

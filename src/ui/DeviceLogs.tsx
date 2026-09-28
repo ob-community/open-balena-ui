@@ -1,12 +1,13 @@
-import { Box, useTheme } from '@mui/material';
+import { Box, MenuItem, Select, useTheme } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import React from 'react';
-import { Form, SelectInput, useAuthProvider, useDataProvider, useRecordContext, useNotify } from 'react-admin';
+import { useAuthProvider, useDataProvider, useRecordContext, useNotify } from 'react-admin';
 import type { DataProvider } from 'react-admin';
 import environment from '../lib/reactAppEnv';
 import type { ResourceRecord } from '../types/resource';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
+import { deviceLogServiceEvent, type DeviceLogServiceSelection } from '../lib/deviceServicePresentation';
 
 interface ContainerChoice {
   id: number;
@@ -41,6 +42,19 @@ export const DeviceLogs: React.FC = () => {
   const authProvider = useAuthProvider<OpenBalenaAuthProvider>();
   const notify = useNotify();
   const theme = useTheme();
+
+  React.useEffect(() => {
+    const selectService = (event: Event) => {
+      const { serviceId, serviceName } = (event as CustomEvent<DeviceLogServiceSelection>).detail;
+      setContainers((current) =>
+        current.some(({ id }) => id === serviceId) ? current : [...current, { id: serviceId, name: serviceName }],
+      );
+      setContainer(serviceId);
+    };
+
+    window.addEventListener(deviceLogServiceEvent, selectService);
+    return () => window.removeEventListener(deviceLogServiceEvent, selectService);
+  }, []);
 
   // Get logs colors from theme palette
   const logsPalette = theme.palette.logs;
@@ -186,7 +200,10 @@ export const DeviceLogs: React.FC = () => {
           }
         }
 
-        setContainers(choices);
+        setContainers((current) => {
+          const missingSelections = current.filter(({ id }) => !choices.some((choice) => choice.id === id));
+          return [...choices, ...missingSelections];
+        });
       } catch (error) {
         console.error(error);
         setContainers([{ id: 0, name: 'host' }]);
@@ -204,64 +221,57 @@ export const DeviceLogs: React.FC = () => {
 
   return (
     <>
-      <Form>
-        <Box
-          sx={{
-            'display': 'flex',
-            'padding': '5px 15px',
-            'alignItems': 'center',
-            '.MuiFormHelperText-root, .MuiFormLabel-root': {
-              display: 'none',
-            },
-            '.MuiOutlinedInput-root': {
-              height: '35px',
-            },
-            '.MuiSelect-select': {
-              padding: '9px 14px',
-            },
+      <Box
+        sx={{
+          'display': 'flex',
+          'padding': '5px 15px',
+          'alignItems': 'center',
+          '.MuiOutlinedInput-root': {
+            height: '35px',
+          },
+          '.MuiSelect-select': {
+            padding: '9px 14px',
+          },
+        }}
+      >
+        <strong style={{ flex: 1 }}>Logs</strong>
+
+        <Select
+          aria-label='Log container'
+          disabled={containers.length === 0}
+          displayEmpty
+          size='small'
+          value={container}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === 'default') {
+              setContainer('default');
+              return;
+            }
+
+            const numericValue = Number(value);
+            setContainer(Number.isNaN(numericValue) ? 'default' : numericValue);
           }}
         >
-          <strong style={{ flex: 1 }}>Logs</strong>
+          <MenuItem value='default'>Select Container</MenuItem>
+          {containers.map((choice) => (
+            <MenuItem key={choice.id} value={choice.id}>
+              {choice.name}
+            </MenuItem>
+          ))}
+        </Select>
 
-          <SelectInput
-            source='container'
-            disabled={containers.length === 0}
-            choices={containers}
-            defaultValue='default'
-            emptyText='Select Container'
-            emptyValue='default'
-            size='small'
-            label=''
-            onChange={(event) => {
-              const value = event.target.value;
-
-              if (value === 'default') {
-                setContainer('default');
-                return;
-              }
-
-              if (typeof value === 'number') {
-                setContainer(value);
-                return;
-              }
-
-              const numericValue = Number(value);
-              setContainer(Number.isNaN(numericValue) ? 'default' : numericValue);
-            }}
-          />
-
-          <IconButton
-            disabled={container === 'default'}
-            size='small'
-            sx={{ ml: '10px' }}
-            onClick={() => {
-              void updateLogs();
-            }}
-          >
-            <RefreshIcon />
-          </IconButton>
-        </Box>
-      </Form>
+        <IconButton
+          disabled={container === 'default'}
+          size='small'
+          sx={{ ml: '10px' }}
+          onClick={() => {
+            void updateLogs();
+          }}
+        >
+          <RefreshIcon />
+        </IconButton>
+      </Box>
 
       <Box
         ref={logsContainerRef}

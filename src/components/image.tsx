@@ -1,6 +1,14 @@
 import dateFormat from 'dateformat';
 import * as React from 'react';
-import { Datagrid, FunctionField, List, ReferenceField, TextField } from 'react-admin';
+import {
+  Datagrid,
+  FunctionField,
+  List,
+  ReferenceField,
+  ReferenceManyField,
+  SingleFieldList,
+  TextField,
+} from 'react-admin';
 import SemVerChip from '../ui/SemVerChip';
 
 export const ImageList: React.FC = () => {
@@ -9,26 +17,26 @@ export const ImageList: React.FC = () => {
       <Datagrid bulkActionButtons={false} rowClick={false} size='medium'>
         <TextField label='ID' source='id' />
 
-        <ReferenceField label='Service' source='is a build of-service' reference='service' target='id'>
+        <ReferenceField label='Service' source='is a build of-service' reference='service'>
           <TextField source='service name' />
         </ReferenceField>
 
-        <ReferenceField
+        <ReferenceManyField
           label='Release Rev.'
           source='id'
           reference='image-is part of-release'
           target='image'
-          link={false}
         >
-          <ReferenceField
-            source='is part of-release'
-            reference='release'
-            target='id'
-            link={(record, reference) => `/${reference}/${record['is part of-release']}`}
-          >
-            <SemVerChip />
-          </ReferenceField>
-        </ReferenceField>
+          <SingleFieldList linkType={false}>
+            <ReferenceField
+              source='is part of-release'
+              reference='release'
+              link={(record, reference) => `/${reference}/${record['is part of-release']}`}
+            >
+              <SemVerChip />
+            </ReferenceField>
+          </SingleFieldList>
+        </ReferenceManyField>
 
         <FunctionField
           label='Size'

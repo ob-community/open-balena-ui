@@ -16,27 +16,33 @@ import {
   required,
 } from 'react-admin';
 import Row from '../ui/Row';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 export const DeviceFamilyList: React.FC = () => {
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canManage = !context.enforcementEnabled || context.globalAdmin;
+
   return (
-    <List title='Device Families'>
-      <Datagrid size='medium' rowClick={false}>
+    <List title='Device Families' actions={canManage ? undefined : false}>
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={canManage ? undefined : false}>
         <TextField label='Slug' source='slug' />
         <TextField label='Name' source='name' />
         <ReferenceField
           label='Manufacturer'
           source='is manufactured by-device manufacturer'
           reference='device manufacturer'
-          target='id'
           link={false}
         >
           <TextField source='name' />
         </ReferenceField>
 
-        <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
-        </Toolbar>
+        {canManage ? (
+          <Toolbar>
+            <EditButton label='' size='small' variant='outlined' />
+            <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          </Toolbar>
+        ) : null}
       </Datagrid>
     </List>
   );

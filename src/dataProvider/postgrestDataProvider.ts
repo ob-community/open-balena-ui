@@ -2,6 +2,7 @@
 
 import queryString from 'query-string';
 import { fetchUtils } from 'ra-core';
+import { requestSignal } from './requestSignal';
 import { usesVpnOnlineStatus } from '../lib/deviceStatus';
 
 const legacyConnectivityGroups = {
@@ -127,20 +128,6 @@ const getQuery = (primaryKey, ids, resource) => {
   }
 };
 
-const getKeyData = (primaryKey, data) => {
-  if (isCompoundKey(primaryKey)) {
-    return primaryKey.reduce(
-      (keyData, key) => ({
-        ...keyData,
-        [key]: data[key],
-      }),
-      {},
-    );
-  } else {
-    return { [primaryKey[0]]: data[primaryKey[0]] };
-  }
-};
-
 const getLegacyConnectivityOrderBy = (order, primaryKey) => {
   const direction = order.toLowerCase();
 
@@ -162,8 +149,7 @@ const getOrderBy = (field, order, primaryKey, connectivityUsesVpn = usesVpnOnlin
         (versionField) => `${versionField}.${direction}`,
       ),
       ...primaryKey.map((key) => `${key}.${direction}`),
-    ]
-      .join(',');
+    ].join(',');
   }
 
   if (field === 'connectivity') {
@@ -292,6 +278,7 @@ export const postgrestDataProvider = (
   primaryKeys = defaultPrimaryKeys,
   connectivityUsesVpn = usesVpnOnlineStatus,
 ) => ({
+  supportAbortSignal: true,
   getList: async (resource, params) => {
     const primaryKey = getPrimaryKey(resource, primaryKeys);
 
@@ -327,6 +314,7 @@ export const postgrestDataProvider = (
         resource,
         query: listQuery,
         options: {
+          signal: requestSignal(params),
           headers: new Headers({
             Accept: 'application/json',
             Prefer: 'count=exact',
@@ -349,6 +337,7 @@ export const postgrestDataProvider = (
     };
     // add header that Content-Range is in returned header
     const options = {
+      signal: requestSignal(params),
       headers: new Headers({
         Accept: 'application/json',
         Prefer: 'count=exact',
@@ -374,6 +363,7 @@ export const postgrestDataProvider = (
     const url = `${apiUrl}/${resource}?${query}`;
 
     return httpClient(url, {
+      signal: requestSignal(params),
       headers: new Headers({ accept: 'application/vnd.pgrst.object+json' }),
     }).then(({ json }) => ({
       data: dataWithId(json, primaryKey),
@@ -388,7 +378,9 @@ export const postgrestDataProvider = (
 
     const url = `${apiUrl}/${resource}?${query}`;
 
-    return httpClient(url).then(({ json }) => ({ data: json.map((data) => dataWithId(data, primaryKey)) }));
+    return httpClient(url, { signal: requestSignal(params) }).then(({ json }) => ({
+      data: json.map((data) => dataWithId(data, primaryKey)),
+    }));
   },
 
   getManyReference: (resource, params) => {
@@ -408,6 +400,7 @@ export const postgrestDataProvider = (
 
     // add header that Content-Range is in returned header
     const options = {
+      signal: requestSignal(params),
       headers: new Headers({
         Accept: 'application/json',
         Prefer: 'count=exact',
@@ -453,14 +446,12 @@ export const postgrestDataProvider = (
 
     const query = getQuery(primaryKey, id, resource);
 
-    const primaryKeyData = getKeyData(primaryKey, data);
-
     const url = `${apiUrl}/${resource}?${query}`;
 
-    const body = JSON.stringify({
-      ...data,
-      ...primaryKeyData,
-    });
+    const updateData = { ...data };
+    delete updateData.id;
+    primaryKey.forEach((key) => delete updateData[key]);
+    const body = JSON.stringify(updateData);
 
     return httpClient(url, {
       method: 'PATCH',
@@ -479,17 +470,10 @@ export const postgrestDataProvider = (
 
     const query = getQuery(primaryKey, ids, resource);
 
-    const body = JSON.stringify(
-      params.data.map((obj) => {
-        const { id, ...data } = obj;
-        const primaryKeyData = getKeyData(primaryKey, data);
-
-        return {
-          ...data,
-          ...primaryKeyData,
-        };
-      }),
-    );
+    const data = { ...params.data };
+    delete data.id;
+    primaryKey.forEach((key) => delete data[key]);
+    const body = JSON.stringify(data);
 
     const url = `${apiUrl}/${resource}?${query}`;
 

@@ -3,21 +3,19 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { Box, Button, CardActions, Typography } from '@mui/material';
-import {
-  EditButton,
-  FunctionField,
-  ReferenceField,
-  TextField,
-  useAuthProvider,
-  useNotify,
-  useRecordContext,
-} from 'react-admin';
-import { LastOnlineField, OnlineField } from '../../components/device';
-import utf8decode from '../../lib/utf8decode';
+import { FunctionField, ReferenceField, TextField, useAuthProvider, useNotify, useRecordContext } from 'react-admin';
+import { OnlineField } from '../../components/device';
+import { useReconcileDeviceServices } from '../../lib/device';
 import environment from '../../lib/reactAppEnv';
+import utf8decode from '../../lib/utf8decode';
 import { ConfirmationDialog, type ConfirmationDialogProps } from '../../ui/ConfirmationDialog';
 import type { RaRecord } from 'react-admin';
 import { deviceOnlineStatusField, isDeviceOnline } from '../../lib/deviceStatus';
+import { DeviceFieldEditor, loadFleetChoices } from '../../ui/DeviceFieldEditor';
+import { HeartbeatStatusIcon, VpnStatusIcon } from '../../ui/DeviceConnectivityStatusIcon';
+import versions from '../../versions';
+
+const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 const styles = {
   actionCard: {
@@ -48,6 +46,7 @@ const ControlsWidget: React.FC = () => {
   const authProvider = useAuthProvider();
   const notify = useNotify();
   const record = useRecordContext<DeviceRecord>();
+  const reconcileDeviceServices = useReconcileDeviceServices();
 
   const [confirmationDialog, setConfirmationDialog] = React.useState<ConfirmationDialogProps | null>(null);
 
@@ -101,35 +100,81 @@ const ControlsWidget: React.FC = () => {
 
   return (
     <>
-      <Typography variant='h5' component='h2' gutterBottom>
+      <Typography variant='h4' component='h2' gutterBottom>
         {record['device name']}
+        <DeviceFieldEditor
+          source='device name'
+          title='Device name'
+          currentValue={record['device name']}
+          required
+          iconOnly
+        />
       </Typography>
 
-      <Box maxWidth='40em'>
-        <p style={{ marginBottom: '5px' }}>
-          <b>Fleet: </b>
-          <ReferenceField source='belongs to-application' reference='application' target='id'>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, minmax(0, 1fr))',
+            md: 'minmax(0, 1.25fr) minmax(0, 1fr) minmax(max-content, 0.75fr)',
+            lg: 'repeat(4, minmax(0, 1fr))',
+          },
+          columnGap: 4,
+          rowGap: 1,
+        }}
+      >
+        <Box>
+          <b>
+            Fleet
+            <DeviceFieldEditor
+              source='belongs to-application'
+              title='Fleet'
+              currentValue={record['belongs to-application']}
+              required
+              iconOnly
+              loadChoices={loadFleetChoices}
+              updateData={(applicationId) => ({
+                'belongs to-application': applicationId,
+                [isPinnedOnRelease]: null,
+              })}
+              onUpdated={(applicationId) => reconcileDeviceServices(record.id, applicationId as number | string)}
+            />
+            :{' '}
+          </b>
+          <ReferenceField source='belongs to-application' reference='application'>
             <TextField source='app name' style={{ fontSize: '12pt' }} />
           </ReferenceField>
-        </p>
+        </Box>
 
-        <p style={{ margin: 0 }}>
+        <Box>
           <b>Status: </b>
           <OnlineField source={deviceOnlineStatusField} />
-        </p>
+        </Box>
 
-        {!isDeviceOnline(record) && (
-          <p style={{ margin: '4px 0 0' }}>
-            <b>Last online: </b>
-            <LastOnlineField source='last connectivity event' />
-          </p>
-        )}
+        <Box
+          sx={{
+            display: { xs: 'flex', lg: 'contents' },
+            flexDirection: 'column',
+            gap: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <b>Heartbeat:</b>
+            <FunctionField render={(fieldRecord) => <HeartbeatStatusIcon record={fieldRecord} />} />
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <b>VPN:</b>
+            <FunctionField render={(fieldRecord) => <VpnStatusIcon record={fieldRecord} />} />
+          </Box>
+        </Box>
 
         {record.note && (
-          <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
+          <Box sx={{ gridColumn: '1 / -1', whiteSpace: 'pre-wrap' }}>
             <b>Note: </b>
             {record.note}
-          </p>
+          </Box>
         )}
       </Box>
 
@@ -140,8 +185,6 @@ const ControlsWidget: React.FC = () => {
 
             return (
               <>
-                <EditButton label='Edit' size='medium' variant='outlined' color='secondary' />
-
                 {!isOffline && (
                   <>
                     <Button

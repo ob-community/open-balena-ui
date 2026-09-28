@@ -1,4 +1,4 @@
-import Chip from '@mui/material/Chip';
+import { Alert, Chip, TextField as MuiTextField } from '@mui/material';
 import * as React from 'react';
 import {
   Create,
@@ -25,19 +25,21 @@ import {
   useUnique,
   required,
 } from 'react-admin';
-import { useCreateApiKey, useGenerateApiKey, useModifyApiKey } from '../lib/apiKey';
+import { useCreateApiKey, useModifyApiKey } from '../lib/apiKey';
 import ActorFilter from '../ui/ActorFilter';
 import CopyChip from '../ui/CopyChip';
 import DeleteApiKeyButton from '../ui/DeleteApiKeyButton';
 import ManagePermissions from '../ui/ManagePermissions';
 import ManageRoles from '../ui/ManageRoles';
 import Row from '../ui/Row';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
 import type { Identifier, RaRecord } from 'react-admin';
 
 interface ActorFieldProps {
   record: RaRecord<Identifier>;
   label?: string;
+  link?: boolean;
 }
 
 interface ActorRecord {
@@ -46,7 +48,7 @@ interface ActorRecord {
   actorLink?: string;
 }
 
-const ActorField: React.FC<ActorFieldProps> = ({ record }) => {
+const ActorField: React.FC<ActorFieldProps> = ({ record, link = true }) => {
   const dataProvider = React.useContext(DataProviderContext);
   const [actorRecord, setActorRecord] = React.useState<ActorRecord>({});
 
@@ -100,13 +102,14 @@ const ActorField: React.FC<ActorFieldProps> = ({ record }) => {
     return 'Unassigned';
   };
 
-  return <Chip label={generateLabel()} href={actorRecord.actorLink} component='a' clickable />;
+  return link ? (
+    <Chip label={generateLabel()} href={actorRecord.actorLink} component='a' clickable />
+  ) : (
+    <Chip label={generateLabel()} />
+  );
 };
 
-const apiKeyFilters = [
-  <SearchInput key='search' source='#key,name,description@ilike' alwaysOn />,
-  <ActorFilter key='actor' alwaysOn />,
-];
+const apiKeyFilters = [<SearchInput key='search' source='name@ilike' alwaysOn />, <ActorFilter key='actor' alwaysOn />];
 
 const CustomBulkActionButtons: React.FC = (props) => {
   const { selectedIds } = useListContext();
@@ -119,6 +122,21 @@ const CustomBulkActionButtons: React.FC = (props) => {
   );
 };
 
+const ApiKeyActions: React.FC<{ manageableIds: Set<number> }> = ({ manageableIds }) => {
+  const record = useRecordContext<RaRecord<Identifier>>();
+  const recordId = Number(record?.id);
+  if (!record || !Number.isInteger(recordId) || !manageableIds.has(recordId)) {
+    return null;
+  }
+
+  return (
+    <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
+      <EditButton label='' size='small' variant='outlined' />
+      <DeleteApiKeyButton size='small' variant='outlined' />
+    </Toolbar>
+  );
+};
+
 const ActorFieldWrapper: React.FC<Omit<ActorFieldProps, 'record'>> = (props) => {
   const record = useRecordContext<RaRecord<Identifier>>();
   if (!record) {
@@ -128,51 +146,66 @@ const ActorFieldWrapper: React.FC<Omit<ActorFieldProps, 'record'>> = (props) => 
 };
 
 export const ApiKeyList: React.FC = () => {
+  const { context } = useAdminAccessContext();
+  const canAccessGlobalResources = context != null && (!context.enforcementEnabled || context.globalAdmin);
+  const canEditActors =
+    context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
+  const manageableApiKeyIds = React.useMemo(
+    () => new Set(context?.manageableApiKeyIds ?? []),
+    [context?.manageableApiKeyIds],
+  );
+
   return (
     <List filters={apiKeyFilters} sx={{ '& .RaList-actions': { marginBottom: 2 } }}>
-      <Datagrid size='medium' rowClick={false} bulkActionButtons={<CustomBulkActionButtons />}>
+      <Datagrid
+        size='medium'
+        rowClick={false}
+        isRowSelectable={(record) => manageableApiKeyIds.has(Number(record.id))}
+        bulkActionButtons={<CustomBulkActionButtons />}
+      >
         <FunctionField
           label='API Key'
-          render={(record) => <CopyChip title={record.key} label={record.key.slice(0, 10) + '...'} />}
+          render={(record) =>
+            record.key ? <CopyChip title={record.key} label={record.key.slice(0, 10) + '...'} /> : <span>Hidden</span>
+          }
         />
 
         <TextField label='Name' source='name' />
-        <ActorFieldWrapper label='Assigned To' />
+        <ActorFieldWrapper label='Assigned To' link={canEditActors} />
 
         <ReferenceManyField label='Roles' source='id' reference='api key-has-role' target='api key'>
           <SingleFieldList linkType={false}>
-            <ReferenceField source='role' reference='role' target='id'>
+            <ReferenceField source='role' reference='role' link={canAccessGlobalResources ? undefined : false}>
               <TextField source='name' />
             </ReferenceField>
           </SingleFieldList>
         </ReferenceManyField>
 
-        <Toolbar style={{ minHeight: 0, minWidth: 0, padding: 0, margin: 0, background: 0, textAlign: 'center' }}>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteApiKeyButton size='small' variant='outlined' />
-        </Toolbar>
+        <ApiKeyActions manageableIds={manageableApiKeyIds} />
       </Datagrid>
     </List>
   );
 };
 
 export const ApiKeyCreate: React.FC = (props) => {
-  const generateApiKey = useGenerateApiKey();
   const createApiKey = useCreateApiKey();
   const unique = useUnique();
+  const { context: accessContext, error, isPending } = useAdminAccessContext();
+  if (isPending) return null;
+  if (!accessContext?.ownActorId) {
+    return <Alert severity='error'>{error?.message ?? 'The authenticated user does not have an actor.'}</Alert>;
+  }
+  const canManageResourceKeys =
+    !accessContext.enforcementEnabled || accessContext.globalAdmin || accessContext.organizationAdmin;
+  const transform = (data: Record<string, unknown>) =>
+    createApiKey({
+      ...data,
+      ...(!canManageResourceKeys ? { userActor: accessContext.ownActorId } : {}),
+    });
 
   return (
-    <Create {...props} transform={createApiKey}>
-      <SimpleForm>
-        <TextInput
-          source='key'
-          defaultValue={generateApiKey()}
-          size='large'
-          fullWidth={true}
-          validate={[required(), unique()]}
-          readOnly={true}
-        />
-
+    <Create {...props} transform={transform}>
+      <SimpleForm defaultValues={!canManageResourceKeys ? { userActor: accessContext.ownActorId } : undefined}>
         <Row>
           {' '}
           <TextInput source='name' size='large' validate={[required(), unique()]} />
@@ -180,38 +213,63 @@ export const ApiKeyCreate: React.FC = (props) => {
         </Row>
 
         <Row>
-          <FormDataConsumer>
-            {({ formData, ...rest }) => {
-              const disable = !!(formData.deviceActor || formData.fleetActor);
-              return (
-                <ReferenceInput source='userActor' reference='user' {...rest}>
-                  <SelectInput optionText='username' optionValue='actor' resettable disabled={disable} />
-                </ReferenceInput>
-              );
-            }}
-          </FormDataConsumer>
+          {canManageResourceKeys ? (
+            <FormDataConsumer>
+              {({ formData, ...rest }) => {
+                const disable = !!formData.deviceActor || !!formData.fleetActor;
+                return (
+                  <SelectInput
+                    source='userActor'
+                    label='My Account'
+                    choices={[
+                      {
+                        id: accessContext.ownActorId,
+                        name: accessContext.username ?? `User ${accessContext.userId}`,
+                      },
+                    ]}
+                    optionText='name'
+                    optionValue='id'
+                    resettable
+                    disabled={disable}
+                    {...rest}
+                  />
+                );
+              }}
+            </FormDataConsumer>
+          ) : (
+            <MuiTextField
+              label='My Account'
+              value={accessContext.username ?? `User ${accessContext.userId}`}
+              disabled
+              fullWidth
+            />
+          )}
 
-          <FormDataConsumer>
-            {({ formData, ...rest }) => {
-              const disable = !!(formData.userActor || formData.fleetActor);
-              return (
-                <ReferenceInput source='deviceActor' reference='device' {...rest}>
-                  <SelectInput optionText='device name' optionValue='actor' resettable disabled={disable} />
-                </ReferenceInput>
-              );
-            }}
-          </FormDataConsumer>
+          {canManageResourceKeys ? (
+            <>
+              <FormDataConsumer>
+                {({ formData, ...rest }) => {
+                  const disable = !!formData.userActor || !!formData.fleetActor;
+                  return (
+                    <ReferenceInput source='deviceActor' reference='device' {...rest}>
+                      <SelectInput optionText='device name' optionValue='actor' resettable disabled={disable} />
+                    </ReferenceInput>
+                  );
+                }}
+              </FormDataConsumer>
 
-          <FormDataConsumer>
-            {({ formData, ...rest }) => {
-              const disable = !!(formData.userActor || formData.deviceActor);
-              return (
-                <ReferenceInput source='fleetActor' reference='application' {...rest}>
-                  <SelectInput optionText='app name' optionValue='actor' resettable disabled={disable} />
-                </ReferenceInput>
-              );
-            }}
-          </FormDataConsumer>
+              <FormDataConsumer>
+                {({ formData, ...rest }) => {
+                  const disable = !!formData.userActor || !!formData.deviceActor;
+                  return (
+                    <ReferenceInput source='fleetActor' reference='application' {...rest}>
+                      <SelectInput optionText='app name' optionValue='actor' resettable disabled={disable} />
+                    </ReferenceInput>
+                  );
+                }}
+              </FormDataConsumer>
+            </>
+          ) : null}
         </Row>
       </SimpleForm>
     </Create>
@@ -230,6 +288,9 @@ const CustomToolbar = (props) => {
 
 export const ApiKeyEdit: React.FC = () => {
   const modifyApiKey = useModifyApiKey();
+  const { context: accessContext, isPending } = useAdminAccessContext();
+  if (isPending || !accessContext) return null;
+  const canManagePrivileges = !accessContext.enforcementEnabled || accessContext.globalAdmin;
 
   return (
     <Edit
@@ -242,15 +303,17 @@ export const ApiKeyEdit: React.FC = () => {
       }}
     >
       <SimpleForm toolbar={<CustomToolbar />}>
-        <TextInput source='key' size='large' fullWidth={true} validate={required()} readOnly={true} />
-
         <Row>
           <TextInput source='name' size='large' validate={required()} />
           <TextInput source='description' size='large' />
         </Row>
 
-        <ManagePermissions source='permissionArray' reference='api key-has-permission' target='api key' />
-        <ManageRoles source='roleArray' reference='api key-has-role' target='api key' />
+        {canManagePrivileges ? (
+          <>
+            <ManagePermissions source='permissionArray' reference='api key-has-permission' target='api key' />
+            <ManageRoles source='roleArray' reference='api key-has-role' target='api key' />
+          </>
+        ) : null}
       </SimpleForm>
     </Edit>
   );

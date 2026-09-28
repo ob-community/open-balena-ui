@@ -1,26 +1,9 @@
 import { useDataProvider } from 'react-admin';
-import { useGenerateApiKey, useDeleteApiKey } from './apiKey';
 import { deleteAllRelated } from './delete';
+import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 
 export function useCreateDevice() {
-  const dataProvider = useDataProvider();
-  const generateApiKey = useGenerateApiKey();
-
-  return async (data) => {
-    const roles = await dataProvider.getList('role', {
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: {},
-    });
-    // create device actor and device API key
-    const deviceRole = roles.data.find((x) => x.name === 'device-api-key');
-    const deviceActor = await dataProvider.create('actor', { data: {} });
-    data.actor = deviceActor.data.id;
-    const deviceApiKey = await dataProvider.create('api key', {
-      data: { 'key': generateApiKey(), 'is of-actor': deviceActor.data.id },
-    });
-    await dataProvider.create('api key-has-role', { data: { 'api key': deviceApiKey.data.id, 'role': deviceRole.id } });
-
+  return (data) => {
     // delete unused field
     delete data['operated by-application'];
     return data;
@@ -46,20 +29,20 @@ export function useSetServicesForNewDevice() {
   };
 }
 
-export function useModifyDevice() {
+export function useReconcileDeviceServices() {
   const dataProvider = useDataProvider();
 
-  return async (data) => {
+  return async (deviceId: number | string, applicationId: number | string) => {
     let existingMappings = await dataProvider.getList('service install', {
       pagination: { page: 1, perPage: 1000 },
       sort: { field: 'id', order: 'ASC' },
-      filter: { device: data.id },
+      filter: { device: deviceId },
     });
     let existingData = existingMappings.data.map((x) => x['installs-service']);
     let newMappings = await dataProvider.getList('service', {
       pagination: { page: 1, perPage: 1000 },
       sort: { field: 'id', order: 'ASC' },
-      filter: { application: data['belongs to-application'] },
+      filter: { application: applicationId },
     });
     let newData = newMappings.data.map((x) => x.id);
     let deleteIds = existingMappings.data
@@ -86,20 +69,23 @@ export function useModifyDevice() {
     await Promise.all(deleteIds.map((deleteId) => dataProvider.delete('service install', { id: deleteId })));
     await Promise.all(
       createData.map((createDataItem) =>
-        dataProvider.create('service install', { data: { 'device': data.id, 'installs-service': createDataItem } }),
+        dataProvider.create('service install', { data: { 'device': deviceId, 'installs-service': createDataItem } }),
       ),
     );
-    // delete unused field
-    delete data['operated by-application'];
-    return data;
   };
 }
 
 export function useDeleteDevice() {
-  const dataProvider = useDataProvider();
-  const deleteApiKey = useDeleteApiKey();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
 
-  return async (device) => {
+  return async (device, authorizationChecked = false) => {
+    if (!authorizationChecked) {
+      await dataProvider.authorizeResourceActorDeletion({
+        resource: 'device',
+        id: device['id'],
+        actorId: device['actor'],
+      });
+    }
     let relatedIndirectLookups = [
       {
         remoteResource: 'device service environment variable',
@@ -108,15 +94,6 @@ export function useDeleteDevice() {
         viaResource: 'service install',
         viaLocalField: 'device',
         localField: 'id',
-      },
-      {
-        remoteResource: 'api key',
-        remoteField: 'is of-actor',
-        viaRemoteField: 'id',
-        viaResource: 'actor',
-        viaLocalField: 'id',
-        localField: 'actor',
-        deleteFunction: deleteApiKey,
       },
     ];
     let relatedDirectLookups = [
@@ -127,18 +104,28 @@ export function useDeleteDevice() {
       { remoteResource: 'image install', remoteField: 'device', localField: 'id' },
     ];
     await deleteAllRelated(dataProvider, device, relatedIndirectLookups, relatedDirectLookups);
-    await dataProvider.delete('device', { id: device['id'] });
-    await dataProvider.delete('actor', { id: device['actor'] });
+    await dataProvider.deleteResourceActor({
+      resource: 'device',
+      id: device['id'],
+      actorId: device['actor'],
+    });
     return Promise.resolve();
   };
 }
 
 export function useDeleteDeviceBulk() {
-  const dataProvider = useDataProvider();
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const deleteDevice = useDeleteDevice();
 
   return async (deviceIds) => {
     const selectedDevices = await dataProvider.getMany('device', { ids: deviceIds });
-    return Promise.all(selectedDevices.data.map((device) => deleteDevice(device)));
+    await dataProvider.authorizeResourceActorDeletions({
+      records: selectedDevices.data.map((device) => ({
+        resource: 'device',
+        id: device.id,
+        actorId: device.actor,
+      })),
+    });
+    return Promise.all(selectedDevices.data.map((device) => deleteDevice(device, true)));
   };
 }

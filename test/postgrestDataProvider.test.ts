@@ -3,7 +3,7 @@ import test from 'node:test';
 import postgrestDataProvider from '../src/dataProvider/postgrestDataProvider';
 
 type DeviceRecord = {
-  id: number;
+  'id': number;
   'api heartbeat state': 'online' | 'offline' | 'timeout' | 'unknown';
   'changed api heartbeat state on-date': string;
   'last connectivity event': string;
@@ -12,7 +12,7 @@ type DeviceRecord = {
 
 const onlineDevices: DeviceRecord[] = [
   {
-    id: 1,
+    'id': 1,
     'api heartbeat state': 'online',
     'changed api heartbeat state on-date': '2026-09-10T12:00:00Z',
     'last connectivity event': '2026-09-10T12:00:00Z',
@@ -22,21 +22,21 @@ const onlineDevices: DeviceRecord[] = [
 
 const offlineDevices: DeviceRecord[] = [
   {
-    id: 2,
+    'id': 2,
     'api heartbeat state': 'offline',
     'changed api heartbeat state on-date': '2026-09-09T12:00:00Z',
     'last connectivity event': '2026-09-09T12:00:00Z',
     'device name': 'Offline',
   },
   {
-    id: 3,
+    'id': 3,
     'api heartbeat state': 'timeout',
     'changed api heartbeat state on-date': '2026-09-08T12:00:00Z',
     'last connectivity event': '2026-09-08T12:00:00Z',
     'device name': 'Timeout',
   },
   {
-    id: 4,
+    'id': 4,
     'api heartbeat state': 'unknown',
     'changed api heartbeat state on-date': '2026-09-07T12:00:00Z',
     'last connectivity event': '2026-09-07T12:00:00Z',
@@ -107,14 +107,8 @@ test('legacy connectivity pagination keeps heartbeat-online devices ahead of eve
   assert.deepEqual(getIds(result), [1, 2, 3]);
   assert.equal(result.total, 4);
   assert.equal(requests.length, 4);
-  assert.ok(
-    requests.every((request) => request.searchParams.get('belongs to-application') === 'eq.42'),
-  );
-  assert.ok(
-    requests.some(
-      (request) => request.searchParams.get('and') === '(api heartbeat state.eq.online)',
-    ),
-  );
+  assert.ok(requests.every((request) => request.searchParams.get('belongs to-application') === 'eq.42'));
+  assert.ok(requests.some((request) => request.searchParams.get('and') === '(api heartbeat state.eq.online)'));
   assert.ok(
     requests.some(
       (request) => request.searchParams.get('and') === '(api heartbeat state.in.(offline,timeout,unknown))',

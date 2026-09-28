@@ -14,6 +14,7 @@ interface LoginParams {
 interface OpenBalenaJwtPayload extends JwtPayload {
   permissions?: string[];
   id?: number;
+  username?: string;
   [key: string]: unknown;
 }
 
@@ -38,6 +39,25 @@ const decodeToken = (token: string | null): OpenBalenaJwtPayload => {
   }
 
   return jwtDecode<OpenBalenaJwtPayload>(token);
+};
+
+const getUsername = async (token: string, payload: OpenBalenaJwtPayload): Promise<string> => {
+  if (typeof payload.username === 'string' && payload.username.trim()) {
+    return payload.username;
+  }
+
+  const response = await fetch('/admin-db/actions/access-context', {
+    headers: new Headers({ Authorization: `Bearer ${token}` }),
+  });
+  if (!response.ok) {
+    throw new Error(`Unable to load the authenticated user identity (HTTP ${response.status}).`);
+  }
+
+  const context = (await response.json()) as { username?: unknown };
+  if (typeof context.username !== 'string' || !context.username.trim()) {
+    throw new Error('The authenticated user record does not have a username.');
+  }
+  return context.username;
 };
 
 const authProvider: OpenBalenaAuthProvider = {
@@ -75,9 +95,24 @@ const authProvider: OpenBalenaAuthProvider = {
     const jwt = readToken();
     return jwt ? Promise.resolve(decodeToken(jwt).permissions) : Promise.reject();
   },
-  checkError: (error: { status?: number }) => {
+  getIdentity: async () => {
+    const jwt = readToken();
+    if (!jwt) {
+      return Promise.reject();
+    }
+    const payload = decodeToken(jwt);
+    const id = Number(payload.id ?? payload.sub);
+    if (!Number.isInteger(id) || id <= 0) {
+      return Promise.reject(new Error('Authenticated token does not identify a user.'));
+    }
+    return {
+      id,
+      fullName: await getUsername(jwt, payload),
+    };
+  },
+  checkError: (error: { status?: number; body?: { code?: string } }) => {
     const status = error.status;
-    if (status === 504 || status === 403) {
+    if (status === 401 || status === 504) {
       localStorage.removeItem('auth');
       return Promise.reject();
     }

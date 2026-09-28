@@ -1,13 +1,10 @@
-import { Tooltip, useTheme } from '@mui/material';
+import { useTheme } from '@mui/material';
 import type { Theme } from '@mui/material/styles';
-import dateFormat from 'dateformat';
 import * as React from 'react';
 import {
   Create,
   CreateButton,
   Datagrid,
-  Edit,
-  EditButton,
   ExportButton,
   FilterButton,
   FormDataConsumer,
@@ -36,7 +33,7 @@ import {
   ListProps,
 } from 'react-admin';
 import { v4 as uuidv4 } from 'uuid';
-import { useCreateDevice, useModifyDevice, useSetServicesForNewDevice } from '../lib/device';
+import { useCreateDevice, useSetServicesForNewDevice } from '../lib/device';
 import CopyChip from '../ui/CopyChip';
 import DeleteDeviceButton, { DeleteDeviceButtonProps } from '../ui/DeleteDeviceButton';
 import DeviceConnectButton from '../ui/DeviceConnectButton';
@@ -51,46 +48,12 @@ import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
 import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
 import DeviceUpdateStatusIcon from '../ui/DeviceUpdateStatusIcon';
-import {
-  deviceOnlineStatusField,
-  getDeviceStatusTimestamp,
-  isDeviceOnline,
-  isDeviceUpdating,
-} from '../lib/deviceStatus';
+import { deviceOnlineStatusField, getDeviceOverallState, isDeviceOnline, isDeviceUpdating } from '../lib/deviceStatus';
+import ConnectionLastConnected from '../ui/ConnectionLastConnected';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const deviceStatusRefreshInterval = 30000;
-
-const parseDeviceDate = (value: unknown): Date | null => {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const formatElapsedTime = (referenceDate: Date): string => {
-  const elapsedMilliseconds = Math.max(0, Date.now() - referenceDate.getTime());
-  const elapsedDays = Math.floor(elapsedMilliseconds / 86400000);
-
-  if (elapsedDays >= 1) {
-    return `${elapsedDays} ${elapsedDays === 1 ? 'day' : 'days'}`;
-  }
-
-  const elapsedMinutes = Math.floor(elapsedMilliseconds / 60000);
-  return `${elapsedMinutes} ${elapsedMinutes === 1 ? 'minute' : 'minutes'}`;
-};
-
-const ElapsedTime: React.FC<{ referenceDate: Date; prefix?: string; suffix?: string }> = ({
-  referenceDate,
-  prefix = '',
-  suffix = '',
-}) => (
-  <Tooltip placement='top' arrow title={dateFormat(referenceDate)}>
-    <span>{`${prefix}${formatElapsedTime(referenceDate)}${suffix}`}</span>
-  </Tooltip>
-);
 
 export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -102,44 +65,29 @@ export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (p
         if (!source) {
           return null;
         }
-        const online = isDeviceOnline(record);
-        const heartbeatOnline = record['api heartbeat state'] === 'online';
-        const noVpn = !online && heartbeatOnline && record['is connected to vpn'] !== true;
-        const status = online ? 'Online' : noVpn ? 'NO VPN' : 'Offline';
-        const statusColor = online
-          ? theme.palette.success.light
-          : noVpn
-            ? theme.palette.warning.main
-            : theme.palette.error.light;
-        const statusTimestamp = getDeviceStatusTimestamp(record);
-        const statusSince = parseDeviceDate(statusTimestamp);
-        const statusSinceLabel = statusSince ? `Since ${dateFormat(statusSince)}` : '';
-
-        return (
-          <Tooltip placement='top' arrow={true} title={statusSinceLabel}>
-            <strong style={{ color: statusColor }}>{status}</strong>
-          </Tooltip>
-        );
+        const status = getDeviceOverallState(record);
+        const normalizedStatus = status.toLowerCase();
+        const statusColor =
+          normalizedStatus === 'operational'
+            ? theme.palette.success.light
+            : normalizedStatus === 'disconnected' || normalizedStatus === 'update failed'
+              ? theme.palette.error.light
+              : theme.palette.warning.main;
+        return <strong style={{ color: statusColor }}>{status}</strong>;
       }}
     />
   );
 };
 
-export const LastOnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => (
+export const VpnLastConnectedField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => (
   <FunctionField
     {...props}
-    render={(record) => {
-      const isOnline = isDeviceOnline(record);
-      const referenceDate = parseDeviceDate(getDeviceStatusTimestamp(record));
-
-      if (!referenceDate) {
-        return isOnline ? '—' : 'Never online';
-      }
-
-      return (
-        <ElapsedTime referenceDate={referenceDate} prefix={isOnline ? 'Up ' : ''} suffix={isOnline ? '' : ' ago'} />
-      );
-    }}
+    render={(record) => (
+      <ConnectionLastConnected
+        connected={record['is connected to vpn'] === true}
+        timestamp={record['last vpn event']}
+      />
+    )}
   />
 );
 
@@ -231,13 +179,13 @@ const ReleaseFieldContent: React.FC<{
 
   return (
     <RecordContextProvider value={augmentedRecord}>
-      <ReferenceField label='Current Release' source='is running-release' reference='release' target='id'>
+      <ReferenceField label='Current Release' source='is running-release' reference='release'>
         <SemVerChip icon={chipIcon} sx={{ position: 'relative', top: '-5px' }} withTooltip={false} />
       </ReferenceField>
 
       {record[source] &&
         (targetReleaseId !== undefined && targetReleaseId !== null ? (
-          <ReferenceField reference='release' target='id' source={targetField} link={false}>
+          <ReferenceField reference='release' source={targetField} link={false}>
             <TargetReleaseTooltip origin={origin} status={updateStatus}>
               <span
                 style={{
@@ -340,7 +288,7 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
       queryOptions={{ refetchInterval: deviceStatusRefreshInterval, refetchIntervalInBackground: false }}
     >
       <Datagrid rowClick={false} bulkActionButtons={<CustomBulkActionButtons />} size='medium'>
-        <ReferenceField label='Name' source='id' reference='device' target='id' link='show'>
+        <ReferenceField label='Name' source='id' reference='device' link='show'>
           <TextField source='device name' />
         </ReferenceField>
 
@@ -348,11 +296,11 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
 
         <ReleaseField label='Current Release' source='is running-release' />
 
-        <ReferenceField label='Fleet' source='belongs to-application' reference='application' target='id'>
+        <ReferenceField label='Fleet' source='belongs to-application' reference='application'>
           <TextField source='app name' />
         </ReferenceField>
 
-        <ReferenceField label='Device Type' source='is of-device type' reference='device type' target='id' link={false}>
+        <ReferenceField label='Device Type' source='is of-device type' reference='device type' link={false}>
           <TextField source='slug' />
         </ReferenceField>
 
@@ -363,7 +311,7 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
           }
         />
 
-        <LastOnlineField label='Connectivity' source='last connectivity event' sortable sortBy='connectivity' />
+        <VpnLastConnectedField label='VPN last connected' source='last vpn event' sortable sortBy='last vpn event' />
 
         <FunctionField
           label='UUID'
@@ -372,7 +320,6 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
 
         <Toolbar sx={{ background: 'none', padding: '0' }}>
           <ShowButton variant='outlined' label='' size='small' />
-          <EditButton variant='outlined' label='' size='small' />
           <WithRecord
             render={(device) => (
               <>
@@ -447,7 +394,7 @@ export const DeviceCreate: React.FC = () => {
             target='id'
             perPage={1000}
             sort={{ field: 'app name', order: 'ASC' }}
-            filter={{ 'is of-class': 'fleet' }}
+            filter={applicationClass ? { [applicationClass]: 'fleet' } : {}}
           >
             <SelectInput optionText='app name' optionValue='id' validate={required()} size='large' />
           </ReferenceInput>
@@ -461,9 +408,11 @@ export const DeviceCreate: React.FC = () => {
                   reference='release'
                   target='id'
                   filter={{ 'belongs to-application': formData['belongs to-application'] }}
+                  perPage={1000}
+                  sort={{ field: 'id', order: 'DESC' }}
                   allowEmpty
                 >
-                  <SelectInput optionText={(o) => getSemver(o)} optionValue='id' />
+                  <SelectInput label='Target Release' optionText={(o) => getSemver(o)} optionValue='id' />
                 </ReferenceInput>
               )
             }
@@ -476,84 +425,9 @@ export const DeviceCreate: React.FC = () => {
   );
 };
 
-export const DeviceEdit: React.FC = () => {
-  const modifyDevice = useModifyDevice();
-
-  return (
-    <Edit title='Edit Device' actions={false} transform={modifyDevice}>
-      <SimpleForm>
-        <Row>
-          <TextInput label='UUID' source='uuid' size='large' readOnly={true} />
-
-          <TextInput label='Device Name' source='device name' size='large' />
-        </Row>
-
-        <TextInput label='Note' source='note' size='large' fullWidth={true} />
-
-        <Row>
-          <ReferenceInput
-            label='Device Type'
-            source='is of-device type'
-            reference='device type'
-            target='id'
-            perPage={1000}
-            sort={{ field: 'slug', order: 'ASC' }}
-          >
-            <SelectInput optionText='slug' optionValue='id' validate={required()} />
-          </ReferenceInput>
-
-          <ReferenceInput
-            label='Managed by Device'
-            source='is managed by-device'
-            reference='device'
-            target='id'
-            allowEmpty
-          >
-            <SelectInput optionText='device name' optionValue='id' />
-          </ReferenceInput>
-        </Row>
-
-        <Row>
-          <ReferenceInput
-            label='Fleet'
-            source='belongs to-application'
-            reference='application'
-            target='id'
-            perPage={1000}
-            sort={{ field: 'app name', order: 'ASC' }}
-            filter={{ 'is of-class': 'fleet' }}
-          >
-            <SelectInput optionText='app name' optionValue='id' validate={required()} />
-          </ReferenceInput>
-
-          <FormDataConsumer>
-            {({ formData, ...rest }) =>
-              formData['belongs to-application'] && (
-                <ReferenceInput
-                  label='Target Release'
-                  source={isPinnedOnRelease}
-                  reference='release'
-                  target='id'
-                  filter={{ 'belongs to-application': formData['belongs to-application'] }}
-                  allowEmpty
-                >
-                  <SelectInput optionText={(o) => getSemver(o)} optionValue='id' />
-                </ReferenceInput>
-              )
-            }
-          </FormDataConsumer>
-
-          <SelectOperatingSystem label='Target OS' source='should be operated by-release' />
-        </Row>
-      </SimpleForm>
-    </Edit>
-  );
-};
-
 const device = {
   list: DeviceList,
   create: DeviceCreate,
-  edit: DeviceEdit,
 };
 
 export default device;

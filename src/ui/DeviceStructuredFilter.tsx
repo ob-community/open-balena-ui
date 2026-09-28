@@ -80,7 +80,7 @@ export const convertToListFilters = (filters: DeviceFilterState): Record<string,
 
   const releaseIds = getNonNullReleaseIds(filters.releaseIds);
   if (releaseIds.length > 0) {
-    listFilters['is running-release@in'] = `(${releaseIds.join(',')})`;
+    listFilters['is running-release@in'] = releaseIds;
   }
 
   if (filters.osVersion !== '') {

@@ -59,20 +59,13 @@ export const ReleaseList: React.FC = (props) => {
           </DeleteReleaseButton>
         }
       >
-        <ReferenceField
-          label='Fleet'
-          source='belongs to-application'
-          reference='application'
-          target='id'
-          sortable={false}
-        >
+        <ReferenceField label='Fleet' source='belongs to-application' reference='application' sortable={false}>
           <TextField source='app name' />
         </ReferenceField>
         <ReferenceField
           label='Host'
           source='belongs to-application'
           reference='application'
-          target='id'
           sortable={false}
           link={false}
         >

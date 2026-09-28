@@ -1,6 +1,7 @@
 import * as semver from 'semver';
 
 interface VersionMapping {
+  odataVersion: 'v6' | 'v7';
   resources: Record<string, string>;
   fields: Record<string, string>;
   translations: Record<string, string>;
@@ -8,6 +9,7 @@ interface VersionMapping {
 
 const versions: Record<string, VersionMapping> = {
   '0.139.0': {
+    odataVersion: 'v6',
     resources: {
       isPinnedOnRelease: 'should be running-release',
     },
@@ -21,6 +23,7 @@ const versions: Record<string, VersionMapping> = {
 };
 
 versions['0.149.0'] = {
+  odataVersion: versions['0.139.0'].odataVersion,
   resources: {
     ...versions['0.139.0'].resources,
   },
@@ -40,6 +43,7 @@ versions['0.149.0'] = {
 };
 
 versions['0.157.3'] = {
+  odataVersion: versions['0.149.0'].odataVersion,
   resources: {
     ...versions['0.149.0'].resources,
   },
@@ -53,6 +57,7 @@ versions['0.157.3'] = {
 };
 
 versions['0.158.0'] = {
+  odataVersion: versions['0.157.3'].odataVersion,
   resources: {
     ...versions['0.157.3'].resources,
   },
@@ -66,6 +71,7 @@ versions['0.158.0'] = {
 };
 
 versions['0.170.0'] = {
+  odataVersion: versions['0.158.0'].odataVersion,
   resources: {
     ...versions['0.158.0'].resources,
   },
@@ -79,6 +85,7 @@ versions['0.170.0'] = {
 };
 
 versions['0.171.0'] = {
+  odataVersion: versions['0.170.0'].odataVersion,
   resources: {
     ...versions['0.170.0'].resources,
   },
@@ -92,6 +99,7 @@ versions['0.171.0'] = {
 };
 
 versions['0.185.0'] = {
+  odataVersion: versions['0.171.0'].odataVersion,
   resources: {
     ...versions['0.171.0'].resources,
     deviceTypeAlias: 'device type alias',
@@ -105,6 +113,7 @@ versions['0.185.0'] = {
 };
 
 versions['25.2.8'] = {
+  odataVersion: versions['0.185.0'].odataVersion,
   resources: {
     ...versions['0.185.0'].resources,
 
@@ -120,35 +129,51 @@ versions['25.2.8'] = {
   },
 };
 
-versions['45.0.0'] = {
+versions['26.1.0'] = {
+  odataVersion: 'v7',
   resources: {
     ...versions['25.2.8'].resources,
   },
   fields: {
     ...versions['25.2.8'].fields,
-
-    // v45 switches the canonical connectivity/online semantics
-    // from the heartbeat-based state to VPN connectivity.
-    deviceOnlineStatus: 'is connected to vpn',
   },
   translations: {
     ...versions['25.2.8'].translations,
   },
 };
 
+versions['45.0.0'] = {
+  odataVersion: versions['26.1.0'].odataVersion,
+  resources: {
+    ...versions['26.1.0'].resources,
+  },
+  fields: {
+    ...versions['26.1.0'].fields,
+
+    // v45 switches the canonical connectivity/online semantics
+    // from the heartbeat-based state to VPN connectivity.
+    deviceOnlineStatus: 'is connected to vpn',
+  },
+  translations: {
+    ...versions['26.1.0'].translations,
+  },
+};
+
 const getTargetVersion = (version?: string): string => {
   const availableVersions = Object.keys(versions);
-  const fallback = semver.sort([...availableVersions]).pop() ?? availableVersions[availableVersions.length - 1];
+  const sortedVersions = semver.sort([...availableVersions]);
+  const newestVersion = sortedVersions[sortedVersions.length - 1];
+  const oldestVersion = sortedVersions[0];
 
   if (!version) {
-    return fallback;
+    return newestVersion;
   }
 
   const [, versionNumber] = version.split('v');
   const candidate = versionNumber ?? version;
   const target = semver.maxSatisfying(availableVersions, `<=${candidate}`);
 
-  return target ?? fallback;
+  return target ?? oldestVersion;
 };
 
 const resource = (resourceKey: string, version?: string): string => {
@@ -165,4 +190,17 @@ const field = (fieldKey: string, version?: string): string => {
   return mapping.fields[fieldKey] ?? fieldKey;
 };
 
-export default { resource, field };
+const optionalResource = (resourceKey: string, version?: string): string | undefined => {
+  const targetVer = getTargetVersion(version);
+  return versions[targetVer].resources[resourceKey];
+};
+
+const optionalField = (fieldKey: string, version?: string): string | undefined => {
+  const targetVer = getTargetVersion(version);
+  return versions[targetVer].fields[fieldKey];
+};
+
+const odataVersion = (version?: string): 'v6' | 'v7' =>
+  version ? versions[getTargetVersion(version)].odataVersion : 'v6';
+
+export default { resource, field, optionalResource, optionalField, odataVersion };

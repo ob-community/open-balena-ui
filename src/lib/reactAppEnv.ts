@@ -1,6 +1,8 @@
 type RuntimeEnvValue = string | boolean | undefined;
 type RuntimeEnv = Record<string, RuntimeEnvValue>;
 
+declare const __OBUI_BUILD_ENV__: RuntimeEnv | undefined;
+
 declare global {
   // eslint-disable-next-line no-var
   var __OBUI_ENV__: RuntimeEnv | undefined;
@@ -22,23 +24,22 @@ const readRuntimeEnv = (): RuntimeEnv => {
   return candidate;
 };
 
-const importMetaEnv: RuntimeEnv =
-  typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' ? (import.meta.env as RuntimeEnv) : {};
+const buildEnv: RuntimeEnv = typeof __OBUI_BUILD_ENV__ === 'undefined' ? {} : __OBUI_BUILD_ENV__;
 
 const readEnv = (key: string): string | undefined => {
-  const metaValue = importMetaEnv[key];
-  if (typeof metaValue === 'string' && metaValue.length > 0) {
-    return metaValue;
+  const runtimeValue = readRuntimeEnv()[key];
+  if (typeof runtimeValue === 'string' && runtimeValue.length > 0) {
+    return runtimeValue;
   }
 
-  const runtimeValue = readRuntimeEnv()[key];
-  return typeof runtimeValue === 'string' && runtimeValue.length > 0 ? runtimeValue : undefined;
+  const buildValue = buildEnv[key];
+  if (typeof buildValue === 'string' && buildValue.length > 0) {
+    return buildValue;
+  }
+  return undefined;
 };
 
 const env = {
-  get REACT_APP_OPEN_BALENA_POSTGREST_URL() {
-    return readEnv('REACT_APP_OPEN_BALENA_POSTGREST_URL');
-  },
   get REACT_APP_OPEN_BALENA_REMOTE_URL() {
     return readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL');
   },
@@ -48,11 +49,17 @@ const env = {
   get REACT_APP_OPEN_BALENA_API_VERSION() {
     return readEnv('REACT_APP_OPEN_BALENA_API_VERSION');
   },
+  get REACT_APP_OPEN_BALENA_ODATA_VERSION() {
+    return readEnv('REACT_APP_OPEN_BALENA_ODATA_VERSION');
+  },
   get REACT_APP_BANNER_IMAGE() {
     return readEnv('REACT_APP_BANNER_IMAGE');
   },
   get REACT_APP_OPEN_BALENA_UI_URL() {
     return readEnv('REACT_APP_OPEN_BALENA_UI_URL');
+  },
+  get REACT_APP_OPEN_BALENA_UI_VERSION() {
+    return readEnv('REACT_APP_OPEN_BALENA_UI_VERSION');
   },
 };
 

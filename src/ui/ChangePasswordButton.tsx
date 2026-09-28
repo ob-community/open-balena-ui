@@ -2,17 +2,13 @@ import LockIcon from '@mui/icons-material/Lock';
 import SaveIcon from '@mui/icons-material/Save';
 import { Button, Dialog, DialogContent, DialogTitle } from '@mui/material';
 import type { ButtonProps, SxProps, Theme } from '@mui/material';
-import { hashSync } from 'bcrypt-ts';
 import React from 'react';
 import { PasswordInput, useDataProvider, useNotify, useRecordContext, SimpleForm } from 'react-admin';
 import type { RaRecord } from 'react-admin';
 import PasswordChecklist from 'react-password-checklist';
 import Row from '../ui/Row';
-
-const hashPassword = (password: string) => {
-  const saltRounds = 10;
-  return hashSync(password, saltRounds).replace('2a', '2b');
-};
+import type { OpenBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
+import { isPasswordWithinBcryptLimit, maxPasswordBytes } from '../lib/passwordPolicy';
 
 type ChangePasswordButtonProps = ButtonProps;
 
@@ -35,10 +31,25 @@ const buildSx = (sx?: SxProps<Theme>): SxProps<Theme> => {
 export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, ...buttonProps }) => {
   const [open, setOpen] = React.useState(false);
   const [newPassword, setPassword] = React.useState('');
-  const [isPasswordValid, setPasswordValid] = React.useState(false);
-  const dataProvider = useDataProvider();
+  const [passwordChecklistValid, setPasswordChecklistValid] = React.useState(false);
+  const isPasswordValid = passwordChecklistValid && isPasswordWithinBcryptLimit(newPassword);
+  const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const notify = useNotify();
   const record = useRecordContext<RaRecord>();
+  const requestController = React.useRef<AbortController | undefined>(undefined);
+
+  React.useEffect(
+    () => () => {
+      requestController.current?.abort();
+    },
+    [],
+  );
+
+  const handleClose = () => {
+    requestController.current?.abort();
+    requestController.current = undefined;
+    setOpen(false);
+  };
 
   const handleSubmit = async (values: Record<string, unknown>) => {
     const formValues = values as ChangePasswordFormValues;
@@ -49,19 +60,22 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
       return;
     }
 
-    const hashedPassword = hashPassword(new_password);
-
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     try {
-      await dataProvider.update('user', {
-        id: record.id,
-        data: { password: hashedPassword },
-        previousData: record,
-      });
+      await dataProvider.changePassword({ userId: record.id, password: new_password, signal: controller.signal });
 
-      setOpen(false);
+      handleClose();
       notify('Password successfully changed', { type: 'success' });
     } catch (error) {
-      notify('Error: Unable to change password', { type: 'error' });
+      if (!controller.signal.aborted) {
+        notify('Error: Unable to change password', { type: 'error' });
+      }
+    } finally {
+      if (requestController.current === controller) {
+        requestController.current = undefined;
+      }
     }
   };
 
@@ -80,7 +94,7 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
         <LockIcon style={{ marginRight: '4px' }} /> Change Password
       </Button>
 
-      <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby='form-dialog-title'>
+      <Dialog open={open} onClose={handleClose} aria-labelledby='form-dialog-title'>
         <DialogTitle id='form-dialog-title'>Change Password</DialogTitle>
 
         <DialogContent>
@@ -92,6 +106,7 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
                 name='new_password'
                 source='new_password'
                 placeholder='Enter new password'
+                validate={maxPasswordBytes}
                 onChange={(event) => setPassword(event.target.value)}
               />
               <Button
@@ -108,7 +123,7 @@ export const ChangePasswordButton: React.FC<ChangePasswordButtonProps> = ({ sx, 
               rules={['minLength', 'specialChar', 'number', 'capitalAndLowercase']}
               minLength={8}
               value={newPassword}
-              onChange={setPasswordValid}
+              onChange={setPasswordChecklistValid}
             />
           </SimpleForm>
         </DialogContent>

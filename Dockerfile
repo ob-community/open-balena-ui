@@ -5,11 +5,15 @@ ENV NODE_ENV=production
 WORKDIR /usr/src/app
 COPY ./package.json ./
 COPY ./package-lock.json ./
+COPY ./vendor ./vendor
 
 RUN npm ci --omit=dev --no-fund --no-update-notifier --no-audit \
     && npm cache clean --force
 
 FROM base AS builder
+
+ARG OPEN_BALENA_UI_VERSION
+ENV REACT_APP_OPEN_BALENA_UI_VERSION=$OPEN_BALENA_UI_VERSION
 
 COPY ./server ./server
 COPY ./src ./src

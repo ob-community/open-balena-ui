@@ -1,12 +1,13 @@
 import React from 'react';
 import {
+  type Identifier,
   Link,
   List,
-  ReferenceManyCount,
   ResourceContextProvider,
   SearchInput,
   WithListContext,
   useGetList,
+  useGetManyReference,
   useGetOne,
 } from 'react-admin';
 import AddIcon from '@mui/icons-material/Add';
@@ -30,15 +31,39 @@ import EnvVarButton from '../../ui/EnvVarButton';
 import { getSemver } from '../../ui/SemVerChip';
 import { resolveFleetTargetRelease } from '../../lib/targetRelease';
 import { deviceOnlineStatusField, getDeviceOnlineFilterValue } from '../../lib/deviceStatus';
+import versions from '../../versions';
+import environment from '../../lib/reactAppEnv';
 
-const fleetPinField = 'should be running-release';
+const fleetPinField = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const fleetStatusRefreshInterval = 30000;
 const fleetCountQueryOptions = {
   refetchInterval: fleetStatusRefreshInterval,
   refetchIntervalInBackground: false,
 };
 
-const fleetCardFilters = [<SearchInput source='#app name,is of-class@ilike' alwaysOn />];
+const fleetCardFilters = [
+  <SearchInput source={`#app name${applicationClass ? `,${applicationClass}` : ''}@ilike`} alwaysOn />,
+];
+
+const FleetDeviceCount: React.FC<{ fleetId: Identifier; filter?: Record<string, unknown> }> = ({
+  fleetId,
+  filter = {},
+}) => {
+  const { total, isPending, isError } = useGetManyReference(
+    'device',
+    {
+      target: 'belongs to-application',
+      id: fleetId,
+      pagination: { page: 1, perPage: 1 },
+      sort: { field: 'id', order: 'ASC' },
+      filter,
+    },
+    fleetCountQueryOptions,
+  );
+
+  return <>{isPending ? '…' : isError ? '—' : (total ?? 0)}</>;
+};
 
 const LatestFleetReleaseVersion: React.FC<{ fleetId: string | number }> = ({ fleetId }) => {
   const { data, isPending } = useGetList('release', {
@@ -128,22 +153,11 @@ export const FleetCards: React.FC = () => (
                                   whiteSpace: 'nowrap',
                                 }}
                               >
-                                <ReferenceManyCount
-                                  record={record}
-                                  source='id'
-                                  reference='device'
-                                  target='belongs to-application'
+                                <FleetDeviceCount
+                                  fleetId={record.id}
                                   filter={{ [deviceOnlineStatusField]: getDeviceOnlineFilterValue(true) }}
-                                  queryOptions={fleetCountQueryOptions}
                                 />{' '}
-                                /{' '}
-                                <ReferenceManyCount
-                                  record={record}
-                                  source='id'
-                                  reference='device'
-                                  target='belongs to-application'
-                                  queryOptions={fleetCountQueryOptions}
-                                />
+                                / <FleetDeviceCount fleetId={record.id} />
                               </TableCell>
                             </TableRow>
                             <TableRow>
@@ -156,14 +170,7 @@ export const FleetCards: React.FC = () => (
                               <TableCell sx={{ fontWeight: 'bold' }}>Following pin</TableCell>
                               <TableCell align='right'>
                                 {record[fleetPinField] ? (
-                                  <ReferenceManyCount
-                                    record={record}
-                                    source='id'
-                                    reference='device'
-                                    target='belongs to-application'
-                                    filter={{ [`${fleetPinField}@is`]: 'null' }}
-                                    queryOptions={fleetCountQueryOptions}
-                                  />
+                                  <FleetDeviceCount fleetId={record.id} filter={{ [`${fleetPinField}@is`]: 'null' }} />
                                 ) : (
                                   '—'
                                 )}

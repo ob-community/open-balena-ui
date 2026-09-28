@@ -2,6 +2,10 @@ import React from 'react';
 import { SelectInput, useDataProvider, useRecordContext } from 'react-admin';
 import type { DataProvider, SelectInputProps } from 'react-admin';
 import type { ResourceRecord } from '../types/resource';
+import versions from '../versions';
+import environment from '../lib/reactAppEnv';
+
+const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 interface OperatingSystemOption {
   id: number;
@@ -30,7 +34,11 @@ export const SelectOperatingSystem: React.FC<SelectOperatingSystemProps> = (prop
         const operatingSystems = await dataProvider.getList<ResourceRecord>('application', {
           pagination: { page: 1, perPage: 1000 },
           sort: { field: 'id', order: 'ASC' },
-          filter: { 'is of-class': 'app', 'is host': 1, 'is for-device type': record['is of-device type'] },
+          filter: {
+            ...(applicationClass ? { [applicationClass]: 'app' } : {}),
+            'is host': 1,
+            'is for-device type': record['is of-device type'],
+          },
         });
 
         const options: OperatingSystemOption[] = [];

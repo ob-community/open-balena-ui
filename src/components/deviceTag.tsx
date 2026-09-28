@@ -40,7 +40,7 @@ export const DeviceTagList = () => {
   return (
     <List {...listProps}>
       <Datagrid size='medium' rowClick={false}>
-        <ReferenceField label='Device' source='device' reference='device' target='id'>
+        <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />
         </ReferenceField>
 

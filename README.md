@@ -3,11 +3,23 @@
 User interface for [open-balena-admin](https://github.com/ob-community/open-balena-admin), an admin interface for
 open-balena.
 
+## Documentation
+
+- [Access controls](ACCESS_CONTROLS.md) explains Legacy and RBAC modes, administrator roles, organization scope, and
+  credential protections.
+- [API versions](API_VERSIONS.md) documents the supported open-balena-api versions and compatibility behavior.
+- [Direct database access](DIRECT_DB_ACCESS.md) explains which resources require protected PostgREST access and why.
+- [Host OS and Supervisor updates](OS_AND_SUPERVISOR_UPDATES.md) covers catalog synchronization, image delivery, update
+  behavior, and deployment requirements.
+
 ## Dependencies
 
-This project is dependent on [open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) and
+This project uses `open-balena-api` for operational data and depends on
+[open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) only for administrator identity and
+authorization resources that the API does not expose with the required global semantics. It also depends on
 [open-balena-remote](https://github.com/ob-community/open-balena-remote), so the easiest way to get this up and running
-would be to install it via the [open-balena-admin](https://github.com/ob-community/open-balena-admin) project.
+would be to install it via the [open-balena-admin](https://github.com/ob-community/open-balena-admin) project. See
+[DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid provider.
 
 ## Configuration
 
@@ -15,8 +27,100 @@ There are a number of environment variables used to configure the ui:
 
 - `PORT` - The port that the ui will listen on
 
-- `REACT_APP_OPEN_BALENA_POSTGREST_URL` The URL (accessible to API) of the `open-balena-postgrest` instance, i.e.
-  `http://postgrest.openbalena.local:8000`
+- `OPEN_BALENA_POSTGREST_URL` The internal URL (accessible to the UI server, not browsers) of the
+  `open-balena-postgrest` instance, i.e. `http://postgrest.openbalena.local:8000`. It must point directly to a PostgREST
+  endpoint that returns JSON, not to an older open-balena-ui deployment or its HTML fallback.
+
+- `OPEN_BALENA_BOOTSTRAP_USER_ID` The trusted existing user ID allowed to create and receive the first `global-admin`
+  role at server startup. This must be the positive numeric `user.id` (for example `2`), not a username or email
+  address. Leave it unset to retain legacy access when `global-admin` does not exist, in which every authenticated user
+  is effectively a super administrator; remove it after successful bootstrap.
+
+- `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` Optional comma-separated exact role names that `organization-admin`
+  users may view and assign to users inside their organization scope. Administrator roles are always excluded. Leave
+  unset to prevent organization administrators from changing user role assignments.
+
+- `OPEN_BALENA_OS_CATALOG_API_URL` Optional source API for Services > BalenaOS synchronization. It defaults to the
+  public `https://api.balena-cloud.com` catalog.
+
+- `OPEN_BALENA_OS_REGISTRY_HOST` Optional registry hostname used for synchronized Host OS image locations. Set it to
+  `registry2.balena-cloud.com` for direct public pulls, or to a local pull-through proxy hostname for restricted-egress
+  deployments. The server otherwise discovers it from an existing local image, then falls back from `api.<domain>` to
+  `registry.<domain>`. Configure this explicitly when neither convention is valid.
+
+For local development, `npm run dev` starts both Vite on port 3000 and the UI server on port 3001. Vite proxies
+`/admin-db`, `/device-update-options`, and `/balena-os` requests to the local UI server; operational OData requests
+continue to use `REACT_APP_OPEN_BALENA_API_URL`. The configured `OPEN_BALENA_POSTGREST_URL` must still be reachable from
+the local machine and point directly to a PostgREST endpoint.
+
+Services > BalenaOS shows local Host OS coverage and the downloadable image catalog. A global administrator can start an
+additive, idempotent synchronization into the required `balena_os` system organization. The server reads the public
+catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates the
+complete application/release/service/image graph through open-balena-api—never PostgREST. It does not delete local
+records. Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
+until the job finishes. The configured registry endpoint must either serve the public image directly or proxy missing
+paths to the source registry. Synchronization does not copy registry blobs and does not automatically change any fleet
+or device target release. The `balena_os` organization owns the imported catalog records only; Host OS releases are
+installation-wide and do not need to share an organization with a target fleet. Synchronization is disabled until that
+system organization exists. Registry locations are rewritten when records are synchronized; rerun the sync after
+changing `OPEN_BALENA_OS_REGISTRY_HOST` to update existing imported image records.
+
+See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for the complete deployment, registry, organization,
+security, and update-lifecycle configuration.
+
+Host OS updates use the synchronized image location returned by open-balena-api's device-state endpoint. The helper's
+`/download` route serves provisioning images, while its `/v6/supervisor_release` hostname rewrite applies only to
+supervisor updates. Consequently, synchronized Host OS image locations do not require an open-balena-helper change. A
+query-time Host OS rewrite would instead require proxying and transforming device-state responses, which the current
+helper and deployment routing do not do.
+
+Supervisor updates always assign a local release ID through `device.should_be_managed_by__release`;
+`device.supervisor_version` is device-reported state and is never written by the UI. Compatible versions are obtained
+from Balena Cloud's public release catalog by CPU architecture. When a selected release is not present locally, the UI
+server synchronizes that release's application, service, image, and release graph through open-balena-api before
+assigning it. Supervisor applications are owned by a `balena_os` system organization so their required
+`balena_os/<architecture>-supervisor` slugs are preserved. Because open-balena-api does not expose organization
+creation, this organization must be provisioned through the installation's administrative bootstrap before a Supervisor
+release is assigned, and the administrative API identity must be a member. The synchronized image location uses the same
+configured registry hostname as Host OS synchronization, so deployments whose helper implements `/v6/supervisor_release`
+can retain their existing Supervisor image proxy. A public-catalog lookup or synchronization failure is reported to the
+user; it is not treated as an empty catalog.
+
+For direct public pulls, set `OPEN_BALENA_OS_REGISTRY_HOST=registry2.balena-cloud.com`. This intentionally preserves the
+source image location instead of changing its hostname. Devices must be able to reach `registry2.balena-cloud.com` for
+manifests, its token realm at `api.balena-cloud.com`, and `registry-data.balena-cloud.com` for redirected image blobs;
+the public Host OS repositories issue anonymous pull tokens. No local registry or proxy participates in those Host OS
+pulls, although openBalena still needs its normal private registry for user application images and locally produced
+releases.
+
+For restricted-egress or caching deployments, put an authentication-aware routing proxy in front of the private
+registry. Stock openBalena does not configure this Cloud fallback. Mutating requests must go only to the private
+registry; reads should prefer private content and fall back to `registry2.balena-cloud.com`. The proxy must keep device
+credentials and the private registry authentication challenge away from Balena Cloud, perform the public registry token
+exchange itself, and avoid exposing the Cloud hostname to devices. A plain Distribution `proxy.remoteurl` configuration
+is not generally sufficient because the same endpoint must continue to accept private pushes. Set
+`OPEN_BALENA_OS_REGISTRY_HOST` to the externally reachable proxy hostname, restart the UI server, rerun synchronization,
+and verify that an image absent from private storage can be pulled before assigning the release to a device.
+
+The synchronization scope can be:
+
+- **Latest + in use:** the latest usable release published for each device type, plus Host OS versions currently
+  reported by devices of that type.
+- **Newer than version + in use:** releases strictly newer than the entered semantic version, plus Host OS versions
+  currently reported by devices of each device type.
+- **Only versions in use:** only Host OS versions currently reported by devices, grouped by device type.
+- **Single semantic version:** the requested version wherever that device type publishes it.
+- **All catalog versions:** every assignable release advertised by the installation's image catalog.
+
+When an entered or device-reported version omits build metadata such as `+rev1`, matching revisions are included. The
+newer-than mode treats higher `+revN` builds of the threshold version as newer; a threshold without a revision includes
+all revised builds of that version but not the unrevised version itself. The server fetches image and release-image
+metadata only for selected releases, so selective modes reduce both database growth and catalog-transfer volume. When a
+selected release has a `+revN` revision, its earlier non-invalidated revisions of the same semantic version are also
+imported because open-balena-api assigns revisions sequentially. Invalidated releases are excluded from catalog counts
+and every semantic-version decision. An invalidated release is imported only when a device of the matching type already
+reports that exact version; it remains marked invalidated locally so it cannot be offered as an update target to other
+devices.
 
 - `REACT_APP_OPEN_BALENA_REMOTE_URL` The URL (accessible to API) of the `open-balena-remote` instance, i.e.
   `http://remote.openbalena.local:10000`
@@ -26,6 +130,9 @@ There are a number of environment variables used to configure the ui:
 
 - `REACT_APP_OPEN_BALENA_API_VERSION` The version of `open-balena-api` that the above instance is running, i.e.
   `v0.139.0`
+
+- `REACT_APP_OPEN_BALENA_ODATA_VERSION` Optional OData endpoint override (`v6` or `v7`). By default, the provider uses
+  `v7` on open-balena-api v26.1.0 and newer and falls back to `v6` on older servers.
 
 - `REACT_APP_BANNER_IMAGE` The URL of a custom banner image to use on the main dashboard.
 
@@ -218,6 +325,7 @@ from the preceding entry.
 | **v0.171.0**              | Adds `releaseInvalidationReason` → `invalidation reason`.                                                                                                                     |
 | **v0.185.0**              | Adds `deviceTypeAlias` → `device type alias`.                                                                                                                                 |
 | **v25.2.8**               | Changes `isPinnedOnRelease` from the legacy `should be running-release` relation to `is pinned on-release`.                                                                   |
+| **v26.1.0**               | Adds the native OData v7 model and changes the provider's default endpoint from `/v6` to `/v7`.                                                                               |
 | **v45.0.0**               | Changes the UI's semantic `deviceOnlineStatus` field from `api heartbeat state` to `is connected to vpn`.                                                                     |
 
 The complete baseline for the two compatibility aliases that span the largest API ranges is therefore:
@@ -537,7 +645,10 @@ release.
 
 The compatibility layer is intended to allow the current `open-balena-ui` codebase to operate against both older
 supported OpenBalena installations and current `open-balena-api` releases without scattering version-specific SBVR
-knowledge throughout the application.
+knowledge throughout the application. Operational data uses the backwards-compatible OData v6 endpoint on older servers
+and v7 where supported, and accepts both legacy and current OData response envelopes. See
+[API_VERSIONS.md](API_VERSIONS.md) for the provider's compatibility and degradation behavior and
+[ACCESS_CONTROLS.md](ACCESS_CONTROLS.md) for administrator role setup and PostgREST security requirements.
 
 ## Installation
 

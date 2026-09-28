@@ -25,18 +25,17 @@ export const ReleaseTagList: React.FC = () => {
   return (
     <List title='Release Tags'>
       <Datagrid size='medium' rowClick={false}>
-        <ReferenceField label='Fleet' source='release' reference='release' target='id' link={false}>
+        <ReferenceField label='Fleet' source='release' reference='release' link={false}>
           <ReferenceField
             source='belongs to-application'
             reference='application'
-            target='id'
             link={(record, reference) => `/${reference}/${record.id}`}
           >
             <TextField source='app name' />
           </ReferenceField>
         </ReferenceField>
 
-        <ReferenceField label='Release Rev.' source='release' reference='release' target='id'>
+        <ReferenceField label='Release Rev.' source='release' reference='release'>
           <SemVerChip />
         </ReferenceField>
 

@@ -21,22 +21,22 @@ import { useCreateDeviceType } from '../lib/deviceType';
 import Row from '../ui/Row';
 import versions from '../versions';
 import environment from '../lib/reactAppEnv';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
-const deviceTypeAlias = versions.resource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const deviceTypeAlias = versions.optionalResource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 export const DeviceTypeList: React.FC = () => {
+  const { context, isPending } = useAdminAccessContext();
+  if (isPending || !context) return null;
+  const canManage = !context.enforcementEnabled || context.globalAdmin;
+
   return (
-    <List>
-      <Datagrid size='medium' rowClick={false}>
+    <List actions={canManage ? undefined : false}>
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={canManage ? undefined : false}>
         <TextField label='Slug' source='slug' />
         <TextField label='Name' source='name' />
 
-        <ReferenceField
-          label='CPU Architecture'
-          source='is of-cpu architecture'
-          reference='cpu architecture'
-          target='id'
-        >
+        <ReferenceField label='CPU Architecture' source='is of-cpu architecture' reference='cpu architecture'>
           <TextField source='slug' />
         </ReferenceField>
 
@@ -50,14 +50,16 @@ export const DeviceTypeList: React.FC = () => {
           <></>
         )}
 
-        <ReferenceField label='Device Family' source='belongs to-device family' reference='device family' target='id'>
+        <ReferenceField label='Device Family' source='belongs to-device family' reference='device family'>
           <TextField source='slug' />
         </ReferenceField>
 
-        <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
-        </Toolbar>
+        {canManage ? (
+          <Toolbar>
+            <EditButton label='' size='small' variant='outlined' />
+            <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          </Toolbar>
+        ) : null}
       </Datagrid>
     </List>
   );

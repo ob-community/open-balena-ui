@@ -24,7 +24,7 @@ export const ServiceLabelList: React.FC = () => {
   return (
     <List title='Service Labels'>
       <Datagrid size='medium' rowClick={false}>
-        <ReferenceField label='Service' source='service' reference='service' target='id'>
+        <ReferenceField label='Service' source='service' reference='service'>
           <ChipField source='service name' />
         </ReferenceField>
 

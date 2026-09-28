@@ -23,6 +23,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import StorageIcon from '@mui/icons-material/Storage';
 import TuneIcon from '@mui/icons-material/Tune';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import * as React from 'react';
 import { Admin, CustomRoutes, Layout, Resource, fetchUtils } from 'react-admin';
 import { Navigate, Route, useParams } from 'react-router-dom';
@@ -58,9 +59,10 @@ import serviceEnvVar from './components/serviceEnvVar';
 import serviceLabel from './components/serviceLabel';
 import user from './components/user';
 import userKey from './components/userKey';
+import balenaOs from './components/balenaOs';
 import DeviceDashboard from './dashboards/device';
 import MainDashboard from './dashboards/main';
-import postgrestDataProvider from './dataProvider/postgrestDataProvider';
+import openBalenaDataProvider from './dataProvider/openBalenaDataProvider';
 import TreeMenu from './ui/TreeMenu';
 import versions from './versions';
 import environment from './lib/reactAppEnv';
@@ -75,9 +77,14 @@ const httpClient = (url: string, options: Options = {}): ReturnType<typeof fetch
   return fetchUtils.fetchJson(url, { ...options, headers });
 };
 
-const dataProvider = postgrestDataProvider(environment.REACT_APP_OPEN_BALENA_POSTGREST_URL, httpClient);
+const dataProvider = openBalenaDataProvider(
+  environment.REACT_APP_OPEN_BALENA_API_URL,
+  httpClient,
+  environment.REACT_APP_OPEN_BALENA_API_VERSION,
+  environment.REACT_APP_OPEN_BALENA_ODATA_VERSION,
+);
 
-const deviceTypeAliasVer = versions.resource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const deviceTypeAliasVer = versions.optionalResource('deviceTypeAlias', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
 const App: React.FC = () => (
   <ThemeModeProvider>
@@ -145,12 +152,7 @@ const OpenBalenaAdmin: React.FC = () => {
         icon={AccountTreeIcon}
         options={{ label: 'Fleets', isMenuParent: true, menuRoute: 'application', hideChildren: true }}
       />
-      <Resource
-        name='application'
-        icon={AppsIcon}
-        options={{ label: 'Fleets', menuParent: 'menu-fleet' }}
-        {...fleet}
-      />
+      <Resource name='application' icon={AppsIcon} options={{ label: 'Fleets', menuParent: 'menu-fleet' }} {...fleet} />
       <Resource
         name='application config variable'
         icon={TuneIcon}
@@ -259,12 +261,18 @@ const OpenBalenaAdmin: React.FC = () => {
         options={{ label: 'Labels', menuParent: 'menu-service' }}
         {...serviceLabel}
       />
+      <Resource
+        name='balena-os'
+        icon={SystemUpdateAltIcon}
+        options={{ label: 'BalenaOS', menuParent: 'menu-service' }}
+        {...balenaOs}
+      />
 
       <Resource name='menu-static' icon={StorageIcon} options={{ label: 'Static Data', isMenuParent: true }} />
       <Resource
         name='config'
         icon={SettingsIcon}
-        options={{ label: 'Configs', menuParent: 'menu-static' }}
+        options={{ label: 'Configs', menuParent: 'menu-static', globalAdminOnly: true }}
         {...config}
       />
       <Resource
@@ -310,13 +318,13 @@ const OpenBalenaAdmin: React.FC = () => {
       <Resource
         name='permission'
         icon={LockIcon}
-        options={{ label: 'Permissions', menuParent: 'menu-static' }}
+        options={{ label: 'Permissions', menuParent: 'menu-static', globalAdminOnly: true }}
         {...permission}
       />
       <Resource
         name='role'
         icon={AdminPanelSettingsIcon}
-        options={{ label: 'Roles', menuParent: 'menu-static' }}
+        options={{ label: 'Roles', menuParent: 'menu-static', globalAdminOnly: true }}
         {...role}
       />
 

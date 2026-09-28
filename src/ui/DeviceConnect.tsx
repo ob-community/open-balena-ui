@@ -1,56 +1,35 @@
 import { Box, useTheme } from '@mui/material';
 import React from 'react';
-import { Form, SelectInput, useAuthProvider, useDataProvider, useRecordContext } from 'react-admin';
+import { Form, SelectInput, useAuthProvider, useDataProvider, useNotify, useRecordContext } from 'react-admin';
 import type { DataProvider, Identifier } from 'react-admin';
 import environment from '../lib/reactAppEnv';
 import ssh from 'micro-key-producer/ssh.js';
 import { randomBytes } from 'micro-key-producer/utils.js';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
+import {
+  addDeviceConnectionCredentials,
+  buildDeviceConnectionUrl,
+  parseRemoteBaseUrl,
+  type DeviceConnectionTarget,
+} from '../lib/deviceConnect';
 import type { ResourceRecord } from '../types/resource';
 import { EmbeddedFrame } from './EmbeddedFrame';
-
-interface ContainerOption {
-  id: number;
-  name: string;
-}
-
-interface ServiceOption {
-  id: number;
-  name: string;
-}
-
-interface ContainerState {
-  choices: ContainerOption[];
-  services: ServiceOption[][];
-  links: string[][];
-}
 
 interface DeviceConnectProps {
   record?: ResourceRecord;
 }
-
-const createSelectChoices = (containers: ContainerState): Array<{ label: string; value: string }> =>
-  containers.choices
-    .map((container, containerIdx) => {
-      const services = containers.services[containerIdx];
-      const links = containers.links[containerIdx];
-
-      return services.map((service, serviceIdx) => ({
-        label: `${container.name} - ${service.name}`,
-        value: links[serviceIdx] ?? 'default',
-      }));
-    })
-    .flat();
 
 export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp }) => {
   const contextRecord = useRecordContext<ResourceRecord>();
   const record = contextRecord ?? recordProp;
   const [loaded, setLoaded] = React.useState(false);
   const [userId, setUserId] = React.useState<Identifier>();
-  const [containers, setContainers] = React.useState<ContainerState>({ choices: [], services: [], links: [] });
+  const [remoteOrigin, setRemoteOrigin] = React.useState('');
+  const [targets, setTargets] = React.useState<DeviceConnectionTarget[]>([]);
   const [iframeUrl, setIframeUrl] = React.useState('');
   const dataProvider = useDataProvider<DataProvider>();
   const authProvider = useAuthProvider<OpenBalenaAuthProvider>();
+  const notify = useNotify();
   const theme = useTheme();
 
   // Get logs background color from theme palette
@@ -90,9 +69,9 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
   };
 
   const handleSubmit = (input: unknown): void => {
-    const url = typeof input === 'string' ? input : '';
-
-    if (!url || url === 'default') {
+    const targetId = typeof input === 'string' ? input : '';
+    const target = targets.find(({ id }) => id === targetId);
+    if (!target || !remoteOrigin) {
       return;
     }
 
@@ -104,9 +83,16 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
       }
       const user = await dataProvider.getOne<ResourceRecord>('user', { id: userId });
       const username = typeof user.data.username === 'string' ? user.data.username : '';
-      const nextUrl = `${url}&username=${username}&privateKey=${encodeURIComponent(sshKeys.privateKeySsh)}`;
+      const nextUrl = addDeviceConnectionCredentials(targets, target.id, remoteOrigin, username, sshKeys.privateKeySsh);
+      if (!nextUrl) {
+        notify('Error: Invalid device connection target', { type: 'error' });
+        return;
+      }
       setIframeUrl(nextUrl);
-    })();
+    })().catch((error: unknown) => {
+      console.error(error);
+      notify(error instanceof Error ? error.message : 'Unable to connect to the device', { type: 'error' });
+    });
   };
 
   React.useEffect(() => {
@@ -118,107 +104,148 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
     const sessionJwt = session.jwt ?? '';
     const sessionObject = session.object ?? {};
     const identifier = sessionObject.id as Identifier | undefined;
+    const deviceUuid = record.uuid;
 
-    if (!identifier || typeof record.uuid !== 'string') {
+    if (!identifier || !sessionJwt || typeof deviceUuid !== 'string') {
       return;
     }
 
     setUserId(identifier);
 
-    const remoteHost = environment.REACT_APP_OPEN_BALENA_REMOTE_URL ?? '';
-
-    const containerChoices: ContainerOption[] = [{ id: 0, name: 'host' }];
-    const containerServices: ServiceOption[][] = [[{ id: 0, name: 'SSH' }]];
-    const containerLinks: string[][] = [[`${remoteHost}?service=ssh&uuid=${record.uuid}&jwt=${sessionJwt}`]];
+    const remoteBaseUrl = parseRemoteBaseUrl(environment.REACT_APP_OPEN_BALENA_REMOTE_URL);
+    if (!remoteBaseUrl) {
+      setLoaded(true);
+      notify('Device connections are unavailable because the remote access URL is not configured safely.', {
+        type: 'error',
+      });
+      return;
+    }
+    setRemoteOrigin(remoteBaseUrl.origin);
 
     void (async () => {
-      const installs = await dataProvider.getList<ResourceRecord>('image install', {
-        pagination: { page: 1, perPage: 1000 },
-        sort: { field: 'id', order: 'ASC' },
-        filter: { device: record.id, status: 'Running' },
-      });
+      try {
+        const hostUrl = buildDeviceConnectionUrl(remoteBaseUrl, undefined, {
+          service: 'ssh',
+          uuid: deviceUuid,
+          jwt: sessionJwt,
+        });
+        const hostTargets: DeviceConnectionTarget[] = hostUrl
+          ? [{ id: 'host:ssh', label: 'host - SSH', url: hostUrl }]
+          : [];
+        const installs = await dataProvider.getList<ResourceRecord>('image install', {
+          pagination: { page: 1, perPage: 1000 },
+          sort: { field: 'id', order: 'ASC' },
+          filter: { device: record.id, status: 'Running' },
+        });
 
-      await Promise.all(
-        installs.data.map(async (install) => {
-          const imageRec = await dataProvider.getList<ResourceRecord>('image', {
-            pagination: { page: 1, perPage: 1000 },
-            sort: { field: 'id', order: 'ASC' },
-            filter: { id: install['installs-image'] },
-          });
+        const applicationTargets = await Promise.all(
+          installs.data.map(async (install): Promise<DeviceConnectionTarget[]> => {
+            const imageRec = await dataProvider.getList<ResourceRecord>('image', {
+              pagination: { page: 1, perPage: 1000 },
+              sort: { field: 'id', order: 'ASC' },
+              filter: { id: install['installs-image'] },
+            });
 
-          const imageService = await dataProvider.getList<ResourceRecord>('service', {
-            pagination: { page: 1, perPage: 1000 },
-            sort: { field: 'id', order: 'ASC' },
-            filter: { id: imageRec.data[0]?.['is a build of-service'] },
-          });
+            const imageService = await dataProvider.getList<ResourceRecord>('service', {
+              pagination: { page: 1, perPage: 1000 },
+              sort: { field: 'id', order: 'ASC' },
+              filter: { id: imageRec.data[0]?.['is a build of-service'] },
+            });
 
-          const imageRelease = await dataProvider.getList<ResourceRecord>('image-is part of-release', {
-            pagination: { page: 1, perPage: 1000 },
-            sort: { field: 'id', order: 'ASC' },
-            filter: { image: install['installs-image'] },
-          });
+            const imageRelease = await dataProvider.getList<ResourceRecord>('image-is part of-release', {
+              pagination: { page: 1, perPage: 1000 },
+              sort: { field: 'id', order: 'ASC' },
+              filter: { image: install['installs-image'] },
+            });
 
-          const imageLabels = await dataProvider.getList<ResourceRecord>('image label', {
-            pagination: { page: 1, perPage: 1000 },
-            sort: { field: 'id', order: 'ASC' },
-            filter: { 'release image': imageRelease.data[0]?.id },
-          });
+            const imageLabels = await dataProvider.getList<ResourceRecord>('image label', {
+              pagination: { page: 1, perPage: 1000 },
+              sort: { field: 'id', order: 'ASC' },
+              filter: { 'release image': imageRelease.data[0]?.id },
+            });
 
-          const containerName = imageService.data[0]?.['service name'];
-          if (typeof containerName !== 'string') {
-            return;
-          }
+            const containerName = imageService.data[0]?.['service name'];
+            if (typeof containerName !== 'string') {
+              return [];
+            }
 
-          const services: ServiceOption[] = [{ id: 0, name: 'SSH' }];
-          const links: string[] = [
-            `${remoteHost}?service=ssh&container=${containerName}&uuid=${record.uuid}&jwt=${sessionJwt}`,
-          ];
+            const targetPrefix = `install:${String(install.id)}`;
+            const commonParameters = {
+              container: containerName,
+              uuid: deviceUuid,
+              jwt: sessionJwt,
+            };
+            const connectionTargets: DeviceConnectionTarget[] = [];
+            const addTarget = (id: string, label: string, path: unknown, parameters: Record<string, string>): void => {
+              const url = buildDeviceConnectionUrl(remoteBaseUrl, path, parameters);
+              if (url) {
+                connectionTargets.push({ id: `${targetPrefix}:${id}`, label: `${containerName} - ${label}`, url });
+              }
+            };
 
-          const httpLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.http');
-          if (httpLabel) {
-            const nameLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.http.label');
-            const portLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.http.port');
-            const pathLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.http.path');
+            addTarget('ssh', 'SSH', undefined, { ...commonParameters, service: 'ssh' });
 
-            services.push({ id: services.length, name: (nameLabel?.value as string) ?? 'HTTP' });
-            links.push(
-              `${remoteHost}${(pathLabel?.value as string) ?? ''}?service=tunnel&port=${(portLabel?.value as string) ?? '80'}&protocol=http&uuid=${record.uuid}&jwt=${sessionJwt}`,
-            );
-          }
+            const httpLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.http');
+            if (httpLabel) {
+              const nameLabel = imageLabels.data.find(
+                (label) => label['label name'] === 'openbalena.remote.http.label',
+              );
+              const portLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.http.port');
+              const pathLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.http.path');
 
-          const httpsLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.https');
-          if (httpsLabel) {
-            const nameLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.https.label');
-            const portLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.https.port');
-            const pathLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.https.path');
+              addTarget('http', typeof nameLabel?.value === 'string' ? nameLabel.value : 'HTTP', pathLabel?.value, {
+                ...commonParameters,
+                service: 'tunnel',
+                port: typeof portLabel?.value === 'string' ? portLabel.value : '80',
+                protocol: 'http',
+              });
+            }
 
-            services.push({ id: services.length, name: (nameLabel?.value as string) ?? 'HTTPS' });
-            links.push(
-              `${remoteHost}${(pathLabel?.value as string) ?? ''}?service=tunnel&port=${(portLabel?.value as string) ?? '443'}&protocol=https&uuid=${record.uuid}&jwt=${sessionJwt}`,
-            );
-          }
+            const httpsLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.https');
+            if (httpsLabel) {
+              const nameLabel = imageLabels.data.find(
+                (label) => label['label name'] === 'openbalena.remote.https.label',
+              );
+              const portLabel = imageLabels.data.find(
+                (label) => label['label name'] === 'openbalena.remote.https.port',
+              );
+              const pathLabel = imageLabels.data.find(
+                (label) => label['label name'] === 'openbalena.remote.https.path',
+              );
 
-          const vncLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.vnc');
-          if (vncLabel) {
-            const nameLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.vnc.label');
-            const portLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.vnc.port');
+              addTarget('https', typeof nameLabel?.value === 'string' ? nameLabel.value : 'HTTPS', pathLabel?.value, {
+                ...commonParameters,
+                service: 'tunnel',
+                port: typeof portLabel?.value === 'string' ? portLabel.value : '443',
+                protocol: 'https',
+              });
+            }
 
-            services.push({ id: services.length, name: (nameLabel?.value as string) ?? 'VNC' });
-            links.push(
-              `${remoteHost}?service=vnc&port=${(portLabel?.value as string) ?? '5900'}&uuid=${record.uuid}&jwt=${sessionJwt}`,
-            );
-          }
+            const vncLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.vnc');
+            if (vncLabel) {
+              const nameLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.vnc.label');
+              const portLabel = imageLabels.data.find((label) => label['label name'] === 'openbalena.remote.vnc.port');
 
-          containerChoices.push({ id: containerChoices.length, name: containerName });
-          containerServices.push(services);
-          containerLinks.push(links);
-        }),
-      );
+              addTarget('vnc', typeof nameLabel?.value === 'string' ? nameLabel.value : 'VNC', undefined, {
+                ...commonParameters,
+                service: 'vnc',
+                port: typeof portLabel?.value === 'string' ? portLabel.value : '5900',
+              });
+            }
 
-      setContainers({ choices: containerChoices, services: containerServices, links: containerLinks });
-      setLoaded(true);
+            return connectionTargets;
+          }),
+        );
+
+        setTargets([...hostTargets, ...applicationTargets.flat()]);
+      } catch (error) {
+        console.error(error);
+        notify(error instanceof Error ? error.message : 'Unable to load device connection targets', { type: 'error' });
+      } finally {
+        setLoaded(true);
+      }
     })();
-  }, [authProvider, dataProvider, loaded, record]);
+  }, [authProvider, dataProvider, loaded, notify, record]);
 
   if (!record) {
     return null;
@@ -248,13 +275,13 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
 
           <SelectInput
             source='container'
-            disabled={containers.choices.length === 0}
-            choices={createSelectChoices(containers)}
+            disabled={targets.length === 0}
+            choices={targets}
             defaultValue='default'
             emptyText='Select Service'
             emptyValue='default'
             optionText='label'
-            optionValue='value'
+            optionValue='id'
             onChange={(event) => handleSubmit((event.target as HTMLInputElement).value)}
           />
         </Box>

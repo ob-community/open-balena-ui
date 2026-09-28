@@ -27,13 +27,13 @@ export const ServiceEnvVarList: React.FC = () => {
   return (
     <List>
       <Datagrid size='medium' rowClick={false}>
-        <ReferenceField label='Fleet' source='service' reference='service' target='id'>
-          <ReferenceField source='application' reference='application' target='id'>
+        <ReferenceField label='Fleet' source='service' reference='service'>
+          <ReferenceField source='application' reference='application'>
             <TextField source='app name' />
           </ReferenceField>
         </ReferenceField>
 
-        <ReferenceField label='Service' source='service' reference='service' target='id'>
+        <ReferenceField label='Service' source='service' reference='service'>
           <TextField source='service name' />
         </ReferenceField>
 

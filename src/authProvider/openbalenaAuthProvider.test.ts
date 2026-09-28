@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import authProvider from './openbalenaAuthProvider';
+
+const installLocalStorage = () => {
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => values.delete(key),
+      setItem: (key: string, value: string) => values.set(key, value),
+    },
+  });
+  return values;
+};
+
+const unsignedToken = (payload: Record<string, unknown>): string =>
+  [
+    Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
+    Buffer.from(JSON.stringify(payload)).toString('base64url'),
+    '',
+  ].join('.');
+
+test('authentication failures clear the stored token and reject', async () => {
+  const values = installLocalStorage();
+  values.set('auth', 'expired-token');
+
+  await assert.rejects(authProvider.checkError({ status: 401 }));
+  assert.equal(values.has('auth'), false);
+});
+
+test('authorization denials preserve the stored token regardless of endpoint', async () => {
+  for (const body of [{ code: 'ADMIN_DB_FORBIDDEN' }, undefined]) {
+    const values = installLocalStorage();
+    values.set('auth', 'valid-token');
+
+    await authProvider.checkError({ status: 403, body });
+    assert.equal(values.get('auth'), 'valid-token');
+  }
+});
+
+test('identity is derived from the authenticated JWT', async () => {
+  const values = installLocalStorage();
+  values.set('auth', unsignedToken({ id: 42, username: 'test-user' }));
+
+  assert.deepEqual(await authProvider.getIdentity!(), {
+    id: 42,
+    fullName: 'test-user',
+  });
+});
+
+test('identity loads the current username when the JWT omits it', async () => {
+  const values = installLocalStorage();
+  values.set('auth', unsignedToken({ id: 2 }));
+  const originalFetch = globalThis.fetch;
+  let authorization: string | null = null;
+  globalThis.fetch = async (_input, init) => {
+    authorization = new Headers(init?.headers).get('Authorization');
+    return new Response(JSON.stringify({ userId: 2, username: 'admin' }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    assert.deepEqual(await authProvider.getIdentity!(), {
+      id: 2,
+      fullName: 'admin',
+    });
+    assert.equal(authorization, `Bearer ${values.get('auth')}`);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

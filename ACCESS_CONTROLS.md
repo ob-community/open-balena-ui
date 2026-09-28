@@ -1,0 +1,206 @@
+# Administrator access controls
+
+## Security boundary
+
+Operational data uses open-balena-api and its PineJS ACLs. Identity and authorization resources that cannot be managed
+through that API use a same-origin Express proxy at `/admin-db`. The browser is no longer given the PostgREST URL.
+
+The proxy:
+
+- verifies the open-balena JWT with `OPEN_BALENA_JWT_SECRET`;
+- derives the caller from the signed token's user ID;
+- resolves roles and organization membership server-side;
+- adds server-controlled ID scope to PostgREST queries;
+- rejects client projections, aliases, and relationship embedding so top-level scope and redaction cannot be bypassed;
+- validates organization references in mutation bodies;
+- redacts credentials before returning a response.
+
+This only creates a meaningful boundary if PostgREST is network-restricted so browsers and untrusted clients cannot
+reach it directly. Set `OPEN_BALENA_POSTGREST_URL` to an internal address and remove public ingress to PostgREST.
+Database row-level security or restricted views/RPCs remain the preferred long-term defense in depth.
+
+## Compatibility activation
+
+Existing installations historically treated every authenticated UI user as a database administrator. To avoid an upgrade
+lockout, enforcement activates only when a role named `global-admin` exists.
+
+- **No `global-admin` role:** this is intentionally the legacy wild-west mode. Every authenticated user is effectively a
+  super administrator with unrestricted direct-database administration. Credential redaction and credential-mutation
+  protections remain active, but administrator resource scoping does not.
+- **No `global-admin` role and `OPEN_BALENA_BOOTSTRAP_USER_ID` is set:** server startup creates the role and assigns it
+  to that numeric user ID before accepting requests.
+- **`global-admin` role exists:** direct database authorization is enforced for every request.
+
+Before activation, protected administrator roles cannot be renamed into existence or assigned through the proxy. Create
+`organization-admin` only after the bootstrap user has activated `global-admin`.
+
+`OPEN_BALENA_BOOTSTRAP_USER_ID` is the positive numeric `user.id` value, not a username or email address. Startup
+validates that it identifies exactly one existing user. Bootstrap is idempotent: while the setting remains present,
+startup creates a missing role and repairs a missing assignment before opening the HTTP listener. This makes an
+interrupted or concurrent startup recoverable without database functions. After a successful bootstrap, create a second
+global administrator and remove `OPEN_BALENA_BOOTSTRAP_USER_ID` so startup no longer restores the bootstrap assignment.
+
+The proxy prevents the enforcement role from being renamed or deleted after activation. Deleting the last global-admin
+assignment through the proxy is also prevented: a global administrator cannot delete their own user record or remove or
+rebind their own `global-admin` assignment. An external database administrator can still create a lockout by changing
+these records directly, so direct database access must remain restricted.
+
+## Roles
+
+### `global-admin`
+
+Users assigned this role can administer all direct-database resources. They still cannot:
+
+- read any user's password hash or JWT secret;
+- read API key material owned by another human user;
+- read another user's public-key content (metadata remains visible);
+- update passwords/JWT secrets or API key material through generic table PATCH operations.
+
+Password changes and credential rotation must use dedicated actions.
+
+### `organization-admin`
+
+Once enforcement is active, users assigned this role can access records associated with organizations where they are
+members. Scope includes:
+
+- the organization and its memberships;
+- member user metadata;
+- actors for member users, organization fleets, and their devices;
+- API-key metadata and assignment rows for those actors;
+- API-key material for fleets and devices in the administered organization;
+- user role and permission metadata and SSH-key metadata for members.
+
+Global role definitions, permissions, role-permission mappings, configuration, and migration/model metadata remain
+global-admin-only. Role metadata explicitly named by `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` is the sole
+read-only exception so organization administrators can render approved role choices.
+
+Organization administrators may read, update, and delete existing scoped records and create scoped join records when
+every referenced ID is already in scope. They can create API keys for existing in-scope fleet/device actors. They cannot
+create users, actors, or organizations through the current direct-database workflow, and cannot delete whole user
+records because a user may have relationships in other organizations. Those workflows start with unscoped records and
+require a future transactional server endpoint to bind new records to an organization safely.
+
+SSH public-key metadata remains visible for in-scope organization members, but organization administrators may create,
+replace, or delete only their own keys. This prevents an administrator for one organization from taking over or
+disrupting a member's account in their other organizations. Global administrators may view and manage every SSH public
+key, including creating a key for another user. Intentional legacy mode grants that same global access to every
+authenticated user. Rows whose key material is redacted for organization administrators are labeled read-only in the UI
+and their edit/delete controls are omitted.
+
+Only global administrators may change direct user permissions or API-key roles/permissions. Organization administrators
+may create, update, or delete user-role assignments only when both the user is in their organization scope and the
+role's exact name is listed in the server-only `OPEN_BALENA_ORGANIZATION_ADMIN_ASSIGNABLE_ROLES` setting. `global-admin`
+and `organization-admin` are always excluded even if configured. Leave the setting empty to deny organization-admin role
+changes. Because roles and their permissions are global, operators must list only roles whose effective permissions are
+safe for organization-scoped delegation and re-audit the list whenever those roles change. Assignments for other roles
+and global-administrator user records are excluded from organization scope, preventing promotion or modification of a
+global admin.
+
+Organization membership currently defines administrative scope. Assign `organization-admin` only to users who should
+administer every member and fleet in each organization to which they belong.
+
+### Ordinary users
+
+After activation, users without either administrative role receive a narrow self-service and membership scope through
+`/admin-db`. They may:
+
+- read their own user record, role assignments, API keys, and SSH keys;
+- read their own organization memberships and the corresponding organization records;
+- create, update, and delete API keys belonging to their own actor;
+- create, update, and delete SSH keys belonging to their own user.
+
+They cannot read other users or credentials, mutate organizations or memberships, assign roles or permissions, or use
+global direct-database resources. The API-key and SSH-key creation forms display the authenticated account instead of
+loading an administrator-only user selector, and the server independently rejects a submitted owner or actor outside the
+authenticated user's scope.
+
+## BalenaOS catalog administration
+
+Global administrators and enforced-mode users who are members of the `balena_os` organization may inspect and
+synchronize the Services > BalenaOS catalog. In legacy mode, every authenticated user retains effective
+global-administrator access.
+
+PostgREST is used only to resolve the caller's effective administrator role. All synchronized application, release,
+service, image, and release-image writes are sent to open-balena-api with the caller's token so its validation, ACLs,
+hooks, and notifications remain in force. A caller that is a UI global administrator but lacks the required
+open-balena-api permissions receives an explicit synchronization failure; the server does not bypass the API.
+
+Membership in `balena_os` authorizes the UI server route but does not grant open-balena-api write permissions. The
+member's open-balena-api role must separately permit the application, release, service, image, and relationship writes
+performed by synchronization.
+
+## RBAC-aware navigation and read-only resources
+
+In enforced mode, ordinary users can list their organizations and their own user record, but those pages omit create,
+edit, and delete controls. Installation-wide direct-database pages (`Configs`, `Permissions`, and `Roles`) are hidden
+from non-global administrators. Direct URL access remains server-enforced.
+
+CPU architectures, device families, device manufacturers, device types, device-type aliases, and fleet types are read
+through open-balena-api. They remain visible to ordinary users when the API permits reads, but the UI treats them as
+read-only for non-global users because they are installation-wide catalogs. Their underlying API ACLs remain the final
+authority.
+
+## Credential handling
+
+Redaction is applied in both legacy and enforced modes:
+
+| Data                             | Behavior                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| User `password`                  | Never returned                                                                                              |
+| User `jwt_secret` / `jwt secret` | Never returned                                                                                              |
+| Human user API key `key`         | Returned only when the key belongs to the authenticated user's actor                                        |
+| Fleet/device API key `key`       | Returned to global admins and organization admins authorized to manage that fleet/device                    |
+| SSH `public key`                 | Returned globally in legacy/global-admin mode; enforced organization admins see only their own key material |
+
+Credential fields are also rejected in query parameters to prevent filter-based inference. Generic user POST, PATCH, and
+PUT requests cannot set password/JWT-secret fields, and generic API-key creation or key-material mutation is rejected.
+Primary keys cannot be supplied or changed through generic mutations in any authorization mode, and user/API-key actor
+ownership is immutable through generic updates. This prevents ID collisions, row movement, or ownership rebinding from
+moving scoped data or turning another human user's credential into a caller-visible key. API keys are created through
+`/admin-db/actions/create-api-key`, which validates the target actor and generates key material with the server's
+cryptographic random source. The create form offers the authenticated user's own actor plus in-scope fleet and device
+actors, without listing other human users. Single deletion uses `/admin-db/actions/delete-api-key`; bulk deletion uses
+one bounded `/admin-db/actions/delete-api-keys` request that validates all existing requested keys before deleting any
+of them. Both actions remove dependent privilege rows only after validating mutation scope. PostgREST upsert preferences
+are rejected so a create request cannot modify an existing out-of-scope record.
+
+Password changes use the dedicated `/admin-db/actions/change-password` action. Global administrators may reset user
+passwords; organization administrators may change only their own password because a user account and its password can
+span multiple organizations. Passwords are limited to 72 UTF-8 bytes so bcrypt cannot silently ignore a suffix. Password
+hashing is performed on the UI server; generic user PATCH requests continue to reject password changes.
+
+User creation uses `/admin-db/actions/create-user`; password hashing, JWT-secret generation, and named-user credential
+provisioning all occur on the UI server. Device and fleet creation use `/admin-db/actions/create-operational-resource`,
+which provisions the credential actor and performs the open-balena-api write in one server workflow. If the API write
+fails, the newly created role assignment, API key, and actor are removed. User, fleet, and device deletion uses
+`/admin-db/actions/delete-resource-actor`. Before browser-side related-record cleanup begins, a shared server preflight
+validates parent/actor ownership, administrator scope, and self-lockout rules; the final action repeats the same checks.
+Human credential material is never returned to the administrator's browser. If actor cleanup fails after the parent was
+deleted, a global administrator can safely retry the same action; the server verifies that no user, fleet, or device
+still references the actor, deletes its remaining API keys, and then deletes the actor. Related API keys are deleted
+only after the parent deletion succeeds. User relation rows required for deletion are restored if the parent deletion
+fails, so a failed attempt does not leave a live user stripped of roles, permissions, keys, or memberships. User,
+device, and fleet creation are global-admin-only; organization administrators may create and maintain additional keys
+only for existing fleet/device actors already in their organization scope.
+
+## Deployment checklist
+
+1. Configure `OPEN_BALENA_JWT_SECRET` on the UI server.
+2. Configure internal-only `OPEN_BALENA_POSTGREST_URL`.
+3. Set `OPEN_BALENA_BOOTSTRAP_USER_ID` to the trusted user's numeric ID.
+4. Remove public ingress and browser access to PostgREST.
+5. Start the UI and confirm startup created the role and assignment.
+6. Assign a second global administrator.
+7. Remove `OPEN_BALENA_BOOTSTRAP_USER_ID` and restart the UI.
+8. Create `organization-admin` and assign it only to intended organization administrators.
+9. Verify ordinary, organization-admin, and global-admin accounts separately.
+10. Monitor denied `/admin-db` requests and audit direct-database writes.
+
+## Limitations and future work
+
+- Authorization metadata is read from PostgREST on each request; deployments may add a short, carefully invalidated
+  cache if needed.
+- Multi-step legacy identity workflows are not transactional.
+- Organization-admin user creation is disabled until implemented as a server-side transaction.
+- PostgreSQL RLS/restricted views should eventually enforce the same policy even if the proxy is bypassed.
+- open-balena-api administrator endpoints should replace direct database access wherever they become available.

@@ -39,18 +39,17 @@ const DeviceServiceVarDatagrid: React.FC<{ embedded?: boolean }> = ({ embedded =
     }}
   >
     {!embedded && (
-      <ReferenceField label='Device' source='service install' reference='service install' target='id'>
-        <ReferenceField source='device' reference='device' target='id'>
+      <ReferenceField label='Device' source='service install' reference='service install'>
+        <ReferenceField source='device' reference='device'>
           <TextField source='device name' />
         </ReferenceField>
       </ReferenceField>
     )}
 
-    <ReferenceField label='Service' source='service install' reference='service install' target='id' link={false}>
+    <ReferenceField label='Service' source='service install' reference='service install' link={false}>
       <ReferenceField
         source='installs-service'
         reference='service'
-        target='id'
         link={(record, reference) => `/${reference}/${record['installs-service']}`}
       >
         <TextField source='service name' />
@@ -102,13 +101,12 @@ export const DeviceServiceVarListForDevice: React.FC<{ deviceId: string | number
   }
 
   const serviceInstallIds = data?.map((x) => x.id) ?? [];
-  const serviceInstallFilter = serviceInstallIds.length > 0 ? `(${serviceInstallIds.join(',')})` : '(null)';
 
   return (
     <List
       resource='device service environment variable'
       title='Device Service Vars'
-      filter={{ 'service install@in': serviceInstallFilter }}
+      filter={{ 'service install@in': serviceInstallIds }}
       sx={{ width: '100%', minWidth: 0 }}
     >
       <DeviceServiceVarDatagrid embedded />

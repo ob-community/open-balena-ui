@@ -29,15 +29,19 @@ import { Chip } from '@mui/material';
 import SwitchAccessShortcutIcon from '@mui/icons-material/SwitchAccessShortcut';
 import { useParams } from 'react-router';
 import { v4 as uuidv4 } from 'uuid';
-import { useCreateFleet } from '../lib/fleet';
 import DeleteFleetButton from '../ui/DeleteFleetButton';
 import Row from '../ui/Row';
 import SemVerChip, { getSemver } from '../ui/SemVerChip';
 import { resolveFleetTargetRelease } from '../lib/targetRelease';
 import TargetReleaseIcon from '../ui/TargetReleaseIcon';
 import TargetReleaseTooltip from '../ui/TargetReleaseTooltip';
+import versions from '../versions';
+import environment from '../lib/reactAppEnv';
+import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
-const fleetPinField = 'should be running-release';
+const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+const fleetPinField = isPinnedOnRelease;
 
 const FleetTargetReleaseCell: React.FC<{ record: Record<string, any> }> = ({ record }) => {
   if (!record) {
@@ -61,7 +65,7 @@ const FleetTargetReleaseCell: React.FC<{ record: Record<string, any> }> = ({ rec
 
   return (
     <RecordContextProvider value={augmentedRecord}>
-      <ReferenceField source={targetField} reference='release' target='id' link={false}>
+      <ReferenceField source={targetField} reference='release' link={false}>
         <TargetReleaseTooltip origin={origin}>
           <SemVerChip icon={chipIcon} withTooltip={false} />
         </TargetReleaseTooltip>
@@ -79,6 +83,10 @@ const CustomBulkActionButtons: React.FC = (props) => (
 );
 
 export const FleetList: React.FC = () => {
+  const { context } = useAdminAccessContext();
+  const canEditOrganizations =
+    context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
+
   return (
     <List>
       <Datagrid
@@ -96,13 +104,18 @@ export const FleetList: React.FC = () => {
       >
         <TextField label='Name' source='app name' />
 
-        <ReferenceField label='Organization' source='organization' reference='organization' target='id'>
+        <ReferenceField
+          label='Organization'
+          source='organization'
+          reference='organization'
+          link={canEditOrganizations ? undefined : false}
+        >
           <TextField source='name' />
         </ReferenceField>
 
         <TextField label='Slug' source='slug' />
 
-        <ReferenceField label='Device Type' source='is for-device type' reference='device type' target='id'>
+        <ReferenceField label='Device Type' source='is for-device type' reference='device type'>
           <TextField source='slug' />
         </ReferenceField>
 
@@ -126,11 +139,10 @@ export const FleetList: React.FC = () => {
 };
 
 export const FleetCreate: React.FC<CreateProps> = (props) => {
-  let createFleet = useCreateFleet();
   const unique = useUnique();
 
   return (
-    <Create title='Create Fleet' redirect='list' transform={createFleet} {...props}>
+    <Create title='Create Fleet' redirect='list' {...props}>
       <SimpleForm>
         <Row>
           <TextInput source='app name' validate={[required(), minLength(4), maxLength(100), unique()]} size='large' />
@@ -147,16 +159,18 @@ export const FleetCreate: React.FC<CreateProps> = (props) => {
         />
 
         <Row>
-          <SelectInput
-            label='Class'
-            source='is of-class'
-            choices={[
-              { id: 'fleet', name: 'Fleet' },
-              { id: 'app', name: 'App' },
-              { id: 'block', name: 'Block' },
-            ]}
-            defaultValue={'fleet'}
-          />
+          {applicationClass ? (
+            <SelectInput
+              label='Class'
+              source={applicationClass}
+              choices={[
+                { id: 'fleet', name: 'Fleet' },
+                { id: 'app', name: 'App' },
+                { id: 'block', name: 'Block' },
+              ]}
+              defaultValue={'fleet'}
+            />
+          ) : null}
 
           <ReferenceInput
             label='Depends on Fleet'
@@ -250,16 +264,18 @@ export const FleetEdit: React.FC = () => {
         />
 
         <Row>
-          <SelectInput
-            label='Class'
-            source='is of-class'
-            choices={[
-              { id: 'fleet', name: 'Fleet' },
-              { id: 'app', name: 'App' },
-              { id: 'block', name: 'Block' },
-            ]}
-            defaultValue={'fleet'}
-          />
+          {applicationClass ? (
+            <SelectInput
+              label='Class'
+              source={applicationClass}
+              choices={[
+                { id: 'fleet', name: 'Fleet' },
+                { id: 'app', name: 'App' },
+                { id: 'block', name: 'Block' },
+              ]}
+              defaultValue={'fleet'}
+            />
+          ) : null}
 
           <ReferenceInput
             label='Depends on Fleet'
@@ -331,9 +347,14 @@ export const FleetEdit: React.FC = () => {
                 reference='release'
                 target='id'
                 filter={{ 'belongs to-application': fleetId }}
-                allowEmpty
               >
-                <SelectInput optionText={(o) => getSemver(o)} optionValue='id' fullWidth={true} />
+                <SelectInput
+                  label='Target Release'
+                  optionText={(o) => getSemver(o)}
+                  optionValue='id'
+                  validate={required()}
+                  fullWidth={true}
+                />
               </ReferenceInput>
             )
           }

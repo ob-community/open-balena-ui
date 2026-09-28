@@ -364,7 +364,28 @@ test('synchronizes and assigns a Supervisor release without changing reported st
       const resource = url.pathname.split('/').pop()!;
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       writes.push({ resource, method, body });
-      return response({ d: [{ ...body, id: ids[resource] }] }, 201);
+      return response(
+        {
+          d: [
+            {
+              ...body,
+              id: ids[resource],
+              ...(resource === 'image'
+                ? { is_stored_at__image_location: 'registry.openbalena.test/v2/generated-image' }
+                : {}),
+            },
+          ],
+        },
+        201,
+      );
+    }
+    if (method === 'PATCH' && url.pathname === '/v7/image(140)') {
+      writes.push({
+        resource: 'image',
+        method,
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      });
+      return new Response(undefined, { status: 200 });
     }
     if (method === 'PATCH' && url.pathname === '/v7/device(25)') {
       writes.push({
@@ -399,4 +420,20 @@ test('synchronizes and assigns a Supervisor release without changing reported st
     false,
   );
   assert.equal(writes.find(({ resource }) => resource === 'application')?.body.is_host, false);
+  assert.deepEqual(
+    writes.find(({ resource, method }) => resource === 'image' && method === 'PATCH'),
+    {
+      resource: 'image',
+      method: 'PATCH',
+      body: {
+        is_stored_at__image_location: 'registry.openbalena.test/v2/supervisor',
+      },
+    },
+  );
+  assert.deepEqual(
+    writes
+      .filter(({ resource }) => resource === 'image' || resource === 'release_image')
+      .map(({ resource, method }) => `${method} ${resource}`),
+    ['POST image', 'PATCH image', 'POST release_image'],
+  );
 });

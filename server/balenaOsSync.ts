@@ -479,6 +479,25 @@ export class BalenaOsSyncManager {
     return created;
   }
 
+  private async reconcileImageLocation(
+    image: RecordValue,
+    location: string,
+    authorization: string,
+  ): Promise<RecordValue> {
+    if (image.is_stored_at__image_location === location) return image;
+    const id = relationId(image.id);
+    if (!id) throw new Error('Created image record has no valid ID.');
+    await this.requestJson(
+      `${this.dependencies.apiUrl()}/${this.dependencies.apiVersion()}/image(${id})`,
+      authorization,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ is_stored_at__image_location: location }),
+      },
+    );
+    return { ...image, is_stored_at__image_location: location };
+  }
+
   private async imageCatalog(authorization: string, slug: string): Promise<string[]> {
     const body = (await this.requestJson(
       `${this.dependencies.apiUrl()}/device-types/v1/${encodeURIComponent(slug)}/images`,
@@ -1125,27 +1144,31 @@ export class BalenaOsSyncManager {
             relationId(image.is_a_build_of__service) === localServiceId &&
             (contentHash ? image.content_hash === contentHash : image.is_stored_at__image_location === location),
         );
-        const local = await this.write(
-          'image',
-          existing,
-          {
-            start_timestamp: sourceImage.start_timestamp,
-            end_timestamp: sourceImage.end_timestamp ?? null,
-            dockerfile: sourceImage.dockerfile ?? null,
-            is_a_build_of__service: localServiceId,
-            image_size: sourceImage.image_size ?? null,
-            is_stored_at__image_location: location,
-            project_type: sourceImage.project_type ?? null,
-            error_message: sourceImage.error_message ?? null,
-            push_timestamp: sourceImage.push_timestamp ?? null,
-            status: 'success',
-            content_hash: contentHash,
-            contract: structuredField(sourceImage.contract, 'contract', `image ${sourceImageId}`, null),
-          },
-          contentHash
-            ? `(is_a_build_of__service eq ${localServiceId}) and (content_hash eq ${quote(String(contentHash))})`
-            : `(is_a_build_of__service eq ${localServiceId}) and (is_stored_at__image_location eq ${quote(location)})`,
-          'id,is_a_build_of__service,is_stored_at__image_location,content_hash',
+        const local = await this.reconcileImageLocation(
+          await this.write(
+            'image',
+            existing,
+            {
+              start_timestamp: sourceImage.start_timestamp,
+              end_timestamp: sourceImage.end_timestamp ?? null,
+              dockerfile: sourceImage.dockerfile ?? null,
+              is_a_build_of__service: localServiceId,
+              image_size: sourceImage.image_size ?? null,
+              is_stored_at__image_location: location,
+              project_type: sourceImage.project_type ?? null,
+              error_message: sourceImage.error_message ?? null,
+              push_timestamp: sourceImage.push_timestamp ?? null,
+              status: 'success',
+              content_hash: contentHash,
+              contract: structuredField(sourceImage.contract, 'contract', `image ${sourceImageId}`, null),
+            },
+            contentHash
+              ? `(is_a_build_of__service eq ${localServiceId}) and (content_hash eq ${quote(String(contentHash))})`
+              : `(is_a_build_of__service eq ${localServiceId}) and (is_stored_at__image_location eq ${quote(location)})`,
+            'id,is_a_build_of__service,is_stored_at__image_location,content_hash',
+            authorization,
+          ),
+          location,
           authorization,
         );
         imageMap.set(sourceImageId, relationId(local.id)!);

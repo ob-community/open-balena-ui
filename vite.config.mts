@@ -9,6 +9,7 @@ const clientEnvironmentVariables = [
   'REACT_APP_OPEN_BALENA_API_VERSION',
   'REACT_APP_OPEN_BALENA_ODATA_VERSION',
   'REACT_APP_OPEN_BALENA_REMOTE_URL',
+  'REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED',
   'REACT_APP_OPEN_BALENA_UI_URL',
   'REACT_APP_OPEN_BALENA_UI_VERSION',
 ];
@@ -19,6 +20,9 @@ export default defineConfig(({ mode }) => {
   const clientBuildEnvironment = Object.fromEntries(
     clientEnvironmentVariables.flatMap((key) => (rawEnv[key] ? [[key, rawEnv[key]]] : [])),
   );
+  clientBuildEnvironment.REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED = rawEnv.OPEN_BALENA_TUNNEL_URL
+    ? 'true'
+    : 'false';
   const port = Number(rawEnv.PORT ?? process.env.PORT ?? 3000);
   const previewPort = Number(rawEnv.PORT ?? process.env.PORT ?? 4173);
 
@@ -42,6 +46,10 @@ export default defineConfig(({ mode }) => {
         '/device-update-options': 'http://127.0.0.1:3001',
         '/device-supervisor-target': 'http://127.0.0.1:3001',
         '/balena-os': 'http://127.0.0.1:3001',
+        '/remote': {
+          target: 'http://127.0.0.1:3001',
+          ws: true,
+        },
       },
     },
     preview: {

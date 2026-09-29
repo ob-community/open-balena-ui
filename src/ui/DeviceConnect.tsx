@@ -1,4 +1,4 @@
-import { Box, useTheme } from '@mui/material';
+import { Alert, Box, useTheme } from '@mui/material';
 import React from 'react';
 import { Form, SelectInput, useAuthProvider, useDataProvider, useNotify, useRecordContext } from 'react-admin';
 import type { DataProvider, Identifier } from 'react-admin';
@@ -14,12 +14,13 @@ import {
 } from '../lib/deviceConnect';
 import type { ResourceRecord } from '../types/resource';
 import { EmbeddedFrame } from './EmbeddedFrame';
+import BuiltInDeviceConnect from './BuiltInDeviceConnect';
 
 interface DeviceConnectProps {
   record?: ResourceRecord;
 }
 
-export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp }) => {
+const LegacyDeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp }) => {
   const contextRecord = useRecordContext<ResourceRecord>();
   const record = contextRecord ?? recordProp;
   const [loaded, setLoaded] = React.useState(false);
@@ -290,6 +291,20 @@ export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp
       <EmbeddedFrame src={iframeUrl} backgroundColor={logsBgColor} />
     </>
   );
+};
+
+export const DeviceConnect: React.FC<DeviceConnectProps> = ({ record: recordProp }) => {
+  const contextRecord = useRecordContext<ResourceRecord>();
+  const record = contextRecord ?? recordProp;
+
+  if (!environment.REACT_APP_OPEN_BALENA_REMOTE_URL) {
+    if (!environment.REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED) {
+      return <Alert severity='info'>Built-in remote access is not configured on this open-balena-ui server.</Alert>;
+    }
+    return record ? <BuiltInDeviceConnect record={record} /> : null;
+  }
+
+  return <LegacyDeviceConnect record={record} />;
 };
 
 export default DeviceConnect;

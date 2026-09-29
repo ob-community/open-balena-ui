@@ -11,15 +11,18 @@ open-balena.
 - [Direct database access](DIRECT_DB_ACCESS.md) explains which resources require protected PostgREST access and why.
 - [Host OS and Supervisor updates](OS_AND_SUPERVISOR_UPDATES.md) covers catalog synchronization, image delivery, update
   behavior, and deployment requirements.
+- [Built-in remote access](REMOTE_ACCESS_ARCHITECTURE.md) documents browser terminals, tunnel and SSH authentication,
+  ephemeral key lifecycle, streaming SFTP transfers, trust boundaries, configuration, and operations.
 
 ## Dependencies
 
 This project uses `open-balena-api` for operational data and depends on
 [open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) only for administrator identity and
-authorization resources that the API does not expose with the required global semantics. It also depends on
-[open-balena-remote](https://github.com/ob-community/open-balena-remote), so the easiest way to get this up and running
-would be to install it via the [open-balena-admin](https://github.com/ob-community/open-balena-admin) project. See
-[DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid provider.
+authorization resources that the API does not expose with the required global semantics. Device terminals and file
+transfers are built in when `REACT_APP_OPEN_BALENA_REMOTE_URL` is unset. Configuring that variable retains compatibility
+with [open-balena-remote](https://github.com/ob-community/open-balena-remote). See
+[DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid provider and
+[REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for the complete remote-access deployment model.
 
 ## Configuration
 
@@ -122,8 +125,9 @@ and every semantic-version decision. An invalidated release is imported only whe
 reports that exact version; it remains marked invalidated locally so it cannot be offered as an update target to other
 devices.
 
-- `REACT_APP_OPEN_BALENA_REMOTE_URL` The URL (accessible to API) of the `open-balena-remote` instance, i.e.
-  `http://remote.openbalena.local:10000`
+- `REACT_APP_OPEN_BALENA_REMOTE_URL` Optional URL of a legacy `open-balena-remote` instance, for example
+  `http://remote.openbalena.local:10000`. When this is non-empty, device Connect windows use the legacy iframe flow.
+  Leave it empty or unset to use the built-in terminal and streaming SFTP implementation.
 
 - `REACT_APP_OPEN_BALENA_API_URL` The URL (accessible to API) of the `open-balena-api` instance, i.e.
   `https://api.openbalena.local`
@@ -136,19 +140,47 @@ devices.
 
 - `REACT_APP_BANNER_IMAGE` The URL of a custom banner image to use on the main dashboard.
 
+Built-in remote access uses these server-only variables:
+
+- `OPEN_BALENA_TUNNEL_URL` Required internal HTTPS endpoint for the openBalena CONNECT tunnel, for example
+  `https://tunnel.openbalena.svc.cluster.local:443`. The UI server connects to this endpoint; browsers do not.
+- `OPEN_BALENA_SSH_TARGET_PORT` Device SSH port requested through the tunnel. Defaults to `22222`.
+- `OPEN_BALENA_SSH_KEY_IDLE_TTL_MS` How long the per-user ephemeral SSH key remains registered after that user's last
+  terminal or transfer closes. Defaults to `600000` (10 minutes).
+- `OPEN_BALENA_SSH_HOST_KEYS` Comma-separated SHA-256 SSH host-key pins. Each entry is either a wildcard fingerprint
+  (`SHA256:...`) or `device-uuid=SHA256:...` / `device-uuid.balena=SHA256:...`.
+- `OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS` Compatibility escape hatch for devices without managed host-key pins.
+  Defaults to `false`. An explicitly configured pin still rejects a mismatching key.
+- `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS` Optional comma-separated additional browser origins allowed to create terminal
+  WebSockets. Same-origin requests are allowed automatically.
+- `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS` Tunnel and SSH connection timeout. Defaults to `15000`.
+- `OPEN_BALENA_REMOTE_TICKET_TTL_MS` Lifetime of single-use WebSocket tickets. Defaults to `30000`.
+- `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER` Maximum concurrent terminal/SFTP operations per user. Defaults to `8`.
+- `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP` Maximum simultaneous terminal WebSockets per source IP. Defaults to `8`.
+- `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET` Maximum logical terminals per browser WebSocket. Defaults to `4`.
+- `OPEN_BALENA_REMOTE_MAX_MESSAGE_BYTES` Maximum WebSocket message size. Defaults to `1048576`.
+- `OPEN_BALENA_REMOTE_MAX_UPLOAD_BYTES` Maximum upload size. Defaults to `1073741824` (1 GiB).
+- `OPEN_BALENA_REMOTE_MAX_PATH_BYTES` Maximum UTF-8 byte length of a device file path. Defaults to `4096`.
+
+The built-in gateway also requires `OPEN_BALENA_POSTGREST_URL`, `OPEN_BALENA_JWT_SECRET`, and
+`REACT_APP_OPEN_BALENA_API_URL`, which are shared with the existing authenticated UI server routes. See
+[REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for protocol details, trust boundaries, host-key
+management, deployment, and troubleshooting.
+
 These variables can be supplied through the standard Vite `.env` files (for example `.env`, `.env.local`, or
 `.env.<mode>` when invoking `vite --mode <mode>`). The active mode is already set for the provided `npm run dev` and
 `npm run dev:local` scripts.
 
 ## Exposing Device Connection Endpoints
 
-Each device has a "Connect" button which uses balena image labels to discover available services on that device. To make
-use of this auto-discovery, you will need to add tags to each container within your balena application's
-`docker-compose` file where you would like to expose services. Examples of the three types of services available to
-expose are provided below (http, https and vnc); note that ssh services are enabled by default and do not need labels.
-When a device is running an application that exposes container services using the label constructs below, you will see
-the service appear in the list of available connections for that container when clicking the "Connect" button for that
-device in the admin ui.
+Each device has a "Connect" button. Built-in mode offers Host OS and running application-container SSH targets without
+requiring image labels. The HTTP, HTTPS, and VNC label discovery described below is available only through the legacy
+`open-balena-remote` flow. To make use of that legacy auto-discovery, add tags to each container within your
+application's `docker-compose` file where you would like to expose services. Examples of the three types of services
+available to expose are provided below (http, https and vnc); note that ssh services are enabled by default and do not
+need labels. When a device is running an application that exposes container services using the label constructs below,
+you will see the service appear in the list of available connections for that container when clicking the "Connect"
+button for that device in the admin ui.
 
 HTTP Services:
 

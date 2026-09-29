@@ -83,7 +83,7 @@ Services > BalenaOS offers these scopes:
 - **Newer than version + in use:** versions newer than a threshold plus versions currently in use.
 - **Only versions in use:** only versions currently reported by devices.
 - **Single semantic version:** one requested version wherever it exists for a device type.
-- **All catalog versions:** every usable release advertised by the installation's image catalog.
+- **All catalog versions:** every usable release advertised by the version-appropriate public Host OS catalog.
 
 Synchronization is additive and idempotent. It does not delete local releases or change device targets. The browser may
 be closed after the server has accepted the job, but the UI server process must remain running because progress is held
@@ -93,6 +93,12 @@ Invalidated releases are excluded from counts, latest-version decisions, and nor
 release is imported only when a matching device already reports it, and it remains invalidated locally. Selecting a
 `+revN` release also imports required earlier non-invalidated revisions because open-balena-api assigns revisions
 sequentially.
+
+Before open-balena-api v46, usable Host OS versions are intersected with the installation's
+`/device-types/v1/:deviceType/images` response. Starting with v46, that endpoint no longer exists, so the synchronizer
+uses the standard public Host OS application's successful, finalized releases and excludes invalidated releases, ESR
+applications, and ESR-style major versions of 2000 or newer. A `404` from the legacy endpoint triggers the same modern
+behavior so a stale configured API version cannot break the catalog page.
 
 On open-balena-api v0.139.0 through v0.148.x, the synchronizer uses final release types and `version` release tags.
 Newer versions use native semantic release fields. See [API_VERSIONS.md](./API_VERSIONS.md) for all compatibility

@@ -64,6 +64,7 @@ test('includes prior release revisions required by open-balena-api', () => {
 
 test('synchronizes a complete Host OS release graph through open-balena-api', async () => {
   const writes: Array<{ resource: string; method: string; body: Record<string, unknown> }> = [];
+  const requests: URL[] = [];
   const ids: Record<string, number> = {
     application: 10,
     service: 20,
@@ -75,6 +76,7 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
   const fetchMock: typeof fetch = async (input, init) => {
     assert.doesNotMatch(String(input), /%2C/i);
     const url = new URL(String(input));
+    requests.push(url);
     const method = init?.method ?? 'GET';
     const isCatalog = url.origin === 'https://api.balena-cloud.test';
 
@@ -116,6 +118,17 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
             is_finalized_at__date: '2026-01-01T00:01:00.000Z',
             raw_version: '6.0.0',
             semver: '6.0.0',
+            variant: '',
+            revision: 0,
+          },
+          {
+            id: 301,
+            commit: 'invalid-esr-looking-release',
+            status: 'success',
+            is_final: true,
+            is_invalidated: true,
+            raw_version: '2026.1.0',
+            semver: '2026.1.0',
             variant: '',
             revision: 0,
           },
@@ -255,6 +268,56 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
   );
   const catalog = await manager.getCatalog('******');
   assert.equal(catalog.deviceTypes[0]?.latestAvailable, '6.0.0');
+  assert.equal(
+    requests.some(({ pathname }) => pathname === '/device-types/v1/generic-amd64/images'),
+    true,
+  );
+
+  const modernRequestStart = requests.length;
+  const modernManager = new BalenaOsSyncManager({
+    fetch: fetchMock,
+    apiUrl: () => 'https://api.openbalena.test',
+    apiVersion: () => 'v7',
+    apiSoftwareVersion: () => 'v49.6.0',
+    catalogApiUrl: () => 'https://api.balena-cloud.test',
+    registryHost: () => 'registry.openbalena.test',
+  });
+  const modernCatalog = await modernManager.getCatalog('******');
+  assert.deepEqual(modernCatalog.deviceTypes[0], {
+    id: 1,
+    slug: 'generic-amd64',
+    availableVersions: 1,
+    localApplications: 0,
+    localReleases: 0,
+    latestAvailable: '6.0.0',
+    latestLocal: undefined,
+  });
+  const modernRequests = requests.slice(modernRequestStart);
+  assert.equal(
+    modernRequests.some(({ pathname }) => pathname.startsWith('/device-types/v1/')),
+    false,
+  );
+  assert.equal(
+    modernRequests
+      .filter(({ origin, pathname }) => origin === 'https://api.balena-cloud.test' && pathname === '/v6/application')
+      .every((url) => !url.searchParams.get('$filter')?.includes('-esr')),
+    true,
+  );
+
+  const fallbackManager = new BalenaOsSyncManager({
+    fetch: async (input, init) =>
+      new URL(String(input)).pathname.startsWith('/device-types/v1/')
+        ? response(undefined, 404)
+        : fetchMock(input, init),
+    apiUrl: () => 'https://api.openbalena.test',
+    apiVersion: () => 'v7',
+    apiSoftwareVersion: () => 'v43.5.4',
+    catalogApiUrl: () => 'https://api.balena-cloud.test',
+    registryHost: () => 'registry.openbalena.test',
+  });
+  const fallbackCatalog = await fallbackManager.getCatalog('******');
+  assert.equal(fallbackCatalog.deviceTypes[0]?.latestAvailable, '6.0.0');
+  assert.equal(fallbackCatalog.deviceTypes[0]?.availableVersions, 1);
   assert.throws(() => manager.start('******', 9, { mode: 'single' }), /valid semantic version/);
 });
 

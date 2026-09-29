@@ -30,7 +30,18 @@ Host OS and Supervisor catalog applications are owned by the required `balena_os
 version. Organization creation remains an administrative bootstrap operation because open-balena-api does not expose it;
 the API identity used for synchronization must be an organization member.
 
-## v26.1.0 and newer: native v7 model
+## v46.0.0 and newer: Host OS release catalog
+
+- open-balena-api
+  [`ddb7ac84`](https://github.com/balena-io/open-balena-api/commit/ddb7ac84be12d83ffc0aea7aadc941e2fb94f036)
+  removed `/device-types/v1/:deviceType/images` in favor of Host OS application releases.
+- The BalenaOS page and synchronizer therefore discover successful, finalized, non-invalidated releases from the
+  standard public `balena_os/:deviceType` Host OS application. They do not call the removed endpoint.
+- ESR applications and ESR-looking semantic versions with a major version of 2000 or newer are excluded. This matches
+  open-balena-api's post-v46 Host OS behavior, which does not support ESR releases through these endpoints.
+- All v26.1.0+ v7 behavior described below continues to apply.
+
+## v26.1.0 through v45.x: native v7 model
 
 - The provider uses the OData **v7** endpoint by default.
 - This boundary follows open-balena-api [v26.1.0](https://github.com/balena-io/open-balena-api/releases/tag/v26.1.0),
@@ -40,10 +51,15 @@ the API identity used for synchronization must be an organization member.
 - Device target-release writes use `is pinned on-release`.
 - Device OS and supervisor upgrade choices use the configured v7 `release` endpoint with device-type and current
   semantic-version filters.
-- The BalenaOS image catalog at `/device-types/v1/:deviceType/images` is not an assignable release catalog. It lists
-  downloadable versions from image storage but does not create the host application, release, service, image, and
-  related records required by `device.should_be_operated_by__release`. An installation with no local host applications
-  therefore has no Host OS target choices even when that image endpoint lists many versions.
+- BalenaOS synchronization discovers successful, finalized Host OS releases from Balena Cloud's public OData release
+  catalog. Public release IDs are discovery inputs only: the synchronizer imports the complete host application,
+  release, service, image, and relationship graph before assigning a local release to
+  `device.should_be_operated_by__release`.
+- The BalenaOS synchronizer intersects those public releases with
+  `/device-types/v1/:deviceType/images`, preserving the API's image-storage availability and ESR filtering through the
+  final release that exposes that endpoint.
+- If the configured API software version is stale and the endpoint nevertheless returns `404`, the synchronizer detects
+  that capability mismatch and uses the v46+ non-ESR Host OS release behavior instead of failing the catalog page.
 - Supervisor choices combine compatible local release records with Balena Cloud's public v7 release catalog by CPU
   architecture. Selecting a public-only version synchronizes its complete release graph through the configured
   open-balena-api under the `balena_os` system organization, then writes the resulting local ID to

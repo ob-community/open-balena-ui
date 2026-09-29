@@ -53,10 +53,11 @@ For local development, `npm run dev` starts both Vite on port 3000 and the UI se
 continue to use `REACT_APP_OPEN_BALENA_API_URL`. The configured `OPEN_BALENA_POSTGREST_URL` must still be reachable from
 the local machine and point directly to a PostgREST endpoint.
 
-Services > BalenaOS shows local Host OS coverage and the downloadable image catalog. A global administrator can start an
-additive, idempotent synchronization into the required `balena_os` system organization. The server reads the public
-catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates the
-complete application/release/service/image graph through open-balena-api—never PostgREST. It does not delete local
+Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host OS catalog. A global
+administrator can start an additive, idempotent synchronization into the required `balena_os` system organization. The
+server reads the public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and
+creates or updates the complete application/release/service/image graph through open-balena-api—never PostgREST. It does
+not delete local
 records. Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
 until the job finishes. The configured registry endpoint must either serve the public image directly or proxy missing
 paths to the source registry. Synchronization does not copy registry blobs and does not automatically change any fleet
@@ -110,7 +111,7 @@ The synchronization scope can be:
   currently reported by devices of each device type.
 - **Only versions in use:** only Host OS versions currently reported by devices, grouped by device type.
 - **Single semantic version:** the requested version wherever that device type publishes it.
-- **All catalog versions:** every assignable release advertised by the installation's image catalog.
+- **All catalog versions:** every usable release advertised by the version-appropriate public Host OS catalog.
 
 When an entered or device-reported version omits build metadata such as `+rev1`, matching revisions are included. The
 newer-than mode treats higher `+revN` builds of the threshold version as newer; a threshold without a revision includes

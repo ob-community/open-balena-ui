@@ -68,6 +68,8 @@ export interface SyncDependencies {
 const DEFAULT_CATALOG_API_URL = 'https://api.balena-cloud.com';
 const PAGE_SIZE = 1000;
 const MAX_RECORDS = 10000;
+const HOST_APP_IMAGE_CATALOG_REMOVED_VERSION = '46.0.0';
+const ESR_MIN_MAJOR = 2000;
 
 const trimUrl = (value: string): string => value.replace(/\/+$/, '');
 
@@ -313,6 +315,14 @@ const supportsReleaseSemver = (apiVersion: string | undefined): boolean =>
 const supportsApplicationClass = (apiVersion: string | undefined): boolean =>
   semver.gte(semver.coerce(apiVersion) ?? '0.0.0', '0.157.3');
 
+const supportsHostAppImageCatalog = (apiVersion: string | undefined): boolean =>
+  semver.lt(semver.coerce(apiVersion) ?? '0.0.0', HOST_APP_IMAGE_CATALOG_REMOVED_VERSION);
+
+const isNonEsrRelease = (release: RecordValue): boolean => {
+  const version = parsedVersion(release.raw_version);
+  return version != null && version.major < ESR_MIN_MAJOR;
+};
+
 const chunks = <T>(values: T[], size = 100): T[][] => {
   const result: T[][] = [];
   for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
@@ -341,7 +351,12 @@ export class BalenaOsSyncManager {
     return relationId(organization?.id);
   }
 
-  private async requestJson(url: string, authorization?: string, init: RequestInit = {}): Promise<unknown> {
+  private async requestJson(
+    url: string,
+    authorization?: string,
+    init: RequestInit = {},
+    allowNotFound = false,
+  ): Promise<unknown> {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
     if (authorization) headers.set('Authorization', authorization);
@@ -356,6 +371,7 @@ export class BalenaOsSyncManager {
         setTimeout(resolve, Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * (attempt + 1)),
       );
     }
+    if (response?.status === 404 && allowNotFound) return undefined;
     if (!response?.ok) {
       if (response?.status === 401) {
         throw new Error('Synchronization authorization expired or was rejected; sign in again and re-run to resume.');
@@ -498,11 +514,14 @@ export class BalenaOsSyncManager {
     return { ...image, is_stored_at__image_location: location };
   }
 
-  private async imageCatalog(authorization: string, slug: string): Promise<string[]> {
+  private async imageCatalog(authorization: string, slug: string): Promise<string[] | undefined> {
     const body = (await this.requestJson(
       `${this.dependencies.apiUrl()}/device-types/v1/${encodeURIComponent(slug)}/images`,
       authorization,
+      {},
+      true,
     )) as { versions?: unknown };
+    if (body == null) return undefined;
     if (!Array.isArray(body?.versions) || !body.versions.every((version) => typeof version === 'string')) {
       throw new Error(`The image catalog for ${slug} returned an invalid response.`);
     }
@@ -519,11 +538,13 @@ export class BalenaOsSyncManager {
     );
   }
 
-  private async sourceApplications(deviceTypeSlug: string): Promise<RecordValue[]> {
+  private async sourceApplications(deviceTypeSlug: string, includeEsr: boolean): Promise<RecordValue[]> {
     const standardSlug = `balena_os/${deviceTypeSlug}`;
     const esrSlug = `${standardSlug}-esr`;
     return this.getAll(this.dependencies.catalogApiUrl(), 'v6', 'application', {
-      $filter: `(is_host eq true) and (is_public eq true) and ((slug eq ${quote(standardSlug)}) or (slug eq ${quote(esrSlug)}))`,
+      $filter: `(is_host eq true) and (is_public eq true) and (${
+        includeEsr ? `(slug eq ${quote(standardSlug)}) or (slug eq ${quote(esrSlug)})` : `slug eq ${quote(standardSlug)}`
+      })`,
       $select: 'id,uuid,app_name,slug,is_host,is_public,is_of__class,is_archived',
       $orderby: 'slug asc',
     });
@@ -627,7 +648,9 @@ export class BalenaOsSyncManager {
 
   public async getCatalog(authorization: string): Promise<BalenaOsCatalog> {
     const version = this.dependencies.apiVersion();
-    const hasReleaseSemver = supportsReleaseSemver(this.dependencies.apiSoftwareVersion());
+    const softwareVersion = this.dependencies.apiSoftwareVersion();
+    const hasReleaseSemver = supportsReleaseSemver(softwareVersion);
+    const hasHostAppImageCatalog = supportsHostAppImageCatalog(softwareVersion);
     const localTypes = await this.localDeviceTypes(authorization);
     const [organizations, localApplications] = await Promise.all([
       this.getAll(
@@ -697,17 +720,20 @@ export class BalenaOsSyncManager {
         if (!id || !slug) return [];
         return [
           (async (): Promise<BalenaOsCatalogDeviceType> => {
-            const catalogVersions = await this.imageCatalog(authorization, slug);
-            const catalogVersionSet = new Set(catalogVersions);
-            const sourceApplications = await this.sourceApplications(slug);
+            const catalog = hasHostAppImageCatalog ? await this.imageCatalog(authorization, slug) : undefined;
+            const catalogVersions = catalog ? new Set(catalog) : undefined;
+            const sourceApplications = await this.sourceApplications(slug, catalogVersions != null);
             const usableVersions: string[] = [];
             for (const sourceApplication of sourceApplications) {
               usableVersions.push(
                 ...(await this.sourceReleases(sourceApplication))
-                  .map(({ raw_version }) => asString(raw_version))
                   .filter(
-                    (rawVersion): rawVersion is string => rawVersion != null && catalogVersionSet.has(rawVersion),
-                  ),
+                    (release) =>
+                      release.is_invalidated !== true &&
+                      (catalogVersions ? catalogVersions.has(String(release.raw_version)) : isNonEsrRelease(release)),
+                  )
+                  .map(({ raw_version }) => asString(raw_version))
+                  .filter((rawVersion): rawVersion is string => rawVersion != null),
               );
             }
             const typeApplications = localApplications.filter(
@@ -846,6 +872,7 @@ export class BalenaOsSyncManager {
     const softwareVersion = this.dependencies.apiSoftwareVersion();
     const hasReleaseSemver = supportsReleaseSemver(softwareVersion);
     const hasApplicationClass = supportsApplicationClass(softwareVersion);
+    const hasHostAppImageCatalog = supportsHostAppImageCatalog(softwareVersion);
     const [organization, applicationType, allDeviceTypes, registryHost, devices] = await Promise.all([
       this.getOne('organization', `id eq ${organizationId}`, 'id,name', authorization),
       this.getOne('application_type', "slug eq 'default'", 'id,slug', authorization),
@@ -888,8 +915,9 @@ export class BalenaOsSyncManager {
       let catalogVersions: Set<string> | undefined;
       let applications: RecordValue[];
       if (supervisorDeviceTypeId == null) {
-        catalogVersions = new Set(await this.imageCatalog(authorization, slug));
-        applications = await this.sourceApplications(slug);
+        const catalog = hasHostAppImageCatalog ? await this.imageCatalog(authorization, slug) : undefined;
+        catalogVersions = catalog ? new Set(catalog) : undefined;
+        applications = await this.sourceApplications(slug, catalogVersions != null);
       } else {
         const localDeviceType = await this.getOne(
           'device_type',
@@ -915,8 +943,8 @@ export class BalenaOsSyncManager {
         if (!applicationId) continue;
         releasesByApplication.set(
           applicationId,
-          (await this.sourceReleases(application, true)).filter(
-            ({ raw_version }) => catalogVersions == null || catalogVersions.has(String(raw_version)),
+          (await this.sourceReleases(application, true)).filter((release) =>
+            catalogVersions ? catalogVersions.has(String(release.raw_version)) : isNonEsrRelease(release),
           ),
         );
       }

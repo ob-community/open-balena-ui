@@ -62,8 +62,205 @@ test('includes prior release revisions required by open-balena-api', () => {
   );
 });
 
+const metadataSyncFixture = (
+  options: {
+    allowlist?: string;
+    existingAsset?: Record<string, unknown>;
+    duplicateAssets?: boolean;
+    storageError?: string;
+    missingHost?: boolean;
+    missingRelease?: boolean;
+    apiSoftwareVersion?: string;
+  } = {},
+) => {
+  const requests: URL[] = [];
+  const writes: Array<{ resource: string; method: string; body: Record<string, unknown> }> = [];
+  const downloads: Array<{ slug: string; version: string }> = [];
+  const asset = {
+    filename: 'device-type.json',
+    href: `https://ui.openbalena.test/balena-os/device-types/generic-amd64/8.0.0/${'a'.repeat(64)}/device-type.json`,
+    content_type: 'application/json',
+    size: 42,
+    checksum: 'a'.repeat(64),
+  };
+  const sourceRelease = (id: number, version: string) => ({
+    id,
+    commit: `commit-${id}`,
+    raw_version: version,
+    semver: version,
+    status: 'success',
+    is_final: true,
+    is_invalidated: false,
+    revision: 0,
+    variant: '',
+    composition: {},
+  });
+  let nextId = 1000;
+  const manager = new BalenaOsSyncManager({
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      requests.push(url);
+      const resource = url.pathname.split('/').pop()!;
+      const method = init?.method ?? 'GET';
+      if (method !== 'GET') {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        writes.push({ resource, method, body });
+        return response({ d: [{ ...body, id: nextId++ }] }, 201);
+      }
+      const filter = url.searchParams.get('$filter') ?? '';
+      if (url.origin === 'https://catalog.test') {
+        if (resource === 'application') {
+          const updater = filter.includes('balenahup');
+          return response({
+            d: [
+              {
+                id: updater ? 20 : 10,
+                uuid: updater ? 'updater' : 'host',
+                slug: updater ? 'balena_os/balenahup' : 'balena_os/generic-amd64',
+                app_name: updater ? 'balenahup' : 'generic-amd64',
+                is_host: !updater,
+              },
+            ],
+          });
+        }
+        if (resource === 'release') {
+          return response({
+            d: filter.includes('20')
+              ? [sourceRelease(200, '4.0.0')]
+              : [sourceRelease(100, '7.0.0'), sourceRelease(101, '8.0.0')],
+          });
+        }
+        return response({ d: [] });
+      }
+      if (resource === 'organization') return response({ d: [{ id: 9, name: 'balena_os' }] });
+      if (resource === 'application_type') return response({ d: [{ id: 1, slug: 'default' }] });
+      if (resource === 'device_type') {
+        return response({
+          d: [
+            { id: 1, slug: 'generic-amd64' },
+            { id: 2, slug: 'excluded-board' },
+          ],
+        });
+      }
+      if (resource === 'application' && filter.includes('application_tag')) {
+        return response({ d: options.missingHost ? [] : [{ id: 30, slug: 'balena_os/generic-amd64' }] });
+      }
+      if (resource === 'release' && url.searchParams.get('$orderby')?.startsWith('semver_major desc')) {
+        return response({ d: options.missingRelease ? [] : [{ id: 300, raw_version: '9.0.0' }] });
+      }
+      if (resource === 'release_asset') {
+        const records = options.existingAsset ? [options.existingAsset] : [];
+        return response({ d: options.duplicateAssets ? [...records, { ...asset, id: 301 }] : records });
+      }
+      return response({ d: [] });
+    },
+    apiUrl: () => 'https://api.openbalena.test',
+    apiVersion: () => 'v7',
+    apiSoftwareVersion: () => options.apiSoftwareVersion ?? 'v49.6.0',
+    catalogApiUrl: () => 'https://catalog.test',
+    registryHost: () => 'registry.openbalena.test',
+    contractAllowlist: () => options.allowlist ?? 'arch.sw/amd64;hw.device-type/generic-amd64',
+    setHostAppUpdaterRelation: async () => {},
+    storeDeviceTypeMetadata: async (slug, version) => {
+      downloads.push({ slug, version });
+      if (options.storageError) throw new Error(options.storageError);
+      return asset;
+    },
+  });
+  const run = async () => {
+    manager.start('Bearer local-only', 9, { mode: 'single', version: '7.0.0' });
+    for (let attempt = 0; attempt < 100 && manager.getStatus().state === 'running'; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    return manager.getStatus();
+  };
+  return { manager, requests, writes, downloads, asset, run };
+};
+
+test('syncs local config metadata for the API-selected release and filters CONTRACT_ALLOWLIST', async () => {
+  const fixture = metadataSyncFixture();
+  assert.equal((await fixture.run()).state, 'completed');
+  assert.deepEqual(fixture.downloads, [{ slug: 'generic-amd64', version: '9.0.0' }]);
+  assert.deepEqual(fixture.writes.find(({ resource }) => resource === 'release_asset')?.body, {
+    release: 300,
+    asset_key: 'device-type.json',
+    asset: fixture.asset,
+  });
+  assert.equal(
+    fixture.requests.some((url) => String(url).includes('excluded-board')),
+    false,
+  );
+  const releaseVersions = fixture.writes
+    .filter(({ resource, body }) => resource === 'release' && body.belongs_to__application !== undefined)
+    .map(({ body }) => body.semver);
+  assert.ok(releaseVersions.includes('7.0.0'));
+  assert.ok(releaseVersions.includes('8.0.0'), 'narrow sync also bootstraps latest config metadata release');
+  const query = fixture.requests.find((url) => url.searchParams.get('$orderby')?.startsWith('semver_major desc'));
+  assert.match(query?.searchParams.get('$filter') ?? '', /is_final eq true.*is_invalidated eq false/);
+  assert.match(query?.searchParams.get('$filter') ?? '', /semver_major gt 0.*semver_major lt 2000/);
+  assert.equal(fixture.manager.getStatus().processed, fixture.manager.getStatus().total);
+});
+
+test('keeps an identical release asset unchanged and repairs an upstream asset reference', async () => {
+  const unchanged = metadataSyncFixture();
+  const existingAsset = { id: 400, release: { __id: 300 }, asset_key: 'device-type.json', asset: unchanged.asset };
+  const identical = metadataSyncFixture({ existingAsset });
+  assert.equal((await identical.run()).state, 'completed');
+  assert.equal(
+    identical.writes.some(({ resource }) => resource.startsWith('release_asset')),
+    false,
+  );
+  const repaired = metadataSyncFixture({
+    existingAsset: { ...existingAsset, asset: { ...unchanged.asset, href: 'https://upstream.test/device-type.json' } },
+  });
+  assert.equal((await repaired.run()).state, 'completed');
+  assert.equal(repaired.writes.find(({ resource }) => resource === 'release_asset(400)')?.method, 'PATCH');
+});
+
+test('maintains metadata for every allowlisted device type, not just one gateway type', async () => {
+  const fixture = metadataSyncFixture({ allowlist: 'hw.device-type/generic-amd64;hw.device-type/excluded-board' });
+  assert.equal((await fixture.run()).state, 'completed');
+  assert.deepEqual(
+    fixture.downloads.map(({ slug }) => slug),
+    ['generic-amd64', 'excluded-board'],
+  );
+  assert.equal(fixture.writes.filter(({ resource }) => resource === 'release_asset').length, 2);
+});
+
+test('enables release-asset coverage at v46.1 without broadening older synchronization scopes', async () => {
+  for (const version of ['v46.0.24', 'v46.1.0']) {
+    const fixture = metadataSyncFixture({ apiSoftwareVersion: version });
+    assert.equal((await fixture.run()).state, 'completed');
+    const hasMetadata = version === 'v46.1.0';
+    assert.equal(fixture.downloads.length, hasMetadata ? 1 : 0);
+    assert.equal(
+      fixture.writes.some(({ resource, body }) => resource === 'release' && body.semver === '8.0.0'),
+      hasMetadata,
+    );
+  }
+});
+
+test('fails metadata sync explicitly when local coverage or durable storage is unavailable', async () => {
+  for (const options of [
+    { missingHost: true },
+    { missingRelease: true },
+    { storageError: 'MinIO write failed' },
+    { existingAsset: { id: 400 }, duplicateAssets: true },
+  ]) {
+    const fixture = metadataSyncFixture(options);
+    const status = await fixture.run();
+    assert.equal(status.state, 'failed');
+    assert.match(status.error ?? '', /Host OS application|Host OS release|MinIO write failed|duplicate/);
+    assert.equal(
+      fixture.writes.some(({ resource }) => resource.startsWith('release_asset')),
+      false,
+    );
+  }
+});
+
 test('synchronizes a complete Host OS release graph through open-balena-api', async () => {
   const writes: Array<{ resource: string; method: string; body: Record<string, unknown> }> = [];
+  const updaterRelations: Array<{ hostApplicationId: number; updaterApplicationId: number }> = [];
   const requests: URL[] = [];
   const ids: Record<string, number> = {
     application: 10,
@@ -71,6 +268,7 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
     release: 30,
     image: 40,
     release_image: 50,
+    image_label: 60,
   };
 
   const fetchMock: typeof fetch = async (input, init) => {
@@ -84,6 +282,21 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
       return response({ versions: ['6.0.0'] });
     }
     if (isCatalog && url.pathname === '/v6/application') {
+      if (url.searchParams.get('$filter')?.includes('balena_os/balenahup')) {
+        return response({
+          d: [
+            {
+              id: 101,
+              uuid: 'cloud-updater-uuid',
+              app_name: 'balenahup',
+              slug: 'balena_os/balenahup',
+              is_host: false,
+              is_public: true,
+              is_of__class: 'app',
+            },
+          ],
+        });
+      }
       return response({
         d: [
           {
@@ -99,15 +312,37 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
       });
     }
     if (isCatalog && url.pathname === '/v6/service') {
+      if (url.searchParams.get('$filter')?.includes('101')) {
+        return response({ d: [{ id: 201, service_name: 'main', application: { __id: 101 } }] });
+      }
       return response({ d: [{ id: 200, service_name: 'hostapp', application: { __id: 100 } }] });
     }
     if (isCatalog && url.pathname === '/v6/release') {
+      if (url.searchParams.get('$filter')?.includes('101')) {
+        return response({
+          d: [
+            {
+              id: 302,
+              commit: 'updater-release-commit',
+              composition: '{"services":{"main":{"image":"balenahup:latest"}}}',
+              status: 'success',
+              source: 'cloud',
+              is_invalidated: false,
+              raw_version: '4.1.19',
+              semver: '4.1.19',
+              variant: '',
+              revision: 0,
+            },
+          ],
+        });
+      }
       return response({
         d: [
           {
             id: 300,
             commit: 'host-release-commit',
-            composition: '{"services":{"hostapp":{"image":"hostapp:latest"}}}',
+            composition:
+              '{"services":{"hostapp":{"image":"hostapp:latest","labels":{"io.balena.image.class":"hostapp","io.balena.image.store":"root","io.balena.update.requires-reboot":"1","io.balena.private.hostapp.board-rev":"test-board"}}}}',
             contract: '{"type":"sw.block","requires":[]}',
             status: 'success',
             source: 'cloud',
@@ -136,6 +371,20 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
       });
     }
     if (isCatalog && url.pathname === '/v6/image') {
+      if (url.searchParams.get('$filter')?.includes('401')) {
+        return response({
+          d: [
+            {
+              id: 401,
+              is_a_build_of__service: { __id: 201 },
+              image_size: 456,
+              is_stored_at__image_location: 'registry2.balena-cloud.com/v2/updater-image',
+              status: 'success',
+              content_hash: 'sha256:updater',
+            },
+          ],
+        });
+      }
       return response({
         d: [
           {
@@ -154,6 +403,9 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
       });
     }
     if (isCatalog && url.pathname === '/v6/release_image') {
+      if (url.searchParams.get('$filter')?.includes('302')) {
+        return response({ d: [{ id: 501, image: { __id: 401 }, is_part_of__release: { __id: 302 } }] });
+      }
       return response({ d: [{ id: 500, image: { __id: 400 }, is_part_of__release: { __id: 300 } }] });
     }
 
@@ -176,11 +428,11 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
       return response({
         d: [
           {
-            id: 40,
+            id: 41,
             start_timestamp: '2026-01-01T00:00:00.000Z',
             end_timestamp: '2026-01-01T00:01:00.000Z',
             dockerfile: null,
-            is_a_build_of__service: { __id: 20 },
+            is_a_build_of__service: { __id: 21 },
             image_size: '123',
             is_stored_at__image_location: 'registry.previous.test/v2/cloud-image',
             project_type: null,
@@ -195,7 +447,9 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
     }
     if (
       method === 'GET' &&
-      ['/v7/application', '/v7/service', '/v7/release', '/v7/image', '/v7/release_image'].includes(url.pathname)
+      ['/v7/application', '/v7/service', '/v7/release', '/v7/image', '/v7/release_image', '/v7/image_label'].includes(
+        url.pathname,
+      )
     ) {
       return response({ d: [] });
     }
@@ -204,11 +458,14 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
       const resource = url.pathname.split('/').pop()!;
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       writes.push({ resource, method, body });
-      return response({ d: [{ ...body, id: ids[resource] }] }, 201);
+      const id = ids[resource];
+      ids[resource] += 1;
+      return response({ d: [{ ...body, id }] }, 201);
     }
-    if (method === 'PATCH' && url.pathname === '/v7/image(40)') {
+    if (method === 'PATCH' && /^\/v7\/(?:application|image)\(\d+\)$/.test(url.pathname)) {
+      const resource = url.pathname.split('/').pop()!.split('(')[0];
       writes.push({
-        resource: 'image',
+        resource,
         method,
         body: JSON.parse(String(init?.body)) as Record<string, unknown>,
       });
@@ -224,6 +481,9 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
     apiSoftwareVersion: () => 'v43.5.4',
     catalogApiUrl: () => 'https://api.balena-cloud.test',
     registryHost: () => 'registry.openbalena.test',
+    setHostAppUpdaterRelation: async (_authorization, hostApplicationId, updaterApplicationId) => {
+      updaterRelations.push({ hostApplicationId, updaterApplicationId });
+    },
   });
 
   manager.start('Bearer token', 9);
@@ -234,10 +494,10 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
   assert.deepEqual(manager.getStatus(), {
     state: 'completed',
     phase: 'Complete',
-    processed: 5,
-    total: 5,
-    created: 4,
-    updated: 1,
+    processed: 16,
+    total: 16,
+    created: 13,
+    updated: 3,
     unchanged: 0,
     mode: 'all',
     version: undefined,
@@ -246,18 +506,45 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
   });
   assert.deepEqual(
     writes.filter(({ method }) => method === 'POST').map(({ resource }) => resource),
-    ['application', 'service', 'release', 'release_image'],
+    [
+      'application',
+      'service',
+      'release',
+      'image',
+      'release_image',
+      'application',
+      'service',
+      'release',
+      'release_image',
+      'image_label',
+      'image_label',
+      'image_label',
+      'image_label',
+    ],
   );
-  assert.equal('belongs_to__user' in writes.find(({ resource }) => resource === 'release')!.body, false);
-  assert.deepEqual(writes.find(({ resource }) => resource === 'release')!.body.contract, {
+  const hostReleaseWrite = writes.find(
+    ({ resource, body }) => resource === 'release' && body.commit === 'host-release-commit',
+  )!;
+  assert.equal('belongs_to__user' in hostReleaseWrite.body, false);
+  assert.deepEqual(hostReleaseWrite.body.contract, {
     type: 'sw.block',
     requires: [],
   });
-  assert.deepEqual(writes.find(({ resource }) => resource === 'release')!.body.composition, {
-    services: { hostapp: { image: 'hostapp:latest' } },
+  assert.deepEqual(hostReleaseWrite.body.composition, {
+    services: {
+      hostapp: {
+        image: 'hostapp:latest',
+        labels: {
+          'io.balena.image.class': 'hostapp',
+          'io.balena.image.store': 'root',
+          'io.balena.update.requires-reboot': '1',
+          'io.balena.private.hostapp.board-rev': 'test-board',
+        },
+      },
+    },
   });
   assert.deepEqual(
-    writes.find(({ method }) => method === 'PATCH'),
+    writes.find(({ resource, method }) => resource === 'image' && method === 'PATCH'),
     {
       resource: 'image',
       method: 'PATCH',
@@ -265,6 +552,19 @@ test('synchronizes a complete Host OS release graph through open-balena-api', as
         is_stored_at__image_location: 'registry.openbalena.test/v2/cloud-image',
       },
     },
+  );
+  assert.deepEqual(writes.find(({ resource, method }) => resource === 'application' && method === 'PATCH')?.body, {
+    should_be_running__release: 30,
+  });
+  assert.deepEqual(updaterRelations, [{ hostApplicationId: 11, updaterApplicationId: 10 }]);
+  assert.deepEqual(
+    writes.filter(({ resource }) => resource === 'image_label').map(({ body }) => [body.label_name, body.value]),
+    [
+      ['io.balena.image.class', 'hostapp'],
+      ['io.balena.image.store', 'root'],
+      ['io.balena.update.requires-reboot', '1'],
+      ['io.balena.private.hostapp.board-rev', 'test-board'],
+    ],
   );
   const catalog = await manager.getCatalog('******');
   assert.equal(catalog.deviceTypes[0]?.latestAvailable, '6.0.0');

@@ -2,7 +2,8 @@
 
 Open Balena Admin can discover public Host OS and Supervisor releases, copy the metadata required by open-balena-api
 into the local installation, and assign those local releases to devices. Synchronization copies metadata only. It does
-not copy image blobs.
+not copy image blobs. On open-balena-api v46.1.0 and newer, it also persists the small `device-type.json` documents
+needed for local device configuration generation.
 
 ## Required UI server configuration
 
@@ -15,9 +16,39 @@ Configure these variables on the Open Balena Admin server:
 | `REACT_APP_OPEN_BALENA_ODATA_VERSION` | Optional `v6` or `v7` endpoint override. Normally omit it.                                 |
 | `OPEN_BALENA_OS_CATALOG_API_URL`      | Public source catalog API. Defaults to `https://api.balena-cloud.com`.                     |
 | `OPEN_BALENA_OS_REGISTRY_HOST`        | Registry hostname stored in synchronized image records. See the delivery options below.    |
+| `CONTRACT_ALLOWLIST`                 | Mirror the API's semicolon-separated contract allowlist. Only `hw.device-type/<slug>` entries restrict device types; architecture entries do not. Empty or architecture-only means all local types, matching the API metadata loader. |
+| `OPEN_BALENA_OS_METADATA_BUCKET`     | Required for Host OS sync on API v46.1+. Private, pre-provisioned S3/MinIO bucket for device metadata. |
+| `OPEN_BALENA_OS_METADATA_URL`        | Stable UI base URL reachable from ob-api. Defaults to `REACT_APP_OPEN_BALENA_UI_URL`. |
+| `OPEN_BALENA_OS_METADATA_SOURCE_URL` | Public metadata source used during sync. Defaults to `https://resin-production-img-cloudformation.s3.amazonaws.com/images`. |
+| `OPEN_BALENA_S3_URL`                 | S3/MinIO endpoint used by the UI's existing storage client. |
+| `OPEN_BALENA_S3_ACCESS_KEY`          | UI server storage credential with read/write access to the metadata bucket. |
+| `OPEN_BALENA_S3_SECRET_KEY`          | UI server storage secret. Never exposed to browsers or included in asset URLs. |
+| `OPEN_BALENA_S3_REGION`              | S3 region. Defaults to `us-east-1`. |
 
 The UI server must be able to reach the local open-balena-api and the configured public catalog API. A browser does not
 perform catalog writes directly.
+
+### Local metadata storage deployment
+
+Provision a private bucket such as `balena-os-metadata` in the existing MinIO installation and grant the UI's storage
+identity `GetObject` and `PutObject` access to it. Do not make the bucket public. Configure the variables above on the
+UI deployment; this repository does not contain the installation's Helm/Pulumi manifests.
+
+The UI stores content-addressed JSON objects and serves them through a read-only endpoint:
+
+```text
+GET /balena-os/device-types/<slug>/<version>/<sha256>/device-type.json
+```
+
+This endpoint intentionally needs no authorization header: the API's asset reader sends none, and device-type metadata
+is already public. It exposes only validated metadata objects, not bucket listings, credentials, device configs, or
+write operations. Other BalenaOS routes retain their existing administrator authorization.
+The UI origin must route this path to the server, without a login redirect or an access challenge for ob-api.
+Private bucket objects survive UI restarts and are shared across replicas; keep the published UI origin stable.
+
+Release assets are written as ordinary OData WebResource references (`filename`, `href`, `content_type`, `size`,
+`checksum`). Because the UI owns storage and delivery, **ob-api does not need `WEBRESOURCES_S3_*` settings or a modified
+image for this implementation**. This differs from uploading files through ob-api's multipart-upload handler.
 
 ## Desired and reported device state
 
@@ -44,10 +75,26 @@ keys to the local open-balena-api `release` table. An assignable release therefo
 - a release;
 - its service or services;
 - its image records; and
-- its release-image relationships.
+- its release-image relationships;
+- Host OS image labels such as `io.balena.image.class=hostapp`, `io.balena.image.store=root`, and
+  `io.balena.update.requires-reboot=1`;
+- a local `balena_os/balenahup` updater application with a running release; and
+- the Host OS application's `is_updated_by__application` relationship to that updater.
 
-Open Balena Admin creates and updates this graph through open-balena-api, not PostgREST. PostgREST is used only to
-verify global-administrator access before an administrator starts a Host OS catalog synchronization.
+On API v46.1+ the synchronization also maintains a `release_asset` with `asset_key = 'device-type.json'` on the newest
+successful, finalized, non-invalidated, non-ESR Host OS release selected by the API for each allowed local device type.
+It repairs upstream asset references to point to our persisted copy. Metadata comes from the selected release's own
+version, even if that release was already local and newer than the source releases imported in this run.
+
+Open Balena Admin creates and updates the operational graph through open-balena-api. PostgREST verifies administrator
+access and writes only the internal `application.is updated by-application` relation that public OData does not expose.
+Host OS image labels are materialized from each public release's service composition. The corresponding Balena Cloud
+`image_label` resource requires authenticated Cloud access, but the composition exposes the same metadata without
+requiring Cloud credentials.
+On open-balena-api v43.4.0 and newer, those application relationships cause device target state to include the private
+updater image label required by the Helios `core-next` Host OS update planner. The legacy Supervisor intentionally
+filters root Host OS payloads and therefore reports no application transitions for them; monitor `core-next` and the
+`os-update` systemd unit when diagnosing Host OS updates.
 
 ### Host OS applications
 
@@ -93,6 +140,21 @@ Invalidated releases are excluded from counts, latest-version decisions, and nor
 release is imported only when a matching device already reports it, and it remains invalidated locally. Selecting a
 `+revN` release also imports required earlier non-invalidated revisions because open-balena-api assigns revisions
 sequentially.
+
+On API v46.1+, every Host OS scope additionally imports the latest usable standard Host OS release per allowed device
+type, including its prerequisite revisions, to establish complete config-metadata coverage. Device targets are still
+unchanged. The metadata coverage pass then reselects the newest eligible **local** release using the API's release
+ordering and updates that release's asset. Older APIs and Supervisor-only synchronization keep their previous scopes.
+Missing or ambiguous host applications, missing usable releases, invalid metadata, and storage failures fail the job
+explicitly rather than reporting successful offline coverage.
+
+All allowed device types need assets because ob-api loads their metadata together; one missing asset can trigger public
+S3 fallback for the entire loader. Mirror `CONTRACT_ALLOWLIST` between the API and UI. Removing all device-type entries
+does not mean deny-all: it means no device-type restriction, as in ob-api.
+After the first successful sync, allow the API's metadata caches to refresh (local default five minutes, shared default
+one hour); an already-pending lookup can also take time to finish. Verify `/device-types/v1/<slug>` and then gateway
+creation. Subsequent config generation fetches persisted metadata from the UI, not public S3. OS image downloads and
+registry pulls retain their existing delivery paths; this is not a fully offline OS-image mirror.
 
 Before open-balena-api v46, usable Host OS versions are intersected with the installation's
 `/device-types/v1/:deviceType/images` response. Starting with v46, that endpoint no longer exists, so the synchronizer

@@ -7,6 +7,7 @@ import registryImageRoutes from './routes/registryImage';
 import adminDatabaseRoutes from './routes/adminDatabase';
 import deviceUpdateRoutes from './routes/deviceUpdates';
 import balenaOsRoutes from './routes/balenaOs';
+import deviceTypeMetadataRoutes from './routes/deviceTypeMetadata';
 import { bootstrapGlobalAdminFromEnvironment } from './bootstrapGlobalAdmin';
 
 dotenv.config();
@@ -26,6 +27,7 @@ const CLIENT_ENV_KEYS = [
 
 const app = express();
 
+app.use('/', deviceTypeMetadataRoutes);
 app.use('/', registryImageRoutes);
 app.use('/', adminDatabaseRoutes);
 app.use('/', deviceUpdateRoutes);

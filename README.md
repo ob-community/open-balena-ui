@@ -48,6 +48,19 @@ There are a number of environment variables used to configure the ui:
   deployments. The server otherwise discovers it from an existing local image, then falls back from `api.<domain>` to
   `registry.<domain>`. Configure this explicitly when neither convention is valid.
 
+- `CONTRACT_ALLOWLIST` Mirror the API's semicolon-separated contract allowlist. `hw.device-type/<slug>` entries filter
+  catalog discovery and metadata synchronization; architecture entries alone do not restrict device types.
+
+- `OPEN_BALENA_OS_METADATA_BUCKET` Required private S3/MinIO bucket for Host OS synchronization on API v46.1+.
+  Provision it and grant the existing UI storage identity read/write access. Metadata is served by the UI, not by a
+  public bucket policy.
+
+- `OPEN_BALENA_OS_METADATA_URL` Optional stable UI base URL reachable from ob-api. Defaults to
+  `REACT_APP_OPEN_BALENA_UI_URL`. The read-only `/balena-os/device-types/.../device-type.json` route needs no login.
+
+- `OPEN_BALENA_OS_METADATA_SOURCE_URL` Optional public metadata source, used only during manual sync. Defaults to
+  `https://resin-production-img-cloudformation.s3.amazonaws.com/images`.
+
 For local development, `npm run dev` starts both Vite on port 3000 and the UI server on port 3001. Vite proxies
 `/admin-db`, `/device-update-options`, and `/balena-os` requests to the local UI server; operational OData requests
 continue to use `REACT_APP_OPEN_BALENA_API_URL`. The configured `OPEN_BALENA_POSTGREST_URL` must still be reachable from
@@ -56,9 +69,15 @@ the local machine and point directly to a PostgREST endpoint.
 Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host OS catalog. A global
 administrator can start an additive, idempotent synchronization into the required `balena_os` system organization. The
 server reads the public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and
-creates or updates the complete application/release/service/image graph through open-balena-api—never PostgREST. It does
-not delete local
-records. Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
+creates or updates the application/release/service/image graph through open-balena-api. The one direct-database
+exception links each Host OS application to its updater because public OData does not expose that internal relation. It
+also materializes Host OS image labels from the public release composition so Supervisors distinguish OS payloads from
+ordinary services. On open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph
+and links Host OS applications to it so Helios can plan the actual OS transition. It does not delete local records.
+On API v46.1+, sync also stores allowlisted device-type JSON in private S3/MinIO and writes local release assets pointing
+to the UI's read-only metadata endpoint. This lets ob-api generate device config without public S3 metadata reads.
+The asset URL contains no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed.
+Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
 until the job finishes. The configured registry endpoint must either serve the public image directly or proxy missing
 paths to the source registry. Synchronization does not copy registry blobs and does not automatically change any fleet
 or device target release. The `balena_os` organization owns the imported catalog records only; Host OS releases are
@@ -122,6 +141,11 @@ imported because open-balena-api assigns revisions sequentially. Invalidated rel
 and every semantic-version decision. An invalidated release is imported only when a device of the matching type already
 reports that exact version; it remains marked invalidated locally so it cannot be offered as an update target to other
 devices.
+
+On API v46.1+, each Host OS scope additionally maintains the latest usable release per allowed device type and its
+prerequisite revisions for complete config-metadata coverage. The coverage pass attaches metadata to the newest eligible
+local release, including an already-local release newer than those imported. Supervisor-only sync and older APIs are
+unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for storage setup and cache refresh.
 
 - `REACT_APP_OPEN_BALENA_REMOTE_URL` The URL (accessible to API) of the `open-balena-remote` instance, i.e.
   `http://remote.openbalena.local:10000`

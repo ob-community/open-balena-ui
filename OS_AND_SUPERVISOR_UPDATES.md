@@ -44,10 +44,21 @@ keys to the local open-balena-api `release` table. An assignable release therefo
 - a release;
 - its service or services;
 - its image records; and
-- its release-image relationships.
+- its release-image relationships;
+- Host OS image labels such as `io.balena.image.class=hostapp`, `io.balena.image.store=root`, and
+  `io.balena.update.requires-reboot=1`;
+- a local `balena_os/balenahup` updater application with a running release; and
+- the Host OS application's `is_updated_by__application` relationship to that updater.
 
-Open Balena Admin creates and updates this graph through open-balena-api, not PostgREST. PostgREST is used only to
-verify global-administrator access before an administrator starts a Host OS catalog synchronization.
+Open Balena Admin creates and updates the operational graph through open-balena-api. PostgREST verifies administrator
+access and writes only the internal `application.is updated by-application` relation that public OData does not expose.
+Host OS image labels are materialized from each public release's service composition. The corresponding Balena Cloud
+`image_label` resource requires authenticated Cloud access, but the composition exposes the same metadata without
+requiring Cloud credentials.
+On open-balena-api v43.4.0 and newer, those application relationships cause device target state to include the private
+updater image label required by the Helios `core-next` Host OS update planner. The legacy Supervisor intentionally
+filters root Host OS payloads and therefore reports no application transitions for them; monitor `core-next` and the
+`os-update` systemd unit when diagnosing Host OS updates.
 
 ### Host OS applications
 

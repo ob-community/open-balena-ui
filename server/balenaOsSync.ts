@@ -54,6 +54,7 @@ interface SourceGraph {
   services: RecordValue[];
   images: RecordValue[];
   releaseImages: RecordValue[];
+  isHostAppUpdater?: boolean;
 }
 
 export interface SyncDependencies {
@@ -63,12 +64,19 @@ export interface SyncDependencies {
   apiSoftwareVersion: () => string | undefined;
   catalogApiUrl: () => string;
   registryHost: () => string | undefined;
+  setHostAppUpdaterRelation?: (
+    authorization: string,
+    hostApplicationId: number,
+    updaterApplicationId: number,
+  ) => Promise<void>;
 }
 
 const DEFAULT_CATALOG_API_URL = 'https://api.balena-cloud.com';
 const PAGE_SIZE = 1000;
 const MAX_RECORDS = 10000;
 const HOST_APP_IMAGE_CATALOG_REMOVED_VERSION = '46.0.0';
+const HOST_APP_UPDATER_RELATION_VERSION = '43.4.0';
+const HOST_APP_UPDATER_SLUG = 'balena_os/balenahup';
 const ESR_MIN_MAJOR = 2000;
 
 const trimUrl = (value: string): string => value.replace(/\/+$/, '');
@@ -86,6 +94,34 @@ const configuredApiVersion = (): 'v6' | 'v7' => {
   return versions.odataVersion(process.env.REACT_APP_OPEN_BALENA_API_VERSION);
 };
 
+const setHostAppUpdaterRelation = async (
+  authorization: string,
+  hostApplicationId: number,
+  updaterApplicationId: number,
+): Promise<void> => {
+  const baseUrl = process.env.OPEN_BALENA_POSTGREST_URL?.replace(/\/+$/, '');
+  if (!baseUrl) throw new Error('OPEN_BALENA_POSTGREST_URL must be configured for Host OS updater relationships.');
+  const response = await fetch(
+    `${baseUrl}/${encodeURIComponent('application')}?${new URLSearchParams({ id: `eq.${hostApplicationId}` })}`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: authorization,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({ 'is updated by-application': updaterApplicationId }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`PostgREST could not link Host OS application ${hostApplicationId} to its updater (${response.status}).`);
+  }
+  const records = (await response.json()) as unknown;
+  if (!Array.isArray(records) || records.length !== 1) {
+    throw new Error(`PostgREST did not update Host OS application ${hostApplicationId}.`);
+  }
+};
+
 const defaultDependencies: SyncDependencies = {
   fetch,
   apiUrl: configuredApiUrl,
@@ -93,6 +129,7 @@ const defaultDependencies: SyncDependencies = {
   apiSoftwareVersion: () => process.env.REACT_APP_OPEN_BALENA_API_VERSION,
   catalogApiUrl: () => trimUrl(process.env.OPEN_BALENA_OS_CATALOG_API_URL ?? DEFAULT_CATALOG_API_URL),
   registryHost: () => process.env.OPEN_BALENA_OS_REGISTRY_HOST?.replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+  setHostAppUpdaterRelation,
 };
 
 const relationId = (value: unknown): number | undefined => {
@@ -123,6 +160,37 @@ const structuredField = (
     }
   }
   throw new Error(`Catalog ${recordDescription} field "${field}" is not valid JSON object or array data.`);
+};
+
+const hostReleaseImageLabels = (graph: SourceGraph, sourceLink: RecordValue): Array<[string, string]> => {
+  if (graph.application.is_host !== true) return [];
+  const sourceReleaseId = relationId(sourceLink.is_part_of__release);
+  const sourceImageId = relationId(sourceLink.image);
+  const sourceRelease = graph.releases.find(({ id }) => relationId(id) === sourceReleaseId);
+  const sourceImage = graph.images.find(({ id }) => relationId(id) === sourceImageId);
+  const sourceServiceId = relationId(sourceImage?.is_a_build_of__service);
+  const serviceName = asString(
+    graph.services.find(({ id }) => relationId(id) === sourceServiceId)?.service_name,
+  );
+  if (!sourceRelease || !serviceName) return [];
+  const composition = structuredField(
+    sourceRelease.composition,
+    'composition',
+    `release ${sourceRelease.commit}`,
+    {},
+  );
+  if (!composition || Array.isArray(composition)) return [];
+  const services = composition.services;
+  if (!services || typeof services !== 'object' || Array.isArray(services)) return [];
+  const service = (services as RecordValue)[serviceName];
+  if (!service || typeof service !== 'object' || Array.isArray(service)) return [];
+  const labels = (service as RecordValue).labels;
+  if (!labels || typeof labels !== 'object' || Array.isArray(labels)) return [];
+  return Object.entries(labels as RecordValue).flatMap(([name, value]) =>
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+      ? [[name, String(value)]]
+      : [],
+  );
 };
 
 const extractRecords = (input: unknown): RecordValue[] => {
@@ -317,6 +385,9 @@ const supportsApplicationClass = (apiVersion: string | undefined): boolean =>
 
 const supportsHostAppImageCatalog = (apiVersion: string | undefined): boolean =>
   semver.lt(semver.coerce(apiVersion) ?? '0.0.0', HOST_APP_IMAGE_CATALOG_REMOVED_VERSION);
+
+const supportsHostAppUpdaterRelation = (apiVersion: string | undefined): boolean =>
+  semver.gte(semver.coerce(apiVersion) ?? '0.0.0', HOST_APP_UPDATER_RELATION_VERSION);
 
 const isNonEsrRelease = (release: RecordValue): boolean => {
   const version = parsedVersion(release.raw_version);
@@ -555,6 +626,14 @@ export class BalenaOsSyncManager {
       $filter: `(is_host eq false) and (is_public eq true) and (startswith(slug,'balena_os/')) and (endswith(slug,'-supervisor')) and (is_for__device_type/any(type:type/is_of__cpu_architecture/any(architecture:architecture/slug eq ${quote(cpuArchitectureSlug)})))`,
       $select: 'id,uuid,app_name,slug,is_host,is_public,is_of__class,is_archived',
       $orderby: 'slug asc',
+    });
+  }
+
+  private async sourceHostAppUpdaterApplications(): Promise<RecordValue[]> {
+    return this.getAll(this.dependencies.catalogApiUrl(), 'v6', 'application', {
+      $filter: `(is_host eq false) and (is_public eq true) and (slug eq ${quote(HOST_APP_UPDATER_SLUG)})`,
+      $select: 'id,uuid,app_name,slug,is_host,is_public,is_of__class,is_archived',
+      $orderby: 'id asc',
     });
   }
 
@@ -973,6 +1052,31 @@ export class BalenaOsSyncManager {
           : 'No assignable public Supervisor release matched the selected version.',
       );
     }
+    if (supervisorDeviceTypeId == null && supportsHostAppUpdaterRelation(softwareVersion)) {
+      const updaterApplications = await this.sourceHostAppUpdaterApplications();
+      if (updaterApplications.length !== 1) {
+        throw new Error(`The public ${HOST_APP_UPDATER_SLUG} updater application is unavailable or ambiguous.`);
+      }
+      const updaterApplication = updaterApplications[0];
+      const updaterRelease = (await this.sourceReleases(updaterApplication))
+        .map((release) => ({ release, version: parsedVersion(release.raw_version) }))
+        .filter((entry): entry is { release: RecordValue; version: semver.SemVer } => entry.version != null)
+        .sort((left, right) => compareBalenaVersions(right.version, left.version))[0]?.release;
+      if (!updaterRelease) throw new Error(`The public ${HOST_APP_UPDATER_SLUG} application has no usable release.`);
+      const updaterDeviceType = deviceTypes[0];
+      const updaterDeviceTypeId = relationId(updaterDeviceType.id);
+      const updaterDeviceTypeSlug = asString(updaterDeviceType.slug);
+      if (!updaterDeviceTypeId || !updaterDeviceTypeSlug) {
+        throw new Error('The updater application cannot be associated with a valid local device type.');
+      }
+      const updaterGraph = await this.sourceGraph(
+        { id: updaterDeviceTypeId, slug: updaterDeviceTypeSlug },
+        updaterApplication,
+        [updaterRelease],
+      );
+      updaterGraph.isHostAppUpdater = true;
+      graphs.unshift(updaterGraph);
+    }
 
     this.status.total = graphs.reduce(
       (total, graph) =>
@@ -982,21 +1086,28 @@ export class BalenaOsSyncManager {
         graph.releases.length +
         graph.images.length +
         graph.releaseImages.length +
+        graph.releaseImages.reduce((total, link) => total + hostReleaseImageLabels(graph, link).length, 0) +
+        (graph.isHostAppUpdater ? 1 : 0) +
+        (graph.application.is_host === true && supportsHostAppUpdaterRelation(softwareVersion) ? 1 : 0) +
         (hasReleaseSemver ? 0 : graph.releases.length),
       0,
     );
     this.status.phase = 'Synchronizing catalog';
 
     const synchronizedReleases = new Map<string, number>();
+    let localHostAppUpdaterId: number | undefined;
     for (const graph of graphs) {
       const slug = String(graph.application.slug);
       const sourceUuid = asString(graph.application.uuid);
       if (!sourceUuid) throw new Error(`Catalog application ${slug} has no valid UUID.`);
       const isHost = graph.application.is_host === true;
+      const applicationSelect = `id,uuid,app_name,slug,organization,application_type,is_for__device_type,is_host,is_public,is_archived,should_track_latest_release${
+        supportsHostAppUpdaterRelation(softwareVersion) ? ',should_be_running__release' : ''
+      }${hasApplicationClass ? ',is_of__class' : ''}`;
       const existingApplication = await this.getOne(
         'application',
         `uuid eq ${quote(sourceUuid)}`,
-        `id,uuid,app_name,slug,organization,application_type,is_for__device_type,is_host,is_public,is_archived,should_track_latest_release${hasApplicationClass ? ',is_of__class' : ''}`,
+        applicationSelect,
         authorization,
       );
       if (existingApplication && existingApplication.is_host !== isHost) {
@@ -1020,10 +1131,24 @@ export class BalenaOsSyncManager {
         existingApplication,
         applicationPayload,
         `uuid eq ${quote(sourceUuid)}`,
-        `id,uuid,app_name,slug,organization,application_type,is_for__device_type,is_host,is_public,is_archived,should_track_latest_release${hasApplicationClass ? ',is_of__class' : ''}`,
+        applicationSelect,
         authorization,
       );
       const localApplicationId = relationId(localApplication.id)!;
+      if (graph.isHostAppUpdater) localHostAppUpdaterId = localApplicationId;
+      if (isHost && supportsHostAppUpdaterRelation(softwareVersion)) {
+        if (!localHostAppUpdaterId) throw new Error('The local Host OS updater application was not synchronized.');
+        if (!this.dependencies.setHostAppUpdaterRelation) {
+          throw new Error('Host OS updater relationship synchronization is not configured.');
+        }
+        await this.dependencies.setHostAppUpdaterRelation(
+          authorization,
+          localApplicationId,
+          localHostAppUpdaterId,
+        );
+        this.status.updated += 1;
+        this.status.processed += 1;
+      }
 
       const existingServices = await this.getAll(
         this.dependencies.apiUrl(),
@@ -1106,6 +1231,19 @@ export class BalenaOsSyncManager {
         );
         releaseMap.set(sourceReleaseId, relationId(local.id)!);
         synchronizedReleases.set(`${sourceUuid}:${rawVersion}`, relationId(local.id)!);
+      }
+
+      if (graph.isHostAppUpdater) {
+        const localUpdaterReleaseId = releaseMap.values().next().value;
+        if (!localUpdaterReleaseId) throw new Error('The local Host OS updater release was not synchronized.');
+        await this.write(
+          'application',
+          localApplication,
+          { should_be_running__release: localUpdaterReleaseId },
+          `uuid eq ${quote(sourceUuid)}`,
+          applicationSelect,
+          authorization,
+        );
       }
 
       if (!hasReleaseSemver && releaseMap.size > 0) {
@@ -1226,7 +1364,7 @@ export class BalenaOsSyncManager {
         const existing = existingLinks.find(
           (link) => relationId(link.is_part_of__release) === localReleaseId && relationId(link.image) === localImageId,
         );
-        await this.write(
+        const localLink = await this.write(
           'release_image',
           existing,
           { image: localImageId, is_part_of__release: localReleaseId },
@@ -1234,6 +1372,32 @@ export class BalenaOsSyncManager {
           'id,image,is_part_of__release',
           authorization,
         );
+        const localLinkId = relationId(localLink.id);
+        if (!localLinkId) throw new Error(`Catalog release-image relation for ${slug} has no valid ID.`);
+        const labels = hostReleaseImageLabels(graph, sourceLink);
+        if (labels.length > 0) {
+          const existingLabels = await this.getAll(
+            this.dependencies.apiUrl(),
+            apiVersion,
+            'image_label',
+            {
+              $filter: `release_image eq ${localLinkId}`,
+              $select: 'id,release_image,label_name,value',
+            },
+            authorization,
+          );
+          for (const [labelName, value] of labels) {
+            const existingLabel = existingLabels.find((label) => label.label_name === labelName);
+            await this.write(
+              'image_label',
+              existingLabel,
+              { release_image: localLinkId, label_name: labelName, value },
+              `(release_image eq ${localLinkId}) and (label_name eq ${quote(labelName)})`,
+              'id,release_image,label_name,value',
+              authorization,
+            );
+          }
+        }
       }
 
       this.status.phase = `Synchronized ${slug}`;

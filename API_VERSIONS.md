@@ -41,7 +41,21 @@ the API identity used for synchronization must be an organization member.
   open-balena-api's post-v46 Host OS behavior, which does not support ESR releases through these endpoints.
 - All v26.1.0+ v7 behavior described below continues to apply.
 
-## v26.1.0 through v45.x: native v7 model
+## v43.4.0 through v45.x: Helios Host OS updater graph
+
+- open-balena-api
+  [`445ab421`](https://github.com/balena-io/open-balena-api/commit/445ab421f3570d369435110a58266cd8ae12061f)
+  added the Host OS updater relationship used to emit `io.balena.private.updater` in device target state.
+- Host OS synchronization imports the latest successful public `balena_os/balenahup` application release, sets that
+  local application's `should_be_running__release`, and links each imported Host OS application through
+  `is_updated_by__application`. The application/release/image graph and running-release pin use OData; the internal
+  updater relation uses the protected PostgREST connection because public OData does not expose it.
+- Helios `core-next` requires the synthesized updater label before it will plan a Host OS transition. On older APIs the
+  synchronizer omits these unsupported relations; the catalog remains available, but the Helios Host OS update path is
+  unavailable.
+- The v46 catalog-endpoint removal described above applies in addition to this behavior on v46 and newer.
+
+## v26.1.0 through v43.3.x: native v7 model
 
 - The provider uses the OData **v7** endpoint by default.
 - This boundary follows open-balena-api [v26.1.0](https://github.com/balena-io/open-balena-api/releases/tag/v26.1.0),

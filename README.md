@@ -56,9 +56,12 @@ the local machine and point directly to a PostgREST endpoint.
 Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host OS catalog. A global
 administrator can start an additive, idempotent synchronization into the required `balena_os` system organization. The
 server reads the public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and
-creates or updates the complete application/release/service/image graph through open-balena-api—never PostgREST. It does
-not delete local
-records. Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
+creates or updates the application/release/service/image graph through open-balena-api. The one direct-database
+exception links each Host OS application to its updater because public OData does not expose that internal relation. It
+also materializes Host OS image labels from the public release composition so Supervisors distinguish OS payloads from
+ordinary services. On open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph
+and links Host OS applications to it so Helios can plan the actual OS transition. It does not delete local records.
+Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
 until the job finishes. The configured registry endpoint must either serve the public image directly or proxy missing
 paths to the source registry. Synchronization does not copy registry blobs and does not automatically change any fleet
 or device target release. The `balena_os` organization owns the imported catalog records only; Host OS releases are

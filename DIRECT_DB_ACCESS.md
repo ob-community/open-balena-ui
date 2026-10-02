@@ -44,12 +44,17 @@ The direct-access allowlist is therefore limited to:
 - roles and permissions;
 - organizations and memberships;
 - identity/authorization join tables;
+- the single `application.is updated by-application` relationship needed by synchronized Host OS applications;
 - configuration and PineJS migration/model metadata already exposed by the legacy admin UI.
 
 The `balena_os` system organization and its initial administrative membership are deployment bootstrap records because
 open-balena-api does not expose organization creation. The Mapped Pulumi `Org` provider creates or adopts those records
 through protected PostgREST. Host OS and Supervisor application, release, service, image, and device-target writes then
-use open-balena-api exclusively.
+use open-balena-api. The sole Host OS exception is `application.is updated by-application`: open-balena-api v43.4.0+
+uses that internal relation to synthesize `io.balena.private.updater`, but deliberately exposes the write only through
+its privileged internal `resin` API, not public OData v6/v7. The server-side synchronizer therefore writes only that
+relationship through protected PostgREST after it has created both application graphs through open-balena-api. The
+resource is not added to the browser's general direct-access allowlist.
 
 Human-user API key material remains visible only to its owner. Fleet and device key material is visible to global
 administrators and to organization administrators whose server-computed scope includes that fleet/device, because those

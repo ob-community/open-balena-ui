@@ -32,6 +32,15 @@ the API identity used for synchronization must be an organization member.
 
 ## v46.0.0 and newer: Host OS release catalog
 
+### v46.1.0 and newer: local device-type metadata
+
+The API can load `device-type.json` from a Host OS release asset instead of public image storage. Host OS synchronization
+therefore maintains private S3/MinIO-backed copies served by the UI and writes local `release_asset` references for every
+allowlisted local device type. Each sync scope also establishes the latest usable release and its required revision
+chain, then attaches metadata to the newest eligible local release using the API's ordering. This prevents an older
+requested sync scope from leaving config generation dependent on the public S3 fallback. Supervisor-only sync is
+unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for deployment configuration.
+
 - open-balena-api
   [`ddb7ac84`](https://github.com/balena-io/open-balena-api/commit/ddb7ac84be12d83ffc0aea7aadc941e2fb94f036)
   removed `/device-types/v1/:deviceType/images` in favor of Host OS application releases.

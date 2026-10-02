@@ -43,6 +43,9 @@ const env = {
   get REACT_APP_OPEN_BALENA_REMOTE_URL() {
     return readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL');
   },
+  get REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED() {
+    return readEnv('REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED') === 'true';
+  },
   get REACT_APP_OPEN_BALENA_API_URL() {
     return readEnv('REACT_APP_OPEN_BALENA_API_URL');
   },

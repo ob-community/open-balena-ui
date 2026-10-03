@@ -336,8 +336,9 @@ test('S3 object missing is distinguished from permissions, bucket missing and st
 });
 
 test('immutable conditional writes permit existing identical content but propagate other errors', async () => {
-  for (const name of ['PreconditionFailed', 'AccessDenied']) {
-    const { storage } = fixture();
+  for (const name of ['PreconditionFailed', 'AccessDenied', 'NotImplemented', 'ConditionalRequestConflict']) {
+    const { storage, store: initialStore } = fixture();
+    await initialStore.storeDeviceTypeMetadata(slug, version);
     const store = createDeviceTypeMetadataStore({
       env,
       fetch: async () => new Response(json),
@@ -353,6 +354,32 @@ test('immutable conditional writes permit existing identical content but propaga
     } else {
       await assert.rejects(store.storeDeviceTypeMetadata(slug, version), /write failed/);
     }
+  }
+});
+
+test('HTTP 412 verifies the existing object rather than silently accepting missing or corrupt metadata', async () => {
+  for (const existing of [json, Buffer.from('corrupt'), undefined]) {
+    const { storage, objects, gets } = fixture();
+    const key = `device-types/${slug}/${version}/${checksum}.json`;
+    if (existing) {
+      objects.set(key, existing);
+    }
+    const store = createDeviceTypeMetadataStore({
+      env,
+      fetch: async () => new Response(json),
+      storage: async () => ({
+        ...storage,
+        async put() {
+          throw Object.assign(new Error('already exists'), { $metadata: { httpStatusCode: 412 } });
+        },
+      }),
+    });
+    if (existing === json) {
+      assert.equal((await store.storeDeviceTypeMetadata(slug, version)).checksum, checksum);
+    } else {
+      await assert.rejects(store.storeDeviceTypeMetadata(slug, version), /checksum|Not found/);
+    }
+    assert.deepEqual(gets, [{ Bucket: env.OPEN_BALENA_OS_METADATA_BUCKET, Key: key }]);
   }
 });
 

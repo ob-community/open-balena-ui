@@ -34,12 +34,15 @@ the API identity used for synchronization must be an organization member.
 
 ### v46.1.0 and newer: local device-type metadata
 
-The API can load `device-type.json` from a Host OS release asset instead of public image storage. Host OS synchronization
-therefore maintains private S3/MinIO-backed copies served by the UI and writes local `release_asset` references for every
-allowlisted local device type. Each sync scope also establishes the latest usable release and its required revision
-chain, then attaches metadata to the newest eligible local release using the API's ordering. This prevents an older
-requested sync scope from leaving config generation dependent on the public S3 fallback. Supervisor-only sync is
-unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for deployment configuration.
+The API can load `device-type.json` from a Host OS release asset instead of public image storage. Host OS
+synchronization therefore maintains private S3-compatible copies (including SeaweedFS and MinIO) served by the UI and
+writes local `release_asset` references for every allowlisted local device type. Each sync scope also establishes the
+latest usable release and its required revision chain, then attaches metadata to the newest eligible local release using
+the API's ordering. This prevents an older requested sync scope from leaving config generation dependent on the public
+S3 fallback. Supervisor-only sync is unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for
+deployment configuration. The metadata asset URL is consumed server-side by ob-api, not included in normal balenaOS
+provisioning or device target state. It may use an internal UI origin reachable by ob-api without making the storage
+bucket public.
 
 - open-balena-api
   [`ddb7ac84`](https://github.com/balena-io/open-balena-api/commit/ddb7ac84be12d83ffc0aea7aadc941e2fb94f036)

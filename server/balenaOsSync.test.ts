@@ -71,6 +71,7 @@ const metadataSyncFixture = (
     missingHost?: boolean;
     missingRelease?: boolean;
     apiSoftwareVersion?: string;
+    previouslySynced?: boolean;
   } = {},
 ) => {
   const requests: URL[] = [];
@@ -95,6 +96,48 @@ const metadataSyncFixture = (
     variant: '',
     composition: {},
   });
+  const localRecords = new Map<string, Array<Record<string, unknown>>>();
+  if (options.previouslySynced) {
+    localRecords.set(
+      'application',
+      [
+        { id: 30, uuid: 'host', app_name: 'generic-amd64', slug: 'balena_os/generic-amd64', is_host: true },
+        { id: 40, uuid: 'updater', app_name: 'balenahup', slug: 'balena_os/balenahup', is_host: false },
+      ].map((application) => ({
+        ...application,
+        organization: 9,
+        application_type: 1,
+        is_for__device_type: 1,
+        is_public: true,
+        is_archived: false,
+        should_track_latest_release: true,
+        is_of__class: 'app',
+        ...(application.is_host ? {} : { should_be_running__release: 400 }),
+      })),
+    );
+    localRecords.set(
+      'release',
+      [
+        { source: sourceRelease(100, '7.0.0'), id: 301, application: 30 },
+        { source: sourceRelease(101, '8.0.0'), id: 302, application: 30 },
+        { source: sourceRelease(900, '9.0.0'), id: 300, application: 30 },
+        { source: sourceRelease(200, '4.0.0'), id: 400, application: 40 },
+      ].map(({ source, id, application }) => ({
+        ...source,
+        id,
+        belongs_to__application: application,
+        source: 'cloud',
+        release_version: null,
+        contract: null,
+        is_passing_tests: true,
+        is_finalized_at__date: null,
+        phase: null,
+        known_issue_list: null,
+        note: null,
+        invalidation_reason: null,
+      })),
+    );
+  }
   let nextId = 1000;
   const manager = new BalenaOsSyncManager({
     fetch: async (input, init) => {
@@ -105,6 +148,16 @@ const metadataSyncFixture = (
       if (method !== 'GET') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         writes.push({ resource, method, body });
+        if (options.previouslySynced) {
+          const name = resource.split('(')[0];
+          const records = localRecords.get(name) ?? [];
+          const id = method === 'POST' ? nextId++ : Number(/\((\d+)\)/.exec(resource)?.[1]);
+          const existing = records.find((record) => record.id === id);
+          if (existing) Object.assign(existing, body);
+          else records.push({ ...body, id });
+          localRecords.set(name, records);
+          return response({ d: [{ ...body, id }] }, method === 'POST' ? 201 : 200);
+        }
         return response({ d: [{ ...body, id: nextId++ }] }, 201);
       }
       const filter = url.searchParams.get('$filter') ?? '';
@@ -149,8 +202,19 @@ const metadataSyncFixture = (
         return response({ d: options.missingRelease ? [] : [{ id: 300, raw_version: '9.0.0' }] });
       }
       if (resource === 'release_asset') {
+        if (options.previouslySynced) return response({ d: localRecords.get(resource) ?? [] });
         const records = options.existingAsset ? [options.existingAsset] : [];
         return response({ d: options.duplicateAssets ? [...records, { ...asset, id: 301 }] : records });
+      }
+      if (options.previouslySynced && localRecords.has(resource)) {
+        const conditions = [...filter.matchAll(/(\w+) eq (?:'([^']*)'|(\d+))/g)];
+        return response({
+          d: localRecords
+            .get(resource)!
+            .filter((record) =>
+              conditions.every(([, field, text, number]) => record[field] === (text ?? Number(number))),
+            ),
+        });
       }
       return response({ d: [] });
     },
@@ -215,6 +279,26 @@ test('keeps an identical release asset unchanged and repairs an upstream asset r
   });
   assert.equal((await repaired.run()).state, 'completed');
   assert.equal(repaired.writes.find(({ resource }) => resource === 'release_asset(400)')?.method, 'PATCH');
+});
+
+test('resync backfills assets on previously synced releases without recreating their graph', async () => {
+  const fixture = metadataSyncFixture({ previouslySynced: true });
+  const first = await fixture.run();
+  assert.equal(first.state, 'completed');
+  assert.equal(first.created, 1);
+  assert.ok(first.unchanged > 0, 'existing applications and releases pass through the unchanged path');
+  assert.deepEqual(
+    fixture.writes.map(({ resource, method }) => ({ resource, method })),
+    [{ resource: 'release_asset', method: 'POST' }],
+  );
+  assert.equal(fixture.writes[0].body.release, 300, 'backfills the already-local newest release');
+  assert.deepEqual(fixture.downloads, [{ slug: 'generic-amd64', version: '9.0.0' }]);
+  const writesBeforeResync = fixture.writes.length;
+  const second = await fixture.run();
+  assert.equal(second.state, 'completed');
+  assert.equal(second.created, 0);
+  assert.equal(fixture.writes.length, writesBeforeResync, 'repeated sync does not duplicate the asset or graph');
+  assert.equal(second.processed, second.total);
 });
 
 test('maintains metadata for every allowlisted device type, not just one gateway type', async () => {

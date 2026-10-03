@@ -222,6 +222,11 @@ export function createDeviceTypeMetadataStore(dependencies: DeviceTypeMetadataDe
         if (details.name !== 'PreconditionFailed' && details.status !== 412) {
           throw error;
         }
+        const existing = await client.get({ Bucket, Key: objectKey(slug, version, checksum) });
+        const existingBody = await boundedBody(existing.body, existing.contentLength);
+        if (!existingBody.equals(body)) {
+          throw new Error('Stored device type metadata checksum does not match.');
+        }
       }
       return {
         filename: 'device-type.json',

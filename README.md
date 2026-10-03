@@ -51,7 +51,13 @@ There are a number of environment variables used to configure the ui:
 - `CONTRACT_ALLOWLIST` Mirror the API's semicolon-separated contract allowlist. `hw.device-type/<slug>` entries filter
   catalog discovery and metadata synchronization; architecture entries alone do not restrict device types.
 
-- `OPEN_BALENA_OS_METADATA_BUCKET` Required private S3/MinIO bucket for Host OS synchronization on API v46.1+.
+- `OPEN_BALENA_S3_URL` S3-compatible endpoint (SeaweedFS S3 gateway, MinIO, or AWS S3). The UI server uses AWS SDK v3
+  with forced path-style addressing; this is not the SeaweedFS filer endpoint. `OPEN_BALENA_S3_ACCESS_KEY` and
+  `OPEN_BALENA_S3_SECRET_KEY` are server-only storage credentials, `OPEN_BALENA_S3_REGION` defaults to `us-east-1`, and
+  `OPEN_BALENA_S3_REGISTRY_BUCKET` defaults to `registry-data`. Keep these backend-neutral variable names when changing
+  storage providers.
+
+- `OPEN_BALENA_OS_METADATA_BUCKET` Required private S3-compatible bucket for Host OS synchronization on API v46.1+.
   Provision it and grant the existing UI storage identity read/write access. Metadata is served by the UI, not by a
   public bucket policy.
 
@@ -66,24 +72,29 @@ For local development, `npm run dev` starts both Vite on port 3000 and the UI se
 continue to use `REACT_APP_OPEN_BALENA_API_URL`. The configured `OPEN_BALENA_POSTGREST_URL` must still be reachable from
 the local machine and point directly to a PostgREST endpoint.
 
-Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host OS catalog. A global
-administrator can start an additive, idempotent synchronization into the required `balena_os` system organization. The
-server reads the public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and
-creates or updates the application/release/service/image graph through open-balena-api. The one direct-database
-exception links each Host OS application to its updater because public OData does not expose that internal relation. It
-also materializes Host OS image labels from the public release composition so Supervisors distinguish OS payloads from
-ordinary services. On open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph
-and links Host OS applications to it so Helios can plan the actual OS transition. It does not delete local records.
-On API v46.1+, sync also stores allowlisted device-type JSON in private S3/MinIO and writes local release assets pointing
-to the UI's read-only metadata endpoint. This lets ob-api generate device config without public S3 metadata reads.
-The asset URL contains no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed.
-Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
-until the job finishes. The configured registry endpoint must either serve the public image directly or proxy missing
-paths to the source registry. Synchronization does not copy registry blobs and does not automatically change any fleet
-or device target release. The `balena_os` organization owns the imported catalog records only; Host OS releases are
-installation-wide and do not need to share an organization with a target fleet. Synchronization is disabled until that
-system organization exists. Registry locations are rewritten when records are synchronized; rerun the sync after
-changing `OPEN_BALENA_OS_REGISTRY_HOST` to update existing imported image records.
+Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host OS catalog. A global administrator can
+start an additive, idempotent synchronization into the required `balena_os` system organization. The server reads the
+public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates
+the application/release/service/image graph through open-balena-api. The one direct-database exception links each Host
+OS application to its updater because public OData does not expose that internal relation. It also materializes Host OS
+image labels from the public release composition so Supervisors distinguish OS payloads from ordinary services. On
+open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph and links Host OS
+applications to it so Helios can plan the actual OS transition. It does not delete local records. On API v46.1+, sync
+also stores allowlisted device-type JSON in private S3-compatible storage and writes local release assets pointing to
+the UI's read-only metadata endpoint. This lets ob-api generate device config without public S3 metadata reads. The
+asset URL contains no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed. An
+internal metadata URL only needs to be reachable by ob-api: it is not sent to devices in normal balenaOS provisioning or
+target-state responses. Provisioning images and device image pulls use their separate helper/registry routes. For
+chart-managed installations, the infrastructure chart owns the automated, idempotent MinIO-to-SeaweedFS migration and
+private bucket/credential setup. Operators do not run manual migration commands in this UI repository; follow the
+installation's infrastructure chart deployment guide. Existing MinIO deployments remain supported. Progress is kept in
+server memory, so the UI polls every five seconds and the UI server must remain running until the job finishes. The
+configured registry endpoint must either serve the public image directly or proxy missing paths to the source registry.
+Synchronization does not copy registry blobs and does not automatically change any fleet or device target release. The
+`balena_os` organization owns the imported catalog records only; Host OS releases are installation-wide and do not need
+to share an organization with a target fleet. Synchronization is disabled until that system organization exists.
+Registry locations are rewritten when records are synchronized; rerun the sync after changing
+`OPEN_BALENA_OS_REGISTRY_HOST` to update existing imported image records.
 
 See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for the complete deployment, registry, organization,
 security, and update-lifecycle configuration.

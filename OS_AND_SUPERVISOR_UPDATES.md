@@ -9,30 +9,52 @@ needed for local device configuration generation.
 
 Configure these variables on the Open Balena Admin server:
 
-| Variable                              | Purpose                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `REACT_APP_OPEN_BALENA_API_URL`       | Base URL of the local open-balena-api installation.                                        |
-| `REACT_APP_OPEN_BALENA_API_VERSION`   | Installed open-balena-api software version. Used to select compatible fields and behavior. |
-| `REACT_APP_OPEN_BALENA_ODATA_VERSION` | Optional `v6` or `v7` endpoint override. Normally omit it.                                 |
-| `OPEN_BALENA_OS_CATALOG_API_URL`      | Public source catalog API. Defaults to `https://api.balena-cloud.com`.                     |
-| `OPEN_BALENA_OS_REGISTRY_HOST`        | Registry hostname stored in synchronized image records. See the delivery options below.    |
-| `CONTRACT_ALLOWLIST`                 | Mirror the API's semicolon-separated contract allowlist. Only `hw.device-type/<slug>` entries restrict device types; architecture entries do not. Empty or architecture-only means all local types, matching the API metadata loader. |
-| `OPEN_BALENA_OS_METADATA_BUCKET`     | Required for Host OS sync on API v46.1+. Private, pre-provisioned S3/MinIO bucket for device metadata. |
-| `OPEN_BALENA_OS_METADATA_URL`        | Stable UI base URL reachable from ob-api. Defaults to `REACT_APP_OPEN_BALENA_UI_URL`. |
-| `OPEN_BALENA_OS_METADATA_SOURCE_URL` | Public metadata source used during sync. Defaults to `https://resin-production-img-cloudformation.s3.amazonaws.com/images`. |
-| `OPEN_BALENA_S3_URL`                 | S3/MinIO endpoint used by the UI's existing storage client. |
-| `OPEN_BALENA_S3_ACCESS_KEY`          | UI server storage credential with read/write access to the metadata bucket. |
-| `OPEN_BALENA_S3_SECRET_KEY`          | UI server storage secret. Never exposed to browsers or included in asset URLs. |
-| `OPEN_BALENA_S3_REGION`              | S3 region. Defaults to `us-east-1`. |
+| Variable                              | Purpose                                                                                                                                                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REACT_APP_OPEN_BALENA_API_URL`       | Base URL of the local open-balena-api installation.                                                                                                                                                                                   |
+| `REACT_APP_OPEN_BALENA_API_VERSION`   | Installed open-balena-api software version. Used to select compatible fields and behavior.                                                                                                                                            |
+| `REACT_APP_OPEN_BALENA_ODATA_VERSION` | Optional `v6` or `v7` endpoint override. Normally omit it.                                                                                                                                                                            |
+| `OPEN_BALENA_OS_CATALOG_API_URL`      | Public source catalog API. Defaults to `https://api.balena-cloud.com`.                                                                                                                                                                |
+| `OPEN_BALENA_OS_REGISTRY_HOST`        | Registry hostname stored in synchronized image records. See the delivery options below.                                                                                                                                               |
+| `CONTRACT_ALLOWLIST`                  | Mirror the API's semicolon-separated contract allowlist. Only `hw.device-type/<slug>` entries restrict device types; architecture entries do not. Empty or architecture-only means all local types, matching the API metadata loader. |
+| `OPEN_BALENA_OS_METADATA_BUCKET`      | Required for Host OS sync on API v46.1+. Private, pre-provisioned S3-compatible bucket for device metadata.                                                                                                                           |
+| `OPEN_BALENA_OS_METADATA_URL`         | Stable UI base URL reachable from ob-api. Defaults to `REACT_APP_OPEN_BALENA_UI_URL`.                                                                                                                                                 |
+| `OPEN_BALENA_OS_METADATA_SOURCE_URL`  | Public metadata source used during sync. Defaults to `https://resin-production-img-cloudformation.s3.amazonaws.com/images`.                                                                                                           |
+| `OPEN_BALENA_S3_URL`                  | S3-compatible endpoint (SeaweedFS S3 gateway, MinIO, or AWS S3) used by the UI's storage client.                                                                                                                                      |
+| `OPEN_BALENA_S3_ACCESS_KEY`           | UI server storage credential with read/write access to the metadata bucket.                                                                                                                                                           |
+| `OPEN_BALENA_S3_SECRET_KEY`           | UI server storage secret. Never exposed to browsers or included in asset URLs.                                                                                                                                                        |
+| `OPEN_BALENA_S3_REGION`               | S3 region. Defaults to `us-east-1`.                                                                                                                                                                                                   |
 
 The UI server must be able to reach the local open-balena-api and the configured public catalog API. A browser does not
 perform catalog writes directly.
 
 ### Local metadata storage deployment
 
-Provision a private bucket such as `balena-os-metadata` in the existing MinIO installation and grant the UI's storage
-identity `GetObject` and `PutObject` access to it. Do not make the bucket public. Configure the variables above on the
-UI deployment; this repository does not contain the installation's Helm/Pulumi manifests.
+Provision a private bucket such as `balena-os-metadata` in the S3-compatible backend and grant the UI's storage identity
+`GetObject` and `PutObject` access to it. Do not make the bucket public. Configure the variables above on the UI
+deployment; this repository does not contain the installation's Helm/Pulumi manifests. For chart-managed installations,
+private buckets, credentials, and the automated, idempotent MinIO-to-SeaweedFS data migration are managed entirely by
+the infrastructure chart. Operators do not run manual migration commands or a UI-side migration script. Follow the
+installation's infrastructure chart deployment guide for rollout and migration verification. Keep existing bucket names
+and object keys, storage authorization, and the published metadata URLs intact when switching backends; MinIO remains
+supported.
+
+The UI uses a shared AWS SDK v3 client with `forcePathStyle: true`. `OPEN_BALENA_S3_URL` must point to the authenticated
+S3 gateway, not the SeaweedFS filer API. The same backend-neutral environment variables and region setting apply to both
+SeaweedFS and MinIO. Its storage operations are:
+
+- Registry inventory: `ListObjectsV2` with prefixes, `/` delimiter for repository discovery, and continuation tokens. An
+  incomplete/cycling pagination response fails the operation rather than silently hiding objects.
+- Registry cleanup: `DeleteObjects`, in batches of at most 1000 keys with `Quiet: true`. Per-object errors and backend
+  failures are reported, not treated as successful cleanup. The UI identity needs list/delete access to the registry
+  bucket.
+- Device-type metadata: `PutObject` with JSON content, `If-None-Match: *`, and a SHA-256 content-addressed key;
+  `GetObject` for bounded, independently SHA-256-verified reads. An already-existing object (HTTP 412) is read and
+  checked before reuse. A backend that rejects conditional writes causes sync to fail explicitly; there is no
+  unconditional-write fallback.
+
+These operations require compatible pagination, conditional-write, multi-delete, and SDK checksum behavior from the
+deployed S3 gateway. Changing providers does not disable metadata integrity checks or relax private bucket policies.
 
 The UI stores content-addressed JSON objects and serves them through a read-only endpoint:
 
@@ -42,9 +64,12 @@ GET /balena-os/device-types/<slug>/<version>/<sha256>/device-type.json
 
 This endpoint intentionally needs no authorization header: the API's asset reader sends none, and device-type metadata
 is already public. It exposes only validated metadata objects, not bucket listings, credentials, device configs, or
-write operations. Other BalenaOS routes retain their existing administrator authorization.
-The UI origin must route this path to the server, without a login redirect or an access challenge for ob-api.
-Private bucket objects survive UI restarts and are shared across replicas; keep the published UI origin stable.
+write operations. Other BalenaOS routes retain their existing administrator authorization. The UI origin must route this
+path to the server, without a login redirect or an access challenge for ob-api. Private bucket objects survive UI
+restarts and are shared across replicas; keep the published UI origin stable. `OPEN_BALENA_OS_METADATA_URL` can be an
+internal UI origin reachable only by ob-api. These metadata URLs are read server-side for config generation and are
+never sent to devices in normal balenaOS provisioning or target-state responses. Device provisioning downloads and
+registry image pulls use separate endpoints; devices do not need access to the internal UI metadata origin.
 
 Release assets are written as ordinary OData WebResource references (`filename`, `href`, `content_type`, `size`,
 `checksum`). Because the UI owns storage and delivery, **ob-api does not need `WEBRESOURCES_S3_*` settings or a modified

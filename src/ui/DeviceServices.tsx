@@ -8,6 +8,7 @@ import React from 'react';
 import {
   Datagrid,
   FunctionField,
+  HttpError,
   ReferenceField,
   ReferenceManyField,
   TextField,
@@ -19,6 +20,7 @@ import {
   useRecordContext,
 } from 'react-admin';
 import utf8decode from '../lib/utf8decode';
+import { withPermissionHint } from '../lib/httpErrorMessage';
 import SemVerChip from './SemVerChip';
 import environment from '../lib/reactAppEnv';
 import type { ResourceRecord } from '../types/resource';
@@ -226,7 +228,7 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
         );
 
         if (!response.ok) {
-          throw new Error(response.statusText);
+          throw new HttpError(response.statusText, response.status);
         }
 
         const body = response.body;
@@ -244,7 +246,13 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
           }
         }
       } catch (error) {
-        notify(`Error: Could not execute command ${command} on device ${deviceName}`, { type: 'error' });
+        notify(
+          withPermissionHint(
+            `Error: Could not execute command ${command} on device ${deviceName}`,
+            error instanceof HttpError ? error.status : undefined,
+          ),
+          { type: 'error' },
+        );
       } finally {
         setIsExecutingCommand(false);
       }

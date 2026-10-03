@@ -1,5 +1,7 @@
 import semver from 'semver';
+import { setTimeout as delay } from 'node:timers/promises';
 import versions from '../src/versions';
+import { withPermissionHint } from '../src/lib/httpErrorMessage';
 import { allowedDeviceTypeSlugs, storeDeviceTypeMetadata, type DeviceTypeAsset } from './deviceTypeMetadata';
 
 type RecordValue = Record<string, unknown>;
@@ -65,7 +67,10 @@ export interface SyncDependencies {
   apiSoftwareVersion: () => string | undefined;
   catalogApiUrl: () => string;
   registryHost: () => string | undefined;
+  postgrestUrl?: () => string | undefined;
   contractAllowlist?: () => string | undefined;
+  metadataVerificationTimeoutMs?: number;
+  metadataVerificationPollIntervalMs?: number;
   storeDeviceTypeMetadata?: (slug: string, version: string) => Promise<DeviceTypeAsset>;
   setHostAppUpdaterRelation?: (
     authorization: string,
@@ -82,6 +87,17 @@ const HOST_APP_UPDATER_RELATION_VERSION = '43.4.0';
 const RELEASE_ASSET_METADATA_VERSION = '46.1.0';
 const HOST_APP_UPDATER_SLUG = 'balena_os/balenahup';
 const ESR_MIN_MAJOR = 2000;
+const METADATA_VERIFICATION_TIMEOUT_MS = 6 * 60 * 1000;
+const METADATA_REQUEST_TIMEOUT_MS = 10000;
+
+class SyncRequestError extends Error {
+  public constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 const trimUrl = (value: string): string => value.replace(/\/+$/, '');
 
@@ -135,6 +151,7 @@ const defaultDependencies: SyncDependencies = {
   apiSoftwareVersion: () => process.env.REACT_APP_OPEN_BALENA_API_VERSION,
   catalogApiUrl: () => trimUrl(process.env.OPEN_BALENA_OS_CATALOG_API_URL ?? DEFAULT_CATALOG_API_URL),
   registryHost: () => process.env.OPEN_BALENA_OS_REGISTRY_HOST?.replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+  postgrestUrl: () => process.env.OPEN_BALENA_POSTGREST_URL?.replace(/\/+$/, ''),
   contractAllowlist: () => process.env.CONTRACT_ALLOWLIST,
   storeDeviceTypeMetadata,
   setHostAppUpdaterRelation,
@@ -148,6 +165,12 @@ const relationId = (value: unknown): number | undefined => {
 
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.length > 0 ? value : undefined;
+
+const isRecord = (value: unknown): value is RecordValue =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const matchesDeviceTypeAsset = (value: unknown, asset: DeviceTypeAsset): boolean =>
+  isRecord(value) && Object.entries(asset).every(([key, expected]) => value[key] === expected);
 
 const quote = (value: string): string => `'${value.replace(/'/g, "''")}'`;
 
@@ -440,16 +463,22 @@ export class BalenaOsSyncManager {
       response = await this.dependencies.fetch(url, { ...init, headers });
       if (response.status !== 429 || attempt === 3) break;
       const retryAfter = Number(response.headers.get('Retry-After'));
-      await new Promise((resolve) =>
-        setTimeout(resolve, Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * (attempt + 1)),
-      );
+      await delay(Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * (attempt + 1), undefined, {
+        signal: init.signal ?? undefined,
+      });
     }
     if (response?.status === 404 && allowNotFound) return undefined;
     if (!response?.ok) {
       if (response?.status === 401) {
-        throw new Error('Synchronization authorization expired or was rejected; sign in again and re-run to resume.');
+        throw new Error(
+          withPermissionHint(
+            'Synchronization authorization expired or was rejected; sign in again and re-run to resume.',
+            response.status,
+          ),
+        );
       }
-      throw new Error(
+      throw new SyncRequestError(
+        response?.status ?? 0,
         `Request failed (${response?.status ?? 'unknown'}): ${response ? await errorMessage(response) : url}`,
       );
     }
@@ -616,6 +645,14 @@ export class BalenaOsSyncManager {
   private async synchronizeDeviceTypeAssets(authorization: string, deviceTypes: RecordValue[]): Promise<void> {
     const persist = this.dependencies.storeDeviceTypeMetadata;
     if (!persist) throw new Error('Device-type metadata storage is not configured.');
+    const postgrestUrl = this.dependencies.postgrestUrl?.();
+    if (!postgrestUrl) throw new Error('OPEN_BALENA_POSTGREST_URL is required to persist device-type release assets.');
+    const expectedSlugs = allowedDeviceTypeSlugs(this.dependencies.contractAllowlist?.());
+    const missingSlugs = [...expectedSlugs].filter((slug) => !deviceTypes.some((record) => record.slug === slug));
+    if (missingSlugs.length > 0) {
+      throw new Error(`Allowlisted device types are missing from open-balena-api: ${missingSlugs.join(', ')}.`);
+    }
+    const metadata = new Map<string, { version: string; applicationId: number }>();
     for (const deviceType of deviceTypes) {
       const slug = asString(deviceType.slug);
       const deviceTypeId = relationId(deviceType.id);
@@ -665,15 +702,180 @@ export class BalenaOsSyncManager {
       );
       if (existingAssets.length > 1) throw new Error(`Release ${releaseId} has duplicate device-type.json assets.`);
       const asset = await persist(slug, version);
-      await this.write(
-        'release_asset',
+      await this.persistDeviceTypeAssetReference(
+        authorization,
+        trimUrl(postgrestUrl),
+        releaseId,
         existingAssets[0],
-        { release: releaseId, asset_key: 'device-type.json', asset },
-        filter,
-        select,
+        asset,
+      );
+      const verified = await this.getAll(
+        this.dependencies.apiUrl(),
+        this.dependencies.apiVersion(),
+        'release_asset',
+        { $filter: filter, $select: select, $top: 2 },
         authorization,
       );
+      if (
+        verified.length !== 1 ||
+        relationId(verified[0].release) !== releaseId ||
+        verified[0].asset_key !== 'device-type.json' ||
+        !matchesDeviceTypeAsset(verified[0].asset, asset)
+      ) {
+        throw new Error(`Device-type metadata reference for ${slug}, release ${releaseId}, failed OData read-back.`);
+      }
+      metadata.set(slug, { version, applicationId });
     }
+
+    // release_asset writes have no metadata-cache hook. The same-value host flag
+    // PATCH invokes ob-api's existing application hook without changing targets.
+    this.status.phase = 'Refreshing API device-type metadata';
+    for (const applicationId of new Set([...metadata.values()].map((entry) => entry.applicationId))) {
+      await this.requireMetadataWriteAccess(authorization, 'application', applicationId);
+      await this.requestJson(
+        `${this.dependencies.apiUrl()}/${this.dependencies.apiVersion()}/application(${applicationId})`,
+        authorization,
+        { method: 'PATCH', body: JSON.stringify({ is_host: true }) },
+      );
+    }
+    await this.verifyDeviceTypeMetadata(authorization, metadata);
+  }
+
+  private async persistDeviceTypeAssetReference(
+    authorization: string,
+    postgrestUrl: string,
+    releaseId: number,
+    existing: RecordValue | undefined,
+    asset: DeviceTypeAsset,
+  ): Promise<void> {
+    if (existing && matchesDeviceTypeAsset(existing.asset, asset)) {
+      this.status.unchanged += 1;
+      this.status.processed += 1;
+      return;
+    }
+    let record = existing;
+    const filter = `(release eq ${releaseId}) and (asset_key eq 'device-type.json')`;
+    const select = 'id,release,asset_key,asset';
+    const apiUrl = `${this.dependencies.apiUrl()}/${this.dependencies.apiVersion()}/release_asset`;
+    if (!record) {
+      try {
+        await this.requestJson(apiUrl, authorization, {
+          method: 'POST',
+          body: JSON.stringify({ release: releaseId, asset_key: 'device-type.json' }),
+        });
+      } catch (error) {
+        if (!(error instanceof SyncRequestError) || error.status !== 409) throw error;
+        // A concurrent sync may have created this same unique release/key pair.
+      }
+      const records = await this.getAll(
+        this.dependencies.apiUrl(),
+        this.dependencies.apiVersion(),
+        'release_asset',
+        { $filter: filter, $select: select, $top: 2 },
+        authorization,
+      );
+      if (records.length !== 1) throw new Error(`Release ${releaseId} requires exactly one device-type.json asset.`);
+      record = records[0];
+    }
+    const id = relationId(record.id);
+    if (!id || relationId(record.release) !== releaseId || record.asset_key !== 'device-type.json') {
+      throw new Error(`Release ${releaseId} has an invalid device-type.json asset record.`);
+    }
+
+    await this.requireMetadataWriteAccess(authorization, 'release_asset', id);
+    const query = new URLSearchParams({
+      'id': `eq.${id}`,
+      'release': `eq.${releaseId}`,
+      'asset key': 'eq.device-type.json',
+    });
+    const response = await this.requestJson(
+      `${postgrestUrl}/${encodeURIComponent('release asset')}?${query}`,
+      authorization,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ asset }),
+      },
+    );
+    if (
+      !Array.isArray(response) ||
+      response.length !== 1 ||
+      !isRecord(response[0]) ||
+      relationId(response[0].id) !== id ||
+      relationId(response[0].release) !== releaseId ||
+      response[0]['asset key'] !== 'device-type.json' ||
+      !matchesDeviceTypeAsset(response[0].asset, asset)
+    ) {
+      throw new Error(`PostgREST did not persist the device-type.json reference for release ${releaseId}.`);
+    }
+    if (existing) this.status.updated += 1;
+    else this.status.created += 1;
+    this.status.processed += 1;
+  }
+
+  private async requireMetadataWriteAccess(
+    authorization: string,
+    resource: 'release_asset' | 'application',
+    id: number,
+  ): Promise<void> {
+    // A PATCH can succeed with zero affected rows. canAccess explicitly rejects
+    // row-level permission misses and returns the authorized record's ID.
+    const records = extractRecords(
+      await this.requestJson(
+        `${this.dependencies.apiUrl()}/${this.dependencies.apiVersion()}/${resource}(${id})/canAccess`,
+        authorization,
+        { method: 'POST', body: JSON.stringify({ method: 'PATCH' }) },
+      ),
+    );
+    if (records.length !== 1 || relationId(records[0].id) !== id) {
+      throw new Error(`open-balena-api did not confirm write access to ${resource}(${id}).`);
+    }
+  }
+
+  private async verifyDeviceTypeMetadata(
+    authorization: string,
+    metadata: Map<string, { version: string; applicationId: number }>,
+  ): Promise<void> {
+    const timeout = this.dependencies.metadataVerificationTimeoutMs ?? METADATA_VERIFICATION_TIMEOUT_MS;
+    const interval = this.dependencies.metadataVerificationPollIntervalMs ?? 1000;
+    if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
+      throw new Error('Metadata verification timeout and polling interval must be positive finite milliseconds.');
+    }
+    const deadline = Date.now() + timeout;
+    let issue = 'No API metadata response.';
+    while (Date.now() < deadline) {
+      try {
+        const response = await this.requestJson(`${this.dependencies.apiUrl()}/device-types/v1`, authorization, {
+          signal: AbortSignal.timeout(Math.max(1, Math.min(METADATA_REQUEST_TIMEOUT_MS, deadline - Date.now()))),
+        });
+        if (!Array.isArray(response) || !response.every(isRecord)) {
+          throw new Error('The API device-type metadata endpoint did not return a JSON array.');
+        }
+        const unresolved = [...metadata].filter(
+          ([slug, { version }]) => !response.some((record) => record.slug === slug && record.buildId === version),
+        );
+        if (unresolved.length === 0) return;
+        issue = `Missing or stale API metadata for ${unresolved.map(([slug]) => slug).join(', ')}.`;
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !(
+            ['AbortError', 'TimeoutError'].includes(error.name) ||
+            (error instanceof SyncRequestError && error.status >= 500)
+          )
+        ) {
+          throw error;
+        }
+        issue = error.message;
+      }
+      await new Promise((resolve) => setTimeout(resolve, Math.min(interval, Math.max(0, deadline - Date.now()))));
+    }
+    throw new Error(
+      `Device-type release assets were verified, but ob-api metadata refresh did not complete: ${issue} ` +
+        'Check ob-api access to the internal metadata URL. An already-stuck upstream metadata request cannot be ' +
+        'cleared by cache invalidation; restart the affected ob-api instance and rerun synchronization. ' +
+        'Existing release assets will be reused.',
+    );
   }
 
   private async sourceApplications(deviceTypeSlug: string, includeEsr: boolean): Promise<RecordValue[]> {
@@ -1214,7 +1416,7 @@ export class BalenaOsSyncManager {
         should_track_latest_release: true,
       };
       if (!existingApplication) applicationPayload.slug = slug;
-      if (hasApplicationClass) applicationPayload.is_of__class = 'app';
+      if (hasApplicationClass) applicationPayload.is_of__class = graph.isHostAppUpdater ? 'block' : 'app';
       const localApplication = await this.write(
         'application',
         existingApplication,

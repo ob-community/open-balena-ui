@@ -41,7 +41,10 @@ supported.
 
 The UI uses a shared AWS SDK v3 client with `forcePathStyle: true`. `OPEN_BALENA_S3_URL` must point to the authenticated
 S3 gateway, not the SeaweedFS filer API. The same backend-neutral environment variables and region setting apply to both
-SeaweedFS and MinIO. Its storage operations are:
+SeaweedFS and MinIO. Prefer the private service endpoint for server-side storage access. A public hostname behind an
+access proxy or WAF may allow reads while rejecting signed S3 writes; verify both operations, not just public GETs.
+This storage endpoint is independent of the UI metadata origin and the endpoints supplied to devices. Its storage
+operations are:
 
 - Registry inventory: `ListObjectsV2` with prefixes, `/` delimiter for repository discovery, and continuation tokens. An
   incomplete/cycling pagination response fails the operation rather than silently hiding objects.
@@ -71,9 +74,48 @@ internal UI origin reachable only by ob-api. These metadata URLs are read server
 never sent to devices in normal balenaOS provisioning or target-state responses. Device provisioning downloads and
 registry image pulls use separate endpoints; devices do not need access to the internal UI metadata origin.
 
-Release assets are written as ordinary OData WebResource references (`filename`, `href`, `content_type`, `size`,
-`checksum`). Because the UI owns storage and delivery, **ob-api does not need `WEBRESOURCES_S3_*` settings or a modified
-image for this implementation**. This differs from uploading files through ob-api's multipart-upload handler.
+`OPEN_BALENA_POSTGREST_URL` must point directly to the internal PostgREST service. PineJS rejects ordinary JSON writes
+to a WebResource field with `Use multipart requests to upload a file.`, even for an administrator. A stored metadata
+reference is not a file upload, so synchronization uses this server-only sequence:
+
+1. Select the eligible Host OS release through OData using the authenticated caller's permissions.
+2. Create a `release_asset` through OData with only `release` and `asset_key`, or reuse its existing unique release/key
+   record. Authorize that exact record with OData `POST release_asset(id)/canAccess` and `{"method":"PATCH"}` before
+   any direct database write. Require the authorized row's ID; an ordinary PATCH can succeed with zero affected rows
+   and therefore is not a sufficient permission check.
+3. PATCH only its `asset` field through internal PostgREST, constrained by record ID, release ID, and asset key. Require
+   exactly one matching response and verify the reference again through OData. The browser receives no PostgREST URL
+   or general-purpose release-asset database endpoint.
+4. After every allowlisted device type has a verified reference, authorize each selected Host OS application through
+   its `canAccess` action and PATCH its `is_host`
+   flag to its existing value `true`. This invokes ob-api's supported device-type cache invalidation hook, clearing the
+   handling worker's local cache and the shared cache without changing fleet/device targets.
+5. Verify `/device-types/v1` serves the expected build ID for every synchronized device type before reporting
+   completion. Verification is bounded to six minutes, allowing the API's default five-minute local cache lifetime
+   on other workers. Individual metadata requests are bounded to ten seconds.
+
+An identical asset is not rewritten, but cache notification and functional verification are repeated. This lets a
+resync recover after an interrupted database write or a failed cache notification without duplicating assets.
+
+Because the UI owns storage and delivery, **ob-api does not need `WEBRESOURCES_S3_*` settings or a modified image for
+this implementation**. PostgREST remains an internal, authenticated backend; there is no fallback to it after an OData
+authorization denial.
+
+The API must return these external metadata references without rewriting their `href`. An optional ob-api WebResource
+storage handler that replaces external URLs with its own storage URLs is not compatible with UI-served references;
+OData read-back detects that configuration instead of reporting a successful sync.
+
+### Recovering an already-stuck API metadata request
+
+An ob-api process that already entered a stuck upstream AWS SDK read can retain an in-flight cache fill. Cache
+invalidation deletes cached values but does not cancel that request or its coalesced waiters. The UI cannot restart
+ob-api or flush those process-local waiters through a supported API.
+
+If the references are verified but metadata refresh times out, synchronization reports a failure instead of a false
+success. Check ob-api's access to the internal metadata URL. For an already-stuck upstream request, restart the affected
+ob-api instance and rerun synchronization; the stored objects, release graph, and references are reused. Other API
+workers can retain completed local cache entries until their configured local TTL expires. A successful metadata
+verification does not imply that every process's older in-flight requests have been cancelled.
 
 ## Desired and reported device state
 
@@ -103,7 +145,7 @@ keys to the local open-balena-api `release` table. An assignable release therefo
 - its release-image relationships;
 - Host OS image labels such as `io.balena.image.class=hostapp`, `io.balena.image.store=root`, and
   `io.balena.update.requires-reboot=1`;
-- a local `balena_os/balenahup` updater application with a running release; and
+- a local `balena_os/balenahup` updater application of class `block`, with a running release; and
 - the Host OS application's `is_updated_by__application` relationship to that updater.
 
 On API v46.1+ the synchronization also maintains a `release_asset` with `asset_key = 'device-type.json'` on the newest
@@ -114,8 +156,13 @@ Rerunning synchronization backfills this asset on catalogs imported before metad
 application/release graph is otherwise unchanged. It does not recreate those applications or releases. An identical
 local asset is left unchanged on subsequent runs.
 
-Open Balena Admin creates and updates the operational graph through open-balena-api. PostgREST verifies administrator
-access and writes only the internal `application.is updated by-application` relation that public OData does not expose.
+Open Balena Admin creates and updates the operational graph through open-balena-api. The two narrowly scoped
+server-side PostgREST write exceptions are the internal `application.is updated by-application` relationship and the
+stored `release_asset.asset` reference described above. Release-asset creation, write authorization, read-back, and
+metadata-cache notification still use open-balena-api.
+Synchronization also repairs an updater imported with the incorrect `app` class before linking it to Host OS
+applications. The API requires updater applications to be blocks; preserving that invariant is necessary for subsequent
+Host OS application writes, including metadata-cache notification.
 Host OS image labels are materialized from each public release's service composition. The corresponding Balena Cloud
 `image_label` resource requires authenticated Cloud access, but the composition exposes the same metadata without
 requiring Cloud credentials.

@@ -114,13 +114,24 @@ global direct-database resources. The API-key and SSH-key creation forms display
 loading an administrator-only user selector, and the server independently rejects a submitted owner or actor outside the
 authenticated user's scope.
 
+## API authorization errors
+
+HTTP 401 errors displayed by the UI include "Ensure you have the appropriate permissions." This also applies when the UI
+server forwards an open-balena-api failure as HTTP 502, including device and fleet deletion. The original error message
+is retained. A 401 may indicate an expired session or missing API permissions, including permissions required by cascade
+deletion of dependent records; the hint does not replace existing sign-in behavior.
+
+UI `global-admin` access does not itself grant open-balena-api permissions. After API upgrades introduce resources,
+check the account's effective API permissions and standard roles rather than assuming an older set of directly assigned
+permissions is complete.
+
 ## BalenaOS catalog administration
 
 Global administrators and enforced-mode users who are members of the `balena_os` organization may inspect and
 synchronize the Services > BalenaOS catalog. In legacy mode, every authenticated user retains effective
 global-administrator access.
 
-PostgREST is used only to resolve the caller's effective administrator role. All synchronized application, release,
+PostgREST resolves the caller's effective administrator role. All synchronized application, release,
 service, image, and release-image writes are sent to open-balena-api with the caller's token so its validation, ACLs,
 hooks, and notifications remain in force. A caller that is a UI global administrator but lacks the required
 open-balena-api permissions receives an explicit synchronization failure; the server does not bypass the API.
@@ -128,6 +139,14 @@ open-balena-api permissions receives an explicit synchronization failure; the se
 Membership in `balena_os` authorizes the UI server route but does not grant open-balena-api write permissions. The
 member's open-balena-api role must separately permit the application, release, service, image, and relationship writes
 performed by synchronization.
+
+Two server-only write exceptions use internal PostgREST: the Host OS updater relationship not writable through public
+OData, and the `device-type.json` WebResource reference that PineJS rejects as an ordinary JSON write. Release-asset
+records are first created/authorized through OData with the caller's token; only their `asset` field is patched
+directly, with server-controlled ID, release, and asset-key filters. API authorization failures never cause a PostgREST
+fallback. The synchronizer verifies these references through OData, invokes the supported host-application
+metadata-cache hook, and checks the API's device-type metadata before completing. Neither exception exposes a
+general-purpose browser database resource or changes device targets.
 
 ## RBAC-aware navigation and read-only resources
 

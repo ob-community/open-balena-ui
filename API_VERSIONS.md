@@ -44,6 +44,11 @@ deployment configuration. The metadata asset URL is consumed server-side by ob-a
 provisioning or device target state. It may use an internal UI origin reachable by ob-api without making the storage
 bucket public.
 
+PineJS does not accept those WebResource references as ordinary JSON OData writes. The synchronizer creates/authorizes
+the release/key record through OData, persists only its reference through internal PostgREST, verifies OData read-back,
+and uses the API's host-application cache hook before checking device-type metadata. See the deployment guide for
+recovery of an already-stuck upstream cache fill.
+
 - open-balena-api
   [`ddb7ac84`](https://github.com/balena-io/open-balena-api/commit/ddb7ac84be12d83ffc0aea7aadc941e2fb94f036)
   removed `/device-types/v1/:deviceType/images` in favor of Host OS application releases.

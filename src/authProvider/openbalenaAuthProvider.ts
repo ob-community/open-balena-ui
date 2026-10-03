@@ -5,6 +5,7 @@ import type { JwtPayload } from 'jwt-decode';
 import { jwtDecode } from 'jwt-decode';
 import type { AuthProvider } from 'react-admin';
 import environment from '../lib/reactAppEnv';
+import { withPermissionHint } from '../lib/httpErrorMessage';
 
 interface LoginParams {
   username: string;
@@ -110,10 +111,13 @@ const authProvider: OpenBalenaAuthProvider = {
       fullName: await getUsername(jwt, payload),
     };
   },
-  checkError: (error: { status?: number; body?: { code?: string } }) => {
+  checkError: (error: { status?: number; message?: string; body?: { code?: string } }) => {
     const status = error.status;
     if (status === 401 || status === 504) {
       localStorage.removeItem('auth');
+      if (status === 401) {
+        return Promise.reject(new Error(withPermissionHint(error.message ?? 'Unauthorized', status)));
+      }
       return Promise.reject();
     }
     return Promise.resolve();

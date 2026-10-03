@@ -5,6 +5,7 @@ import test from 'node:test';
 import express from 'express';
 import { SignJWT } from 'jose';
 import adminDatabaseRoutes from './routes/adminDatabase';
+import { PERMISSION_HINT } from '../src/lib/httpErrorMessage';
 
 const JWT_SECRET = 'route-test-secret';
 const POSTGREST_URL = 'https://postgrest.example.test';
@@ -171,6 +172,36 @@ test('orphaned actor cleanup succeeds when retried after a transient actor delet
     assert.deepEqual(await retryResponse.json(), { id: 2 });
     assert.equal(actorDeletionAttempts, 2);
   });
+});
+
+test('forwarded device deletion failures include guidance only for upstream 401s', async () => {
+  for (const status of [401, 403, 503]) {
+    const upstreamFetch: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      const legacyResponse = method === 'GET' ? legacyContextResponse(url) : undefined;
+      if (legacyResponse) return legacyResponse;
+      if (method === 'GET' && url.pathname === '/device' && url.searchParams.get('id') === 'eq.309') {
+        return jsonResponse([{ 'id': 309, 'actor': 20, 'belongs to-application': 31 }]);
+      }
+      if (method === 'DELETE' && url.href === `${API_URL}/v6/device(309)`) {
+        return jsonResponse({ message: 'Rejected' }, status);
+      }
+      throw new Error(`Unexpected upstream request: ${method} ${url}`);
+    };
+    await withAdminDatabaseRoute(upstreamFetch, async (url, authorization, requestFetch) => {
+      const response = await requestFetch(`${url}/admin-db/actions/delete-resource-actor`, {
+        method: 'POST',
+        headers: { 'Authorization': authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resource: 'device', id: 309, actorId: 20 }),
+      });
+      assert.equal(response.status, 502);
+      assert.deepEqual(await response.json(), {
+        code: 'ADMIN_DB_UPSTREAM_ERROR',
+        message: `Unable to delete device (${status}).${status === 401 ? ` ${PERMISSION_HINT}` : ''}`,
+      });
+    });
+  }
 });
 
 test('non-JSON PostgREST responses report an explicit upstream configuration error', async () => {

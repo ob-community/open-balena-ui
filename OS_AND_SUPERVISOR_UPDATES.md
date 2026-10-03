@@ -85,6 +85,9 @@ On API v46.1+ the synchronization also maintains a `release_asset` with `asset_k
 successful, finalized, non-invalidated, non-ESR Host OS release selected by the API for each allowed local device type.
 It repairs upstream asset references to point to our persisted copy. Metadata comes from the selected release's own
 version, even if that release was already local and newer than the source releases imported in this run.
+Rerunning synchronization backfills this asset on catalogs imported before metadata support was added, even when their
+application/release graph is otherwise unchanged. It does not recreate those applications or releases. An identical
+local asset is left unchanged on subsequent runs.
 
 Open Balena Admin creates and updates the operational graph through open-balena-api. PostgREST verifies administrator
 access and writes only the internal `application.is updated by-application` relation that public OData does not expose.

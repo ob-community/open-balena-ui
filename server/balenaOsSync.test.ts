@@ -1,12 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BalenaOsSyncManager, expandBalenaOsRevisionChain, selectBalenaOsReleases } from './balenaOsSync';
+import { PERMISSION_HINT } from '../src/lib/httpErrorMessage';
 
 const response = (body: unknown, status = 200): Response =>
   new Response(body === undefined ? undefined : JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+
+const localRelationId = (value: unknown): number =>
+  Number(value && typeof value === 'object' && '__id' in value ? value.__id : value);
+
+test('synchronization 401 errors retain sign-in advice and include permission guidance', async () => {
+  const manager = new BalenaOsSyncManager({
+    fetch: async () => response({ message: 'Unauthorized' }, 401),
+    apiUrl: () => 'https://api.example.test',
+    apiVersion: () => 'v7',
+    apiSoftwareVersion: () => 'v49.6.5',
+    catalogApiUrl: () => 'https://catalog.example.test',
+    registryHost: () => undefined,
+  });
+  await assert.rejects(manager.getBalenaOsOrganizationId('Bearer test'), {
+    message: `Synchronization authorization expired or was rejected; sign in again and re-run to resume. ${PERMISSION_HINT}`,
+  });
+});
 
 test('selects full, latest, threshold, in-use, and single-version synchronization scopes', () => {
   const releases = ['2.107.0-1234567890', '5.0.0', '6.4.0+rev1', '6.5.0', '6.5.0+rev1', '6.5.0+rev2', '6.6.0'].map(
@@ -72,6 +90,19 @@ const metadataSyncFixture = (
     missingRelease?: boolean;
     apiSoftwareVersion?: string;
     previouslySynced?: boolean;
+    invalidUpdaterClass?: boolean;
+    assetAuthorizationError?: boolean;
+    emptyAuthorization?: boolean;
+    postgrestError?: boolean;
+    postgrestEmptyResponse?: boolean;
+    corruptReadback?: boolean;
+    cacheNotificationError?: boolean;
+    staleMetadata?: boolean;
+    metadataError?: boolean;
+    metadataRateLimited?: boolean;
+    missingPostgrest?: boolean;
+    concurrentAsset?: boolean;
+    deviceTypes?: string[];
   } = {},
 ) => {
   const requests: URL[] = [];
@@ -79,7 +110,7 @@ const metadataSyncFixture = (
   const downloads: Array<{ slug: string; version: string }> = [];
   const asset = {
     filename: 'device-type.json',
-    href: `https://ui.openbalena.test/balena-os/device-types/generic-amd64/8.0.0/${'a'.repeat(64)}/device-type.json`,
+    href: `https://ui.openbalena.test/balena-os/device-types/generic-amd64/9.0.0/${'a'.repeat(64)}/device-type.json`,
     content_type: 'application/json',
     size: 42,
     checksum: 'a'.repeat(64),
@@ -97,6 +128,9 @@ const metadataSyncFixture = (
     composition: {},
   });
   const localRecords = new Map<string, Array<Record<string, unknown>>>();
+  const assets = options.existingAsset ? [{ ...options.existingAsset }] : [];
+  if (options.duplicateAssets) assets.push({ ...options.existingAsset, id: 301 });
+  localRecords.set('release_asset', assets);
   if (options.previouslySynced) {
     localRecords.set(
       'application',
@@ -111,7 +145,7 @@ const metadataSyncFixture = (
         is_public: true,
         is_archived: false,
         should_track_latest_release: true,
-        is_of__class: 'app',
+        is_of__class: application.is_host || options.invalidUpdaterClass ? 'app' : 'block',
         ...(application.is_host ? {} : { should_be_running__release: 400 }),
       })),
     );
@@ -139,15 +173,70 @@ const metadataSyncFixture = (
     );
   }
   let nextId = 1000;
+  let apiAuthorization: string | null = null;
   const manager = new BalenaOsSyncManager({
     fetch: async (input, init) => {
       const url = new URL(String(input));
       requests.push(url);
-      const resource = url.pathname.split('/').pop()!;
+      const resource = decodeURIComponent(url.pathname.split('/').pop()!);
       const method = init?.method ?? 'GET';
+      if (url.origin === 'https://api.openbalena.test') {
+        apiAuthorization = new Headers(init?.headers).get('Authorization');
+      }
+      if (url.pathname === '/device-types/v1') {
+        if (options.metadataRateLimited) {
+          const limited = response({ message: 'Rate limited' }, 429);
+          limited.headers.set('Retry-After', '999');
+          return limited;
+        }
+        if (options.metadataError) return response({ message: 'Metadata fetch blocked' }, 503);
+        return response(
+          downloads.map(({ slug, version }) => ({ slug, buildId: options.staleMetadata ? '1.0.0' : version })),
+        );
+      }
+      if (resource === 'canAccess') {
+        assert.equal(method, 'POST');
+        assert.deepEqual(JSON.parse(String(init?.body)), { method: 'PATCH' });
+        if (options.assetAuthorizationError && url.pathname.includes('/release_asset(')) {
+          return response({ message: 'Asset write denied' }, 403);
+        }
+        const id = Number(/\((\d+)\)\/canAccess$/.exec(url.pathname)?.[1]);
+        return response({ d: options.emptyAuthorization ? [] : [{ id }] });
+      }
       if (method !== 'GET') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         writes.push({ resource, method, body });
+        if (url.origin === 'https://postgrest.openbalena.test') {
+          assert.equal(resource, 'release asset');
+          assert.equal(method, 'PATCH');
+          assert.deepEqual(Object.keys(body), ['asset']);
+          assert.equal(new Headers(init?.headers).get('Prefer'), 'return=representation');
+          assert.ok(apiAuthorization);
+          assert.equal(new Headers(init?.headers).get('Authorization'), apiAuthorization);
+          if (options.postgrestError) return response({ message: 'PostgREST denied write' }, 403);
+          const id = Number(url.searchParams.get('id')?.slice(3));
+          const release = Number(url.searchParams.get('release')?.slice(3));
+          assert.equal(url.searchParams.get('asset key'), 'eq.device-type.json');
+          const row = assets.find((record) => record.id === id && localRelationId(record.release) === release);
+          if (!row || options.postgrestEmptyResponse) return response([]);
+          row.asset = body.asset;
+          return response([{ ...row, 'asset key': row.asset_key }]);
+        }
+        if (resource.startsWith('release_asset')) {
+          if ('asset' in body) return response({ message: 'Use multipart requests to upload a file.' }, 400);
+          if (options.assetAuthorizationError) return response({ message: 'Asset write denied' }, 403);
+          if (method === 'POST') {
+            const row = { ...body, id: nextId++ };
+            assets.push(row);
+            if (options.concurrentAsset) return response({ message: 'Concurrent asset creation' }, 409);
+            return response({ d: [row] }, 201);
+          }
+          return response(undefined, 204);
+        }
+        if (resource.startsWith('application(') && Object.keys(body).length === 1 && body.is_host === true) {
+          if (options.cacheNotificationError) return response({ message: 'Cache notification denied' }, 403);
+          return response(undefined, 204);
+        }
         if (options.previouslySynced) {
           const name = resource.split('(')[0];
           const records = localRecords.get(name) ?? [];
@@ -189,22 +278,30 @@ const metadataSyncFixture = (
       if (resource === 'application_type') return response({ d: [{ id: 1, slug: 'default' }] });
       if (resource === 'device_type') {
         return response({
-          d: [
-            { id: 1, slug: 'generic-amd64' },
-            { id: 2, slug: 'excluded-board' },
-          ],
+          d: (options.deviceTypes ?? ['generic-amd64', 'excluded-board']).map((slug, index) => ({
+            id: index + 1,
+            slug,
+          })),
         });
       }
       if (resource === 'application' && filter.includes('application_tag')) {
-        return response({ d: options.missingHost ? [] : [{ id: 30, slug: 'balena_os/generic-amd64' }] });
+        const id = 29 + Number(/device_type eq (\d+)/.exec(filter)?.[1]);
+        return response({ d: options.missingHost ? [] : [{ id, slug: 'balena_os/generic-amd64' }] });
       }
       if (resource === 'release' && url.searchParams.get('$orderby')?.startsWith('semver_major desc')) {
-        return response({ d: options.missingRelease ? [] : [{ id: 300, raw_version: '9.0.0' }] });
+        const id = 300 + (Number(/application eq (\d+)/.exec(filter)?.[1]) - 30) * 10;
+        return response({ d: options.missingRelease ? [] : [{ id, raw_version: '9.0.0' }] });
       }
       if (resource === 'release_asset') {
-        if (options.previouslySynced) return response({ d: localRecords.get(resource) ?? [] });
-        const records = options.existingAsset ? [options.existingAsset] : [];
-        return response({ d: options.duplicateAssets ? [...records, { ...asset, id: 301 }] : records });
+        const release = Number(/release eq (\d+)/.exec(filter)?.[1]);
+        const records = options.duplicateAssets
+          ? assets
+          : assets.filter((row) => localRelationId(row.release) === release);
+        return response({
+          d: records.map((row) =>
+            options.corruptReadback && row.asset ? { ...row, asset: { href: 'https://wrong.test' } } : row,
+          ),
+        });
       }
       if (options.previouslySynced && localRecords.has(resource)) {
         const conditions = [...filter.matchAll(/(\w+) eq (?:'([^']*)'|(\d+))/g)];
@@ -223,12 +320,15 @@ const metadataSyncFixture = (
     apiSoftwareVersion: () => options.apiSoftwareVersion ?? 'v49.6.0',
     catalogApiUrl: () => 'https://catalog.test',
     registryHost: () => 'registry.openbalena.test',
+    postgrestUrl: () => (options.missingPostgrest ? undefined : 'https://postgrest.openbalena.test'),
     contractAllowlist: () => options.allowlist ?? 'arch.sw/amd64;hw.device-type/generic-amd64',
+    metadataVerificationTimeoutMs: 30,
+    metadataVerificationPollIntervalMs: 1,
     setHostAppUpdaterRelation: async () => {},
     storeDeviceTypeMetadata: async (slug, version) => {
       downloads.push({ slug, version });
       if (options.storageError) throw new Error(options.storageError);
-      return asset;
+      return { ...asset, href: asset.href.replace('generic-amd64', slug) };
     },
   });
   const run = async () => {
@@ -238,7 +338,7 @@ const metadataSyncFixture = (
     }
     return manager.getStatus();
   };
-  return { manager, requests, writes, downloads, asset, run };
+  return { manager, requests, writes, downloads, asset, assets, run };
 };
 
 test('syncs local config metadata for the API-selected release and filters CONTRACT_ALLOWLIST', async () => {
@@ -248,8 +348,15 @@ test('syncs local config metadata for the API-selected release and filters CONTR
   assert.deepEqual(fixture.writes.find(({ resource }) => resource === 'release_asset')?.body, {
     release: 300,
     asset_key: 'device-type.json',
+  });
+  assert.deepEqual(fixture.writes.find(({ resource }) => resource === 'release asset')?.body, {
     asset: fixture.asset,
   });
+  assert.equal(
+    fixture.writes.find(({ resource, body }) => resource === 'application' && body.uuid === 'updater')?.body
+      .is_of__class,
+    'block',
+  );
   assert.equal(
     fixture.requests.some((url) => String(url).includes('excluded-board')),
     false,
@@ -278,7 +385,13 @@ test('keeps an identical release asset unchanged and repairs an upstream asset r
     existingAsset: { ...existingAsset, asset: { ...unchanged.asset, href: 'https://upstream.test/device-type.json' } },
   });
   assert.equal((await repaired.run()).state, 'completed');
-  assert.equal(repaired.writes.find(({ resource }) => resource === 'release_asset(400)')?.method, 'PATCH');
+  assert.equal(
+    repaired.requests.some((url) => url.pathname === '/v7/release_asset(400)/canAccess'),
+    true,
+  );
+  assert.deepEqual(repaired.writes.find(({ resource }) => resource === 'release asset')?.body, {
+    asset: unchanged.asset,
+  });
 });
 
 test('resync backfills assets on previously synced releases without recreating their graph', async () => {
@@ -287,9 +400,11 @@ test('resync backfills assets on previously synced releases without recreating t
   assert.equal(first.state, 'completed');
   assert.equal(first.created, 1);
   assert.ok(first.unchanged > 0, 'existing applications and releases pass through the unchanged path');
-  assert.deepEqual(
-    fixture.writes.map(({ resource, method }) => ({ resource, method })),
-    [{ resource: 'release_asset', method: 'POST' }],
+  assert.equal(fixture.writes.filter(({ resource }) => resource === 'release_asset').length, 1);
+  assert.equal(fixture.writes.filter(({ resource }) => resource === 'release asset').length, 1);
+  assert.equal(
+    fixture.writes.some(({ resource }) => resource === 'release' || resource === 'application'),
+    false,
   );
   assert.equal(fixture.writes[0].body.release, 300, 'backfills the already-local newest release');
   assert.deepEqual(fixture.downloads, [{ slug: 'generic-amd64', version: '9.0.0' }]);
@@ -297,8 +412,20 @@ test('resync backfills assets on previously synced releases without recreating t
   const second = await fixture.run();
   assert.equal(second.state, 'completed');
   assert.equal(second.created, 0);
-  assert.equal(fixture.writes.length, writesBeforeResync, 'repeated sync does not duplicate the asset or graph');
+  assert.deepEqual(
+    fixture.writes.slice(writesBeforeResync),
+    [{ resource: 'application(30)', method: 'PATCH', body: { is_host: true } }],
+    'repeated sync only refreshes the API cache and does not duplicate the asset or graph',
+  );
   assert.equal(second.processed, second.total);
+});
+
+test('repairs a previously imported updater class before refreshing Host OS metadata', async () => {
+  const fixture = metadataSyncFixture({ previouslySynced: true, invalidUpdaterClass: true });
+  assert.equal((await fixture.run()).state, 'completed');
+  assert.deepEqual(fixture.writes.find(({ resource }) => resource === 'application(40)')?.body, {
+    is_of__class: 'block',
+  });
 });
 
 test('maintains metadata for every allowlisted device type, not just one gateway type', async () => {
@@ -309,6 +436,136 @@ test('maintains metadata for every allowlisted device type, not just one gateway
     ['generic-amd64', 'excluded-board'],
   );
   assert.equal(fixture.writes.filter(({ resource }) => resource === 'release_asset').length, 2);
+});
+
+test('persists and verifies all five deployment device types before notifying API metadata caches', async () => {
+  const deviceTypes = [
+    'generic-aarch64',
+    'generic-amd64',
+    'iot-gate-imx8',
+    'iot-gate-imx8plus',
+    'iot-gate-imx8plus-d1d8',
+  ];
+  const fixture = metadataSyncFixture({
+    deviceTypes,
+    allowlist: deviceTypes.map((slug) => `hw.device-type/${slug}`).join(';'),
+  });
+  assert.equal((await fixture.run()).state, 'completed');
+  assert.deepEqual(
+    fixture.downloads.map(({ slug }) => slug),
+    deviceTypes,
+  );
+  assert.equal(fixture.assets.length, 5);
+  assert.equal(
+    fixture.assets.every((row) => row.asset_key === 'device-type.json' && row.asset),
+    true,
+  );
+  const lastDatabaseWrite = fixture.writes.reduce(
+    (last, { resource }, index) => (resource === 'release asset' ? index : last),
+    -1,
+  );
+  const notifications = fixture.writes.flatMap(({ resource, body }, index) =>
+    resource.startsWith('application(') && body.is_host === true && Object.keys(body).length === 1 ? [index] : [],
+  );
+  assert.equal(notifications.length, 5);
+  assert.equal(
+    notifications.every((index) => index > lastDatabaseWrite),
+    true,
+  );
+  assert.equal(
+    fixture.requests.some((url) => url.pathname === '/device-types/v1'),
+    true,
+  );
+});
+
+test('never uses PostgREST after an OData asset authorization denial', async () => {
+  for (const existingAsset of [
+    undefined,
+    { id: 400, release: 300, asset_key: 'device-type.json', asset: { href: 'https://upstream.test' } },
+  ]) {
+    const fixture = metadataSyncFixture({ assetAuthorizationError: true, existingAsset });
+    const status = await fixture.run();
+    assert.equal(status.state, 'failed');
+    assert.match(status.error ?? '', /403.*Asset write denied/);
+    assert.equal(
+      fixture.requests.some((url) => url.origin === 'https://postgrest.openbalena.test'),
+      false,
+    );
+  }
+});
+
+test('an empty successful canAccess response does not authorize a PostgREST write', async () => {
+  const fixture = metadataSyncFixture({ emptyAuthorization: true });
+  const status = await fixture.run();
+  assert.equal(status.state, 'failed');
+  assert.match(status.error ?? '', /did not confirm write access/);
+  assert.equal(
+    fixture.requests.some((url) => url.origin === 'https://postgrest.openbalena.test'),
+    false,
+  );
+});
+
+test('fails closed on missing PostgREST, denied or empty writes, and corrupt OData read-back', async () => {
+  for (const options of [
+    { missingPostgrest: true },
+    { postgrestError: true },
+    { postgrestEmptyResponse: true },
+    { corruptReadback: true },
+    { allowlist: 'hw.device-type/generic-amd64;hw.device-type/missing-board' },
+  ]) {
+    const fixture = metadataSyncFixture(options);
+    const status = await fixture.run();
+    assert.equal(status.state, 'failed');
+    assert.match(status.error ?? '', /POSTGREST_URL|403.*PostgREST denied|did not persist|read-back|missing-board/);
+    assert.equal(
+      fixture.requests.some((url) => url.pathname === '/device-types/v1'),
+      false,
+    );
+  }
+});
+
+test('resumes an OData placeholder after failed reference persistence without creating a duplicate', async () => {
+  const options = { postgrestError: true, previouslySynced: true };
+  const fixture = metadataSyncFixture(options);
+  assert.equal((await fixture.run()).state, 'failed');
+  assert.equal(fixture.assets.length, 1);
+  options.postgrestError = false;
+  assert.equal((await fixture.run()).state, 'completed');
+  assert.equal(fixture.assets.length, 1);
+  assert.equal(
+    fixture.writes.filter(({ resource, method }) => resource === 'release_asset' && method === 'POST').length,
+    1,
+  );
+});
+
+test('reconciles a concurrently created unique release asset through API authorization', async () => {
+  const fixture = metadataSyncFixture({ concurrentAsset: true });
+  assert.equal((await fixture.run()).state, 'completed');
+  assert.equal(fixture.assets.length, 1);
+  assert.equal(
+    fixture.requests.some((url) => url.pathname.includes('/release_asset(') && url.pathname.endsWith('/canAccess')),
+    true,
+  );
+});
+
+test('retries cache notification after failure even when metadata references are already identical', async () => {
+  const options = { cacheNotificationError: true, previouslySynced: true };
+  const fixture = metadataSyncFixture(options);
+  assert.equal((await fixture.run()).state, 'failed');
+  const databaseWrites = fixture.writes.filter(({ resource }) => resource === 'release asset').length;
+  options.cacheNotificationError = false;
+  assert.equal((await fixture.run()).state, 'completed');
+  assert.equal(fixture.writes.filter(({ resource }) => resource === 'release asset').length, databaseWrites);
+});
+
+test('does not report completed sync when API metadata remains stale or an upstream fill is blocked', async () => {
+  for (const options of [{ staleMetadata: true }, { metadataError: true }, { metadataRateLimited: true }]) {
+    const fixture = metadataSyncFixture(options);
+    const status = await fixture.run();
+    assert.equal(status.state, 'failed');
+    assert.match(status.error ?? '', /ob-api metadata refresh did not complete.*restart the affected ob-api/);
+    assert.equal(fixture.assets.length, 1);
+  }
 });
 
 test('enables release-asset coverage at v46.1 without broadening older synchronization scopes', async () => {

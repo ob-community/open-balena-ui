@@ -5,6 +5,7 @@ import test from 'node:test';
 import express from 'express';
 import { SignJWT } from 'jose';
 import deviceUpdateRoutes from './routes/deviceUpdates';
+import { PERMISSION_HINT } from '../src/lib/httpErrorMessage';
 
 const JWT_SECRET = 'device-update-test-secret';
 
@@ -15,6 +16,7 @@ test('device update options are scoped and limited to newer semantic versions', 
   const originalApiVersion = process.env.REACT_APP_OPEN_BALENA_API_VERSION;
   const requests: Array<{ url: URL; authorization: string | null }> = [];
   let localSupervisorReleasesAvailable = true;
+  let apiErrorStatus: number | undefined;
 
   process.env.OPEN_BALENA_JWT_SECRET = JWT_SECRET;
   process.env.REACT_APP_OPEN_BALENA_API_URL = 'https://api.example.test';
@@ -22,6 +24,9 @@ test('device update options are scoped and limited to newer semantic versions', 
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
     requests.push({ url, authorization: new Headers(init?.headers).get('Authorization') });
+    if (url.origin === 'https://api.example.test' && apiErrorStatus !== undefined) {
+      return Response.json({ message: 'Rejected' }, { status: apiErrorStatus });
+    }
     if (url.origin === 'https://api.balena-cloud.com') {
       return Response.json({
         d: [
@@ -183,6 +188,18 @@ test('device update options are scoped and limited to newer semantic versions', 
     assert.deepEqual(await invalidTargetResponse.json(), {
       message: 'A valid device and Supervisor version are required.',
     });
+
+    for (const status of [401, 403, 503]) {
+      apiErrorStatus = status;
+      const errorResponse = await originalFetch(
+        `http://127.0.0.1:${address.port}/device-update-options?deviceTypeId=1&currentOsVersion=5.1.0&currentSupervisorVersion=15.0.4`,
+        { headers: { Authorization: authorization } },
+      );
+      assert.equal(errorResponse.status, 502);
+      assert.deepEqual(await errorResponse.json(), {
+        message: `open-balena-api device_type query failed with status ${status}.${status === 401 ? ` ${PERMISSION_HINT}` : ''}`,
+      });
+    }
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

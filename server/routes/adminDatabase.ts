@@ -22,6 +22,7 @@ import dosProtect from '../middleware/dosProtect';
 import { hashPassword } from '../../src/lib/password';
 import { isValidPassword } from '../../src/lib/passwordPolicy';
 import versions from '../../src/versions';
+import { withPermissionHint } from '../../src/lib/httpErrorMessage';
 
 const router = Router();
 router.use(json());
@@ -697,7 +698,9 @@ router.post('/admin-db/actions/delete-resource-actor', ...dosProtect, authorize,
     }
     if (!parentResponse.ok) {
       await restoreUserRelations(authorization, deletedUserRelations);
-      throw new UpstreamRequestError(`Unable to delete ${resource} (${parentResponse.status}).`);
+      throw new UpstreamRequestError(
+        withPermissionHint(`Unable to delete ${resource} (${parentResponse.status}).`, parentResponse.status),
+      );
     }
 
     await deleteActorApiKeys(authorization, actorId);
@@ -740,7 +743,9 @@ router.post('/admin-db/actions/create-operational-resource', ...dosProtect, auth
       body: JSON.stringify(transformToOData({ ...data, actor: actorId })),
     });
     if (!upstream.ok) {
-      throw new UpstreamRequestError(`Unable to create ${resource} (${upstream.status}).`);
+      throw new UpstreamRequestError(
+        withPermissionHint(`Unable to create ${resource} (${upstream.status}).`, upstream.status),
+      );
     }
     operationalRecordCreated = true;
     const record = transformFromOData(extractODataRecord((await upstream.json()) as unknown) ?? {}) as Record<

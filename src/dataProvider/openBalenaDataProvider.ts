@@ -2,6 +2,7 @@ import type { DataProvider } from 'react-admin';
 import postgrestDataProvider from './postgrestDataProvider';
 import createODataDataProvider, { ODATA_RESOURCES, type HttpClient } from './odataDataProvider';
 import versions from '../versions';
+import { withPermissionHints } from './httpClient';
 
 export type BalenaOsSyncMode = 'all' | 'latest-and-in-use' | 'newer-and-in-use' | 'in-use' | 'single';
 
@@ -131,6 +132,7 @@ export const openBalenaDataProvider = (
   if (!apiUrl) {
     throw new Error('REACT_APP_OPEN_BALENA_API_URL must be defined.');
   }
+  httpClient = withPermissionHints(httpClient);
   const apiProvider = createODataDataProvider(apiUrl, httpClient, resolveODataVersion(serverVersion, odataVersion));
   const databaseProvider = postgrestDataProvider('/admin-db', httpClient);
   const pinnedReleaseField = versions.resource('isPinnedOnRelease', serverVersion);

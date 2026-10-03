@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import authProvider from './openbalenaAuthProvider';
+import { PERMISSION_HINT } from '../lib/httpErrorMessage';
 
 const installLocalStorage = () => {
   const values = new Map<string, string>();
@@ -28,6 +29,20 @@ test('authentication failures clear the stored token and reject', async () => {
 
   await assert.rejects(authProvider.checkError({ status: 401 }));
   assert.equal(values.has('auth'), false);
+});
+
+test('401 logout notifications preserve the API message and permission guidance', async () => {
+  const values = installLocalStorage();
+  values.set('auth', 'expired-token');
+  await assert.rejects(authProvider.checkError({ status: 401, message: 'Unauthorized' }), {
+    message: `Unauthorized. ${PERMISSION_HINT}`,
+  });
+  assert.equal(values.has('auth'), false);
+
+  values.set('auth', 'expired-token');
+  await assert.rejects(authProvider.checkError({ status: 401, message: `Unauthorized. ${PERMISSION_HINT}` }), {
+    message: `Unauthorized. ${PERMISSION_HINT}`,
+  });
 });
 
 test('authorization denials preserve the stored token regardless of endpoint', async () => {

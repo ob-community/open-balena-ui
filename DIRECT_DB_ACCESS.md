@@ -45,16 +45,32 @@ The direct-access allowlist is therefore limited to:
 - organizations and memberships;
 - identity/authorization join tables;
 - the single `application.is updated by-application` relationship needed by synchronized Host OS applications;
+- the `release_asset.asset` metadata reference, only inside the server-side Host OS synchronizer after exact-record
+  OData write authorization;
 - configuration and PineJS migration/model metadata already exposed by the legacy admin UI.
 
 The `balena_os` system organization and its initial administrative membership are deployment bootstrap records because
 open-balena-api does not expose organization creation. The Mapped Pulumi `Org` provider creates or adopts those records
 through protected PostgREST. Host OS and Supervisor application, release, service, image, and device-target writes then
-use open-balena-api. The sole Host OS exception is `application.is updated by-application`: open-balena-api v43.4.0+
+use open-balena-api. One Host OS exception is `application.is updated by-application`: open-balena-api v43.4.0+
 uses that internal relation to synthesize `io.balena.private.updater`, but deliberately exposes the write only through
 its privileged internal `resin` API, not public OData v6/v7. The server-side synchronizer therefore writes only that
 relationship through protected PostgREST after it has created both application graphs through open-balena-api. The
 resource is not added to the browser's general direct-access allowlist.
+
+The second exception is the content-addressed `device-type.json` reference in `release_asset.asset` on API v46.1+.
+PineJS requires multipart uploads for public WebResource writes and rejects JSON references, even from administrators.
+The synchronizer creates the unique release/key record without an asset through OData, authorizes that exact record
+with the OData `canAccess` action for `PATCH`, requiring that record's ID in the permission response, then PATCHes only
+`asset` through internal PostgREST with ID/release/key filters. It
+requires exactly one returned row and verifies the reference through OData. This is not a generic database write
+endpoint, and `release_asset` is not added to `DIRECT_DB_RESOURCES`.
+
+After all metadata references exist, same-value `application.is_host = true` PATCHes invoke ob-api's device-type cache
+invalidation hook. The synchronizer also verifies the expected device-type build IDs through the API before reporting
+completion. It repeats cache notification on unchanged resyncs to recover from an interrupted notification. Existing
+in-flight upstream cache fills cannot be cancelled this way; see
+[Host OS metadata recovery](OS_AND_SUPERVISOR_UPDATES.md#recovering-an-already-stuck-api-metadata-request).
 
 Human-user API key material remains visible only to its owner. Fleet and device key material is visible to global
 administrators and to organization administrators whose server-computed scope includes that fleet/device, because those
@@ -87,7 +103,8 @@ Before adding a direct-database resource:
 
 1. Verify the resource and required operation cannot be performed through the oldest supported OData endpoint.
 2. Check whether bypassing API hooks can leave devices, caches, or storage out of sync.
-3. Add the resource explicitly to `DIRECT_DB_RESOURCES`.
+3. Add browser-facing resources explicitly to `DIRECT_DB_RESOURCES`; keep narrowly scoped synchronization exceptions
+   server-only.
 4. Document the exact API limitation in this file and add routing tests.
 
 When open-balena-api gains suitable administrator endpoints, remove the resource from the direct list, add it to the

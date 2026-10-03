@@ -15,8 +15,9 @@ open-balena.
 ## Dependencies
 
 This project uses `open-balena-api` for operational data and depends on
-[open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) only for administrator identity and
-authorization resources that the API does not expose with the required global semantics. It also depends on
+[open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) for administrator identity and
+authorization resources that the API does not expose with the required global semantics, plus narrowly scoped
+server-only Host OS metadata writes that public OData cannot perform. It also depends on
 [open-balena-remote](https://github.com/ob-community/open-balena-remote), so the easiest way to get this up and running
 would be to install it via the [open-balena-admin](https://github.com/ob-community/open-balena-admin) project. See
 [DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid provider.
@@ -75,13 +76,16 @@ the local machine and point directly to a PostgREST endpoint.
 Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host OS catalog. A global administrator can
 start an additive, idempotent synchronization into the required `balena_os` system organization. The server reads the
 public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates
-the application/release/service/image graph through open-balena-api. The one direct-database exception links each Host
-OS application to its updater because public OData does not expose that internal relation. It also materializes Host OS
+the application/release/service/image graph through open-balena-api. A server-only direct-database exception links each
+Host OS application to its updater because public OData does not expose that internal relation. It also materializes Host OS
 image labels from the public release composition so Supervisors distinguish OS payloads from ordinary services. On
 open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph and links Host OS
 applications to it so Helios can plan the actual OS transition. It does not delete local records. On API v46.1+, sync
 also stores allowlisted device-type JSON in private S3-compatible storage and writes local release assets pointing to
-the UI's read-only metadata endpoint. This lets ob-api generate device config without public S3 metadata reads. The
+the UI's read-only metadata endpoint. It creates and authorizes the release/key records through OData, then persists
+only their WebResource references through internal PostgREST because PineJS rejects ordinary JSON asset writes. It
+verifies all references, triggers the API's host-application metadata-cache hook, and checks API metadata before
+reporting completion. This lets ob-api generate device config without public S3 metadata reads. The
 asset URL contains no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed. An
 internal metadata URL only needs to be reachable by ob-api: it is not sent to devices in normal balenaOS provisioning or
 target-state responses. Provisioning images and device image pulls use their separate helper/registry routes. For
@@ -704,6 +708,25 @@ For local development, the Vite dev server exposes two modes:
 
 When you need a production-like client build, run `npm run build:client` (or `npm run build` to bundle both client and
 server) followed by `npm run serve` to boot the compiled Express server.
+
+The opt-in Host OS synchronization regression uses real open-balena-api v49.6.5, PostgreSQL, Redis, and PostgREST
+containers with synthetic data. It requires Docker with Linux containers, verifies all five metadata references,
+permissions, idempotent recovery, cache invalidation, and actual device configuration generation, and cleans up its
+isolated resources. The fixture uses the configured Docker context (or `DOCKER_HOST`) on Windows and Linux; select a
+daemon with Linux containers before running it. Fixture transport failures return a fixed plain-text message, while
+diagnostic details stay in test-process logs. CI runs it before building the image. Run it locally with:
+
+```sh
+BALENA_OS_INTEGRATION=1 npx tsx --test test/balenaOsSync.integration.test.ts
+```
+
+In PowerShell:
+
+```powershell
+$env:BALENA_OS_INTEGRATION = '1'
+npx tsx --test test\balenaOsSync.integration.test.ts
+Remove-Item Env:\BALENA_OS_INTEGRATION
+```
 
 ## Credits
 

@@ -4,6 +4,7 @@ import authorize from '../middleware/authorize';
 import dosProtect from '../middleware/dosProtect';
 import versions from '../../src/versions';
 import { BalenaOsSyncManager, BalenaOsSyncValidationError } from '../balenaOsSync';
+import { withPermissionHint } from '../../src/lib/httpErrorMessage';
 
 interface UpdateOption {
   id: number | string;
@@ -73,7 +74,9 @@ const fetchRecords = async (
     headers: { Accept: 'application/json', Authorization: authorization },
   });
   if (!response.ok) {
-    throw new Error(`open-balena-api ${resource} query failed with status ${response.status}.`);
+    throw new Error(
+      withPermissionHint(`open-balena-api ${resource} query failed with status ${response.status}.`, response.status),
+    );
   }
   return extractRecords(await response.json());
 };

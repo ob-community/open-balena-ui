@@ -712,7 +712,9 @@ server) followed by `npm run serve` to boot the compiled Express server.
 The opt-in Host OS synchronization regression uses real open-balena-api v49.6.5, PostgreSQL, Redis, and PostgREST
 containers with synthetic data. It requires Docker with Linux containers, verifies all five metadata references,
 permissions, idempotent recovery, cache invalidation, and actual device configuration generation, and cleans up its
-isolated resources. CI runs it before building the image. Run it locally with:
+isolated resources. The fixture uses the configured Docker context (or `DOCKER_HOST`) on Windows and Linux; select a
+daemon with Linux containers before running it. Fixture transport failures return a fixed plain-text message, while
+diagnostic details stay in test-process logs. CI runs it before building the image. Run it locally with:
 
 ```sh
 BALENA_OS_INTEGRATION=1 npx tsx --test test/balenaOsSync.integration.test.ts

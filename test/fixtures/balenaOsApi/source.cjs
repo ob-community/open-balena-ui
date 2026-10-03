@@ -29,10 +29,18 @@ const assets = Object.fromEntries(
     ];
   }),
 );
-let hung = false;
-let upstreamReads = 0;
-http
-  .createServer((req, res) => {
+const escapeXml = (value) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const createSourceServer = () => {
+  let hung = false;
+  let upstreamReads = 0;
+  return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://source:8080');
     const json = (body) => {
       res.setHeader('Content-Type', 'application/json');
@@ -125,8 +133,9 @@ http
             ? [`${prefix}7.0.0/`]
             : [];
       res.setHeader('Content-Type', 'application/xml');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       return res.end(
-        `<?xml version="1.0"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>fixture</Name><Prefix>${prefix}</Prefix><IsTruncated>false</IsTruncated>${folders.map((folder) => `<CommonPrefixes><Prefix>${folder}</Prefix></CommonPrefixes>`).join('')}</ListBucketResult>`,
+        `<?xml version="1.0"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>fixture</Name><Prefix>${escapeXml(prefix)}</Prefix><IsTruncated>false</IsTruncated>${folders.map((folder) => `<CommonPrefixes><Prefix>${escapeXml(folder)}</Prefix></CommonPrefixes>`).join('')}</ListBucketResult>`,
       );
     }
     const slug = slugs.find((value) => url.pathname.includes(`/${value}/`));
@@ -135,5 +144,11 @@ http
     res.statusCode = 404;
     res.setHeader('Content-Type', 'application/xml');
     res.end('<Error><Code>NoSuchKey</Code><Message>Fixture object absent</Message></Error>');
-  })
-  .listen(8080, '0.0.0.0');
+  });
+};
+
+module.exports = { createSourceServer };
+
+if (require.main === module) {
+  createSourceServer().listen(8080, '0.0.0.0');
+}

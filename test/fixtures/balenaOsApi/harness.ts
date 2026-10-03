@@ -1,8 +1,9 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { createServer, type Server } from 'node:http';
+import type { Server } from 'node:http';
 import { promisify } from 'node:util';
+import { createFixtureTransport } from './transport';
 
 export const slugs = [
   'generic-aarch64',
@@ -26,7 +27,7 @@ export class ApiFixture {
   sourceUrl = '';
   authorization = '';
   docker(...args: string[]): string {
-    return execFileSync('docker', ['--host', 'npipe:////./pipe/dockerDesktopLinuxEngine', ...args], {
+    return execFileSync('docker', args, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 120_000,
@@ -52,55 +53,15 @@ export class ApiFixture {
     // Internal Docker networks intentionally do not publish ports. This
     // loopback-only transport executes HTTP inside the owned source container;
     // it neither emulates API responses nor adds an externally routed network.
-    this.proxy = createServer(async (request, response) => {
-      try {
-        const chunks: Buffer[] = [];
-        for await (const chunk of request) chunks.push(Buffer.from(chunk));
-        const pathname = request.url ?? '/';
-        const service = pathname.split('/')[1];
-        const origin =
-          service === 'api'
-            ? 'http://api:80'
-            : service === 'postgrest'
-              ? 'http://postgrest:3000'
-              : 'http://source:8080';
-        const payload = {
-          url: origin + pathname.slice(service.length + 1),
-          method: request.method,
-          headers: request.headers,
-          body: Buffer.concat(chunks).toString('base64'),
-        };
-        delete payload.headers.host;
-        delete payload.headers.connection;
-        payload.headers['x-forwarded-proto'] = 'https';
-        const script =
-          "const p=JSON.parse(process.argv[1]);const r=await fetch(p.url,{method:p.method,headers:p.headers,...(p.body?{body:Buffer.from(p.body,'base64')}:{})});console.log(JSON.stringify({status:r.status,headers:Object.fromEntries(r.headers),body:Buffer.from(await r.arrayBuffer()).toString('base64')}));";
-        const result = await promisify(execFile)(
-          'docker',
-          [
-            '--host',
-            'npipe:////./pipe/dockerDesktopLinuxEngine',
-            'exec',
-            `${this.prefix}-source`,
-            'node',
-            '--input-type=module',
-            '-e',
-            script,
-            JSON.stringify(payload),
-          ],
-          { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
-        );
-        const actual = JSON.parse(result.stdout);
-        response.statusCode = actual.status;
-        for (const [key, value] of Object.entries(actual.headers)) {
-          if (!['content-encoding', 'transfer-encoding', 'content-length'].includes(key))
-            response.setHeader(key, String(value));
-        }
-        response.end(Buffer.from(actual.body, 'base64'));
-      } catch (error) {
-        response.statusCode = 502;
-        response.end(String(error));
-      }
+    this.proxy = createFixtureTransport(async (payload) => {
+      const script =
+        "const p=JSON.parse(process.argv[1]);const r=await fetch(p.url,{method:p.method,headers:p.headers,...(p.body?{body:Buffer.from(p.body,'base64')}:{})});console.log(JSON.stringify({status:r.status,headers:Object.fromEntries(r.headers),body:Buffer.from(await r.arrayBuffer()).toString('base64')}));";
+      const result = await promisify(execFile)(
+        'docker',
+        ['exec', `${this.prefix}-source`, 'node', '--input-type=module', '-e', script, JSON.stringify(payload)],
+        { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+      );
+      return JSON.parse(result.stdout);
     });
     await new Promise<void>((resolve) => this.proxy!.listen(0, '127.0.0.1', resolve));
     const address = this.proxy.address() as { port: number };

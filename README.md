@@ -264,13 +264,13 @@ limitations.
 Successful downloads display the actual received byte count alongside the source path.
 
 **Download save-prompt timing:** Browsers supporting streamed saves show the destination picker before checking the
-remote file. The picker requires transient user activation from the Download click; waiting for remote authorization
-and SSH/SFTP checks first can exhaust that activation and prevent the picker from opening. Consequently, errors such
-as "No such file", permission errors, or connection failures appear after the save prompt, for both Host OS and
-container downloads. Remote validation failures occur before downloaded bytes are written. We intentionally do not
-pre-check paths while typing: that would add debouncing delays and remote requests, and a successful check cannot
-guarantee the file still exists or remains readable when the download begins. Browsers using the browser-memory
-fallback instead fetch the file successfully before triggering the local download.
+remote file. The picker requires transient user activation from the Download click; waiting for remote authorization and
+SSH/SFTP checks first can exhaust that activation and prevent the picker from opening. Consequently, errors such as "No
+such file", permission errors, or connection failures appear after the save prompt, for both Host OS and container
+downloads. Remote validation failures occur before downloaded bytes are written. We intentionally do not pre-check paths
+while typing: that would add debouncing delays and remote requests, and a successful check cannot guarantee the file
+still exists or remains readable when the download begins. Browsers using the browser-memory fallback instead fetch the
+file successfully before triggering the local download.
 
 The HTTP, HTTPS, and VNC label discovery described below is available only through the legacy `open-balena-remote` flow.
 To make use of that legacy auto-discovery, add tags to each container within your application's `docker-compose` file
@@ -789,6 +789,15 @@ environment variables are appropriately pointed to live `open-balena-api` and `o
 should be up and running.
 
 ## Development
+
+Unauthenticated requests to the production server's SPA HTML fallback and public device-type metadata are limited to 600
+requests per five minutes per client IP, per server process. Successful authenticated responses do not consume
+rate-limit quotas; authenticated failures are counted separately by verified user identity. Invalid/expired bearer
+tokens cannot claim that exemption, and excess requests return HTTP 429 before filesystem access. The existing protected
+API limiter retains its stricter 100-failure quota and slowdown; BalenaOS status uses a 600-failure quota. Static assets
+remain outside these quotas. A normal HTML navigation carries no JWT and is therefore treated as unauthenticated even if
+the UI has a token in local storage; authenticated API requests explicitly send their bearer token. No authentication
+cookie or token-in-URL mechanism is introduced.
 
 For local development, the Vite 7 dev server exposes two modes:
 

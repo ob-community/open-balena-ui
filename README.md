@@ -799,6 +799,11 @@ remain outside these quotas. A normal HTML navigation carries no JWT and is ther
 the UI has a token in local storage; authenticated API requests explicitly send their bearer token. No authentication
 cookie or token-in-URL mechanism is introduced.
 
+Credential verification runs inside each limiter's asynchronous key generator, so the limiter is the first middleware
+on these routes rather than a separate authentication handler preceding it. Only verified JWT claims select an
+authenticated bucket; header presence alone never grants authentication or an exemption. Missing credentials remain
+anonymous on public routes, while supplied invalid credentials are rejected after their request is counted.
+
 For local development, the Vite 7 dev server exposes two modes:
 
 - `npm run dev` launches with the `devprod` mode configuration (mirroring hosted settings).

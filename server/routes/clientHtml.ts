@@ -5,8 +5,7 @@ import path from 'node:path';
 import serialize from 'serialize-javascript';
 import {
   authenticatedRequestSucceeded,
-  authenticationRateKey,
-  inspectAuthentication,
+  createAuthenticationRateKey,
   rejectInvalidAuthentication,
 } from '../middleware/authenticationRateLimit';
 
@@ -43,36 +42,30 @@ export const createClientHtmlRouter = ({
     max: maxRequests,
     skipSuccessfulRequests: true,
     requestWasSuccessful: authenticatedRequestSucceeded,
-    keyGenerator: authenticationRateKey,
+    keyGenerator: createAuthenticationRateKey(() => env.OPEN_BALENA_JWT_SECRET),
   });
-  router.get(
-    /.*/,
-    inspectAuthentication(() => env.OPEN_BALENA_JWT_SECRET),
-    protect,
-    rejectInvalidAuthentication,
-    (_req, res) => {
-      if (!fs.existsSync(indexPath)) {
-        res.status(404).send('Client build not found');
-        return;
-      }
+  router.get(/.*/, protect, rejectInvalidAuthentication, (_req, res) => {
+    if (!fs.existsSync(indexPath)) {
+      res.status(404).send('Client build not found');
+      return;
+    }
 
-      const rawHtml = fs.readFileSync(indexPath, 'utf-8');
-      if (!rawHtml.includes(clientEnvPlaceholder)) {
-        res.type('text/html').send(rawHtml);
-        return;
-      }
+    const rawHtml = fs.readFileSync(indexPath, 'utf-8');
+    if (!rawHtml.includes(clientEnvPlaceholder)) {
+      res.type('text/html').send(rawHtml);
+      return;
+    }
 
-      const clientEnv = clientEnvKeys.reduce<Record<string, string>>((acc, key) => {
-        const value = env[key];
-        if (typeof value === 'string') acc[key] = value;
-        return acc;
-      }, {});
-      clientEnv.REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED = remoteAccessEnabled ? 'true' : 'false';
+    const clientEnv = clientEnvKeys.reduce<Record<string, string>>((acc, key) => {
+      const value = env[key];
+      if (typeof value === 'string') acc[key] = value;
+      return acc;
+    }, {});
+    clientEnv.REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED = remoteAccessEnabled ? 'true' : 'false';
 
-      const serializedEnv = serialize(clientEnv, { isJSON: true });
-      const injection = `<script>window.__OBUI_ENV__ = Object.freeze(${serializedEnv});</script>`;
-      res.type('text/html').send(rawHtml.replace(clientEnvPlaceholder, injection));
-    },
-  );
+    const serializedEnv = serialize(clientEnv, { isJSON: true });
+    const injection = `<script>window.__OBUI_ENV__ = Object.freeze(${serializedEnv});</script>`;
+    res.type('text/html').send(rawHtml.replace(clientEnvPlaceholder, injection));
+  });
   return router;
 };

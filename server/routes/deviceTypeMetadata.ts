@@ -2,8 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
   authenticatedRequestSucceeded,
-  authenticationRateKey,
-  inspectAuthentication,
+  createAuthenticationRateKey,
   rejectInvalidAuthentication,
 } from '../middleware/authenticationRateLimit';
 import {
@@ -24,11 +23,10 @@ export function createDeviceTypeMetadataRouter(
     max: 600,
     skipSuccessfulRequests: true,
     requestWasSuccessful: authenticatedRequestSucceeded,
-    keyGenerator: authenticationRateKey,
+    keyGenerator: createAuthenticationRateKey(() => env.OPEN_BALENA_JWT_SECRET),
   });
   router.get(
     '/balena-os/device-types/:slug/:version/:checksum/device-type.json',
-    inspectAuthentication(() => env.OPEN_BALENA_JWT_SECRET),
     protect,
     rejectInvalidAuthentication,
     async (req, res) => {

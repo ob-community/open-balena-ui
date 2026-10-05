@@ -8,31 +8,27 @@ interface AuthenticationLocals {
   invalidAuthentication?: boolean;
 }
 
-export const inspectAuthentication =
-  (secret: () => string | undefined = () => process.env.OPEN_BALENA_JWT_SECRET): RequestHandler =>
-  async (req, res, next) => {
+export const createAuthenticationRateKey =
+  (secret: () => string | undefined = () => process.env.OPEN_BALENA_JWT_SECRET): NonNullable<Options['keyGenerator']> =>
+  async (req, res) => {
     const locals = res.locals as AuthenticationLocals;
     delete locals.auth;
     locals.invalidAuthentication = false;
-    if (req.get('Authorization') !== undefined) {
-      try {
-        locals.auth = await verifyAuthorization(req, secret());
-      } catch {
-        locals.invalidAuthentication = true;
-      }
+    try {
+      locals.auth = await verifyAuthorization(req, secret());
+    } catch {
+      // Missing credentials stay anonymous; supplied invalid credentials are rejected downstream.
+      locals.invalidAuthentication = req.get('Authorization') !== undefined;
     }
-    next();
-  };
 
-export const authenticationRateKey: NonNullable<Options['keyGenerator']> = (req, res) => {
-  const auth = (res.locals as AuthenticationLocals).auth;
-  if (auth) {
-    const id = auth.id ?? auth.sub;
-    if (typeof id === 'string' || typeof id === 'number') return `authenticated:${id}`;
-    return `authenticated-unidentified:${ipKeyGenerator(req.ip ?? 'unknown')}`;
-  }
-  return `unauthenticated:${ipKeyGenerator(req.ip ?? 'unknown')}`;
-};
+    const auth = locals.auth;
+    if (auth) {
+      const id = auth.id ?? auth.sub;
+      if (typeof id === 'string' || typeof id === 'number') return `authenticated:${id}`;
+      return `authenticated-unidentified:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+    }
+    return `unauthenticated:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+  };
 
 export const authenticatedRequestSucceeded: NonNullable<Options['requestWasSuccessful']> = (_req, res) =>
   Boolean((res.locals as AuthenticationLocals).auth) && res.statusCode < 400;

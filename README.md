@@ -790,13 +790,26 @@ should be up and running.
 
 ## Development
 
-For local development, the Vite dev server exposes two modes:
+For local development, the Vite 7 dev server exposes two modes:
 
 - `npm run dev` launches with the `devprod` mode configuration (mirroring hosted settings).
 - `npm run dev:local` loads the `local` mode configuration for working against local services.
 
 When you need a production-like client build, run `npm run build:client` (or `npm run build` to bundle both client and
 server) followed by `npm run serve` to boot the compiled Express server.
+
+After dependency updates, include the regenerated `package-lock.json` and validate the locked install before opening a
+PR:
+
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm audit
+```
+
+Keep `react-admin` and `ra-core` on the same version, and keep `react-router` and `react-router-dom` aligned.
 
 The opt-in Host OS synchronization regression uses real open-balena-api v49.6.5, PostgreSQL, Redis, and PostgREST
 containers with synthetic data. It requires Docker with Linux containers, verifies all five metadata references,

@@ -2,8 +2,24 @@ import { DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import s3Client from './client';
 import bucketNames from './bucketNames';
 
+const nextPageToken = (
+  isTruncated: boolean | undefined,
+  token: string | undefined,
+  seen: Set<string>,
+): string | undefined => {
+  if (!isTruncated) {
+    return undefined;
+  }
+  if (!token || seen.has(token)) {
+    throw new Error('S3 returned a truncated listing without a new continuation token.');
+  }
+  seen.add(token);
+  return token;
+};
+
 const listObjectKeys = async (bucket: string, prefix: string): Promise<string[]> => {
   const objectKeys: string[] = [];
+  const seenTokens = new Set<string>();
   let continuationToken: string | undefined;
 
   do {
@@ -22,7 +38,7 @@ const listObjectKeys = async (bucket: string, prefix: string): Promise<string[]>
       }
     }
 
-    continuationToken = response.IsTruncated ? (response.NextContinuationToken ?? undefined) : undefined;
+    continuationToken = nextPageToken(response.IsTruncated, response.NextContinuationToken, seenTokens);
   } while (continuationToken);
 
   return objectKeys;
@@ -30,6 +46,7 @@ const listObjectKeys = async (bucket: string, prefix: string): Promise<string[]>
 
 const listCommonPrefixes = async (bucket: string, prefix: string): Promise<string[]> => {
   const prefixes = new Set<string>();
+  const seenTokens = new Set<string>();
   let continuationToken: string | undefined;
 
   do {
@@ -49,7 +66,7 @@ const listCommonPrefixes = async (bucket: string, prefix: string): Promise<strin
       }
     }
 
-    continuationToken = response.IsTruncated ? (response.NextContinuationToken ?? undefined) : undefined;
+    continuationToken = nextPageToken(response.IsTruncated, response.NextContinuationToken, seenTokens);
   } while (continuationToken);
 
   return [...prefixes];

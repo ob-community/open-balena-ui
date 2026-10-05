@@ -150,7 +150,7 @@ const OpenBalenaAdmin: React.FC = () => {
       <Resource
         name='menu-fleet'
         icon={AccountTreeIcon}
-        options={{ label: 'Fleets', isMenuParent: true, menuRoute: 'application', hideChildren: true }}
+        options={{ label: 'Fleets', isMenuParent: true, menuRoute: 'application' }}
       />
       <Resource name='application' icon={AppsIcon} options={{ label: 'Fleets', menuParent: 'menu-fleet' }} {...fleet} />
       <Resource
@@ -175,7 +175,7 @@ const OpenBalenaAdmin: React.FC = () => {
       <Resource
         name='menu-device'
         icon={DevicesIcon}
-        options={{ label: 'Devices', isMenuParent: true, menuRoute: 'device', hideChildren: true }}
+        options={{ label: 'Devices', isMenuParent: true, menuRoute: 'device' }}
       />
       <Resource
         name='device'

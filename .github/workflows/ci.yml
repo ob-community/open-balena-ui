@@ -65,11 +65,34 @@ jobs:
         env:
           REACT_APP_OPEN_BALENA_UI_VERSION: ${{ steps.vtl.outputs.ver_semVerNoMeta }}
 
+  balena-os-api-integration:
+    name: BalenaOS real API compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Project dependencies
+        run: npm ci
+
+      - name: Verify release assets and cache invalidation against ob-api
+        run: npx tsx --test test/balenaOsSync.integration.test.ts
+        env:
+          BALENA_OS_INTEGRATION: '1'
+
   # Build the docker container in all branches (without pushing)
   build-docker:
     name: Build for docker
     runs-on: ubuntu-latest
-    needs: build-test
+    needs: [build-test, balena-os-api-integration]
     permissions:
       contents: read
     steps:

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Options } from 'ra-core';
+import { HttpError } from 'react-admin';
+import { PERMISSION_HINT } from '../lib/httpErrorMessage';
 import { openBalenaDataProvider, resolveODataVersion } from './openBalenaDataProvider';
 
 const response = (json: unknown) => ({
@@ -8,6 +10,17 @@ const response = (json: unknown) => ({
   headers: new Headers({ 'content-range': '0-0/1' }),
   body: JSON.stringify(json),
   json,
+});
+
+test('operational provider errors include permission guidance for API 401s', async () => {
+  const provider = openBalenaDataProvider('https://api.example.test', async () => {
+    throw new HttpError('Unauthorized', 401);
+  });
+
+  await assert.rejects(provider.getOne('device', { id: 309 }), {
+    message: `Unauthorized. ${PERMISSION_HINT}`,
+    status: 401,
+  });
 });
 
 test('hybrid provider routes operational resources through open-balena-api', async () => {

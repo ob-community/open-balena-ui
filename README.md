@@ -17,8 +17,9 @@ open-balena.
 ## Dependencies
 
 This project uses `open-balena-api` for operational data and depends on
-[open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) only for administrator identity and
-authorization resources that the API does not expose with the required global semantics. Device terminals and file
+[open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) for administrator identity and
+authorization resources that the API does not expose with the required global semantics, plus narrowly scoped
+server-only Host OS metadata writes that public OData cannot perform. Device terminals and file
 transfers are built in when `REACT_APP_OPEN_BALENA_REMOTE_URL` is unset. Configuring that variable retains compatibility
 with [open-balena-remote](https://github.com/ob-community/open-balena-remote). See
 [DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid provider and
@@ -51,22 +52,56 @@ There are a number of environment variables used to configure the ui:
   deployments. The server otherwise discovers it from an existing local image, then falls back from `api.<domain>` to
   `registry.<domain>`. Configure this explicitly when neither convention is valid.
 
+- `CONTRACT_ALLOWLIST` Mirror the API's semicolon-separated contract allowlist. `hw.device-type/<slug>` entries filter
+  catalog discovery and metadata synchronization; architecture entries alone do not restrict device types.
+
+- `OPEN_BALENA_S3_URL` S3-compatible endpoint (SeaweedFS S3 gateway, MinIO, or AWS S3). The UI server uses AWS SDK v3
+  with forced path-style addressing; this is not the SeaweedFS filer endpoint. `OPEN_BALENA_S3_ACCESS_KEY` and
+  `OPEN_BALENA_S3_SECRET_KEY` are server-only storage credentials, `OPEN_BALENA_S3_REGION` defaults to `us-east-1`, and
+  `OPEN_BALENA_S3_REGISTRY_BUCKET` defaults to `registry-data`. Keep these backend-neutral variable names when changing
+  storage providers.
+
+- `OPEN_BALENA_OS_METADATA_BUCKET` Required private S3-compatible bucket for Host OS synchronization on API v46.1+.
+  Provision it and grant the existing UI storage identity read/write access. Metadata is served by the UI, not by a
+  public bucket policy.
+
+- `OPEN_BALENA_OS_METADATA_URL` Optional stable UI base URL reachable from ob-api. Defaults to
+  `REACT_APP_OPEN_BALENA_UI_URL`. The read-only `/balena-os/device-types/.../device-type.json` route needs no login.
+
+- `OPEN_BALENA_OS_METADATA_SOURCE_URL` Optional public metadata source, used only during manual sync. Defaults to
+  `https://resin-production-img-cloudformation.s3.amazonaws.com/images`.
+
 For local development, `npm run dev` starts both Vite on port 3000 and the UI server on port 3001. Vite proxies
 `/admin-db`, `/device-update-options`, and `/balena-os` requests to the local UI server; operational OData requests
 continue to use `REACT_APP_OPEN_BALENA_API_URL`. The configured `OPEN_BALENA_POSTGREST_URL` must still be reachable from
 the local machine and point directly to a PostgREST endpoint.
 
-Services > BalenaOS shows local Host OS coverage and the downloadable image catalog. A global administrator can start an
-additive, idempotent synchronization into the required `balena_os` system organization. The server reads the public
-catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates the
-complete application/release/service/image graph through open-balena-api—never PostgREST. It does not delete local
-records. Progress is kept in server memory, so the UI polls every five seconds and the UI server must remain running
-until the job finishes. The configured registry endpoint must either serve the public image directly or proxy missing
-paths to the source registry. Synchronization does not copy registry blobs and does not automatically change any fleet
-or device target release. The `balena_os` organization owns the imported catalog records only; Host OS releases are
-installation-wide and do not need to share an organization with a target fleet. Synchronization is disabled until that
-system organization exists. Registry locations are rewritten when records are synchronized; rerun the sync after
-changing `OPEN_BALENA_OS_REGISTRY_HOST` to update existing imported image records.
+Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host OS catalog. A global administrator can
+start an additive, idempotent synchronization into the required `balena_os` system organization. The server reads the
+public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates
+the application/release/service/image graph through open-balena-api. A server-only direct-database exception links each
+Host OS application to its updater because public OData does not expose that internal relation. It also materializes Host OS
+image labels from the public release composition so Supervisors distinguish OS payloads from ordinary services. On
+open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph and links Host OS
+applications to it so Helios can plan the actual OS transition. It does not delete local records. On API v46.1+, sync
+also stores allowlisted device-type JSON in private S3-compatible storage and writes local release assets pointing to
+the UI's read-only metadata endpoint. It creates and authorizes the release/key records through OData, then persists
+only their WebResource references through internal PostgREST because PineJS rejects ordinary JSON asset writes. It
+verifies all references, triggers the API's host-application metadata-cache hook, and checks API metadata before
+reporting completion. This lets ob-api generate device config without public S3 metadata reads. The
+asset URL contains no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed. An
+internal metadata URL only needs to be reachable by ob-api: it is not sent to devices in normal balenaOS provisioning or
+target-state responses. Provisioning images and device image pulls use their separate helper/registry routes. For
+chart-managed installations, the infrastructure chart owns the automated, idempotent MinIO-to-SeaweedFS migration and
+private bucket/credential setup. Operators do not run manual migration commands in this UI repository; follow the
+installation's infrastructure chart deployment guide. Existing MinIO deployments remain supported. Progress is kept in
+server memory, so the UI polls every five seconds and the UI server must remain running until the job finishes. The
+configured registry endpoint must either serve the public image directly or proxy missing paths to the source registry.
+Synchronization does not copy registry blobs and does not automatically change any fleet or device target release. The
+`balena_os` organization owns the imported catalog records only; Host OS releases are installation-wide and do not need
+to share an organization with a target fleet. Synchronization is disabled until that system organization exists.
+Registry locations are rewritten when records are synchronized; rerun the sync after changing
+`OPEN_BALENA_OS_REGISTRY_HOST` to update existing imported image records.
 
 See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for the complete deployment, registry, organization,
 security, and update-lifecycle configuration.
@@ -113,7 +148,7 @@ The synchronization scope can be:
   currently reported by devices of each device type.
 - **Only versions in use:** only Host OS versions currently reported by devices, grouped by device type.
 - **Single semantic version:** the requested version wherever that device type publishes it.
-- **All catalog versions:** every assignable release advertised by the installation's image catalog.
+- **All catalog versions:** every usable release advertised by the version-appropriate public Host OS catalog.
 
 When an entered or device-reported version omits build metadata such as `+rev1`, matching revisions are included. The
 newer-than mode treats higher `+revN` builds of the threshold version as newer; a threshold without a revision includes
@@ -124,6 +159,11 @@ imported because open-balena-api assigns revisions sequentially. Invalidated rel
 and every semantic-version decision. An invalidated release is imported only when a device of the matching type already
 reports that exact version; it remains marked invalidated locally so it cannot be offered as an update target to other
 devices.
+
+On API v46.1+, each Host OS scope additionally maintains the latest usable release per allowed device type and its
+prerequisite revisions for complete config-metadata coverage. The coverage pass attaches metadata to the newest eligible
+local release, including an already-local release newer than those imported. Supervisor-only sync and older APIs are
+unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for storage setup and cache refresh.
 
 - `REACT_APP_OPEN_BALENA_REMOTE_URL` Optional URL of a legacy `open-balena-remote` instance, for example
   `http://remote.openbalena.local:10000`. When this is non-empty, device Connect windows use the legacy iframe flow.
@@ -700,6 +740,25 @@ For local development, the Vite dev server exposes two modes:
 
 When you need a production-like client build, run `npm run build:client` (or `npm run build` to bundle both client and
 server) followed by `npm run serve` to boot the compiled Express server.
+
+The opt-in Host OS synchronization regression uses real open-balena-api v49.6.5, PostgreSQL, Redis, and PostgREST
+containers with synthetic data. It requires Docker with Linux containers, verifies all five metadata references,
+permissions, idempotent recovery, cache invalidation, and actual device configuration generation, and cleans up its
+isolated resources. The fixture uses the configured Docker context (or `DOCKER_HOST`) on Windows and Linux; select a
+daemon with Linux containers before running it. Fixture transport failures return a fixed plain-text message, while
+diagnostic details stay in test-process logs. CI runs it before building the image. Run it locally with:
+
+```sh
+BALENA_OS_INTEGRATION=1 npx tsx --test test/balenaOsSync.integration.test.ts
+```
+
+In PowerShell:
+
+```powershell
+$env:BALENA_OS_INTEGRATION = '1'
+npx tsx --test test\balenaOsSync.integration.test.ts
+Remove-Item Env:\BALENA_OS_INTEGRATION
+```
 
 ## Credits
 

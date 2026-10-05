@@ -2,9 +2,10 @@ import { Box, MenuItem, Select, useTheme } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import React from 'react';
-import { useAuthProvider, useDataProvider, useRecordContext, useNotify } from 'react-admin';
+import { HttpError, useAuthProvider, useDataProvider, useRecordContext, useNotify } from 'react-admin';
 import type { DataProvider } from 'react-admin';
 import environment from '../lib/reactAppEnv';
+import { withPermissionHint } from '../lib/httpErrorMessage';
 import type { ResourceRecord } from '../types/resource';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
 import { deviceLogServiceEvent, type DeviceLogServiceSelection } from '../lib/deviceServicePresentation';
@@ -84,7 +85,7 @@ export const DeviceLogs: React.FC = () => {
     });
 
     if (!response.ok) {
-      throw new Error(response.statusText);
+      throw new HttpError(response.statusText, response.status);
     }
 
     return (await response.json()) as LogEntry[];
@@ -124,7 +125,13 @@ export const DeviceLogs: React.FC = () => {
     } catch (error) {
       console.error(error);
       if (record?.uuid) {
-        notify(`Error: Could not get logs for device ${record.uuid}`, { type: 'error' });
+        notify(
+          withPermissionHint(
+            `Error: Could not get logs for device ${record.uuid}`,
+            error instanceof HttpError ? error.status : undefined,
+          ),
+          { type: 'error' },
+        );
       }
     }
   }, [container, fetchLogs, notify, record]);

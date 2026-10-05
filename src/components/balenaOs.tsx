@@ -258,6 +258,10 @@ export const BalenaOsPage: React.FC = () => {
                   <FormControlLabel value='all' control={<Radio />} label='All catalog versions' />
                 </RadioGroup>
                 <FormHelperText>{syncModeDescription[syncMode]}</FormHelperText>
+                <FormHelperText>
+                  On API v46.1+, every scope also maintains the latest usable release and local device-type metadata for
+                  each allowlisted type. Device targets are not changed.
+                </FormHelperText>
               </FormControl>
               {requiresVersion && (
                 <TextField
@@ -317,7 +321,7 @@ export const BalenaOsPage: React.FC = () => {
       <ConfirmationDialog
         open={confirming}
         title='Synchronize BalenaOS catalog?'
-        content={`${syncModeDescription[syncMode]} This imports or updates the selected public Host OS release graph for every locally supported device type. Keep this server running until synchronization completes.`}
+        content={`${syncModeDescription[syncMode]} This imports or updates the selected public Host OS release graph for every allowlisted local device type. On API v46.1+, it also maintains the latest usable release and local config metadata for each type. Keep this server running until synchronization completes.`}
         confirmButtonText='Start sync'
         onClose={() => setConfirming(false)}
         onConfirm={startSync}

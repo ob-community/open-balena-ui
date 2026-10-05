@@ -8,6 +8,7 @@ import registryImageRoutes from './routes/registryImage';
 import adminDatabaseRoutes from './routes/adminDatabase';
 import deviceUpdateRoutes from './routes/deviceUpdates';
 import balenaOsRoutes from './routes/balenaOs';
+import deviceTypeMetadataRoutes from './routes/deviceTypeMetadata';
 import { bootstrapGlobalAdminFromEnvironment } from './bootstrapGlobalAdmin';
 import { createRemoteAccessBackend, type RemoteAccessBackend } from './remoteAccess';
 
@@ -31,6 +32,7 @@ const app = express();
 const server = createServer(app);
 let remoteAccess: RemoteAccessBackend | undefined;
 
+app.use('/', deviceTypeMetadataRoutes);
 app.use('/', registryImageRoutes);
 app.use('/', adminDatabaseRoutes);
 app.use('/', deviceUpdateRoutes);

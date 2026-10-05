@@ -1,5 +1,8 @@
 import semver from 'semver';
+import { setTimeout as delay } from 'node:timers/promises';
 import versions from '../src/versions';
+import { withPermissionHint } from '../src/lib/httpErrorMessage';
+import { allowedDeviceTypeSlugs, storeDeviceTypeMetadata, type DeviceTypeAsset } from './deviceTypeMetadata';
 
 type RecordValue = Record<string, unknown>;
 
@@ -54,6 +57,7 @@ interface SourceGraph {
   services: RecordValue[];
   images: RecordValue[];
   releaseImages: RecordValue[];
+  isHostAppUpdater?: boolean;
 }
 
 export interface SyncDependencies {
@@ -63,11 +67,37 @@ export interface SyncDependencies {
   apiSoftwareVersion: () => string | undefined;
   catalogApiUrl: () => string;
   registryHost: () => string | undefined;
+  postgrestUrl?: () => string | undefined;
+  contractAllowlist?: () => string | undefined;
+  metadataVerificationTimeoutMs?: number;
+  metadataVerificationPollIntervalMs?: number;
+  storeDeviceTypeMetadata?: (slug: string, version: string) => Promise<DeviceTypeAsset>;
+  setHostAppUpdaterRelation?: (
+    authorization: string,
+    hostApplicationId: number,
+    updaterApplicationId: number,
+  ) => Promise<void>;
 }
 
 const DEFAULT_CATALOG_API_URL = 'https://api.balena-cloud.com';
 const PAGE_SIZE = 1000;
 const MAX_RECORDS = 10000;
+const HOST_APP_IMAGE_CATALOG_REMOVED_VERSION = '46.0.0';
+const HOST_APP_UPDATER_RELATION_VERSION = '43.4.0';
+const RELEASE_ASSET_METADATA_VERSION = '46.1.0';
+const HOST_APP_UPDATER_SLUG = 'balena_os/balenahup';
+const ESR_MIN_MAJOR = 2000;
+const METADATA_VERIFICATION_TIMEOUT_MS = 6 * 60 * 1000;
+const METADATA_REQUEST_TIMEOUT_MS = 10000;
+
+class SyncRequestError extends Error {
+  public constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 const trimUrl = (value: string): string => value.replace(/\/+$/, '');
 
@@ -84,6 +114,36 @@ const configuredApiVersion = (): 'v6' | 'v7' => {
   return versions.odataVersion(process.env.REACT_APP_OPEN_BALENA_API_VERSION);
 };
 
+const setHostAppUpdaterRelation = async (
+  authorization: string,
+  hostApplicationId: number,
+  updaterApplicationId: number,
+): Promise<void> => {
+  const baseUrl = process.env.OPEN_BALENA_POSTGREST_URL?.replace(/\/+$/, '');
+  if (!baseUrl) throw new Error('OPEN_BALENA_POSTGREST_URL must be configured for Host OS updater relationships.');
+  const response = await fetch(
+    `${baseUrl}/${encodeURIComponent('application')}?${new URLSearchParams({ id: `eq.${hostApplicationId}` })}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Authorization': authorization,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify({ 'is updated by-application': updaterApplicationId }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `PostgREST could not link Host OS application ${hostApplicationId} to its updater (${response.status}).`,
+    );
+  }
+  const records = (await response.json()) as unknown;
+  if (!Array.isArray(records) || records.length !== 1) {
+    throw new Error(`PostgREST did not update Host OS application ${hostApplicationId}.`);
+  }
+};
+
 const defaultDependencies: SyncDependencies = {
   fetch,
   apiUrl: configuredApiUrl,
@@ -91,6 +151,10 @@ const defaultDependencies: SyncDependencies = {
   apiSoftwareVersion: () => process.env.REACT_APP_OPEN_BALENA_API_VERSION,
   catalogApiUrl: () => trimUrl(process.env.OPEN_BALENA_OS_CATALOG_API_URL ?? DEFAULT_CATALOG_API_URL),
   registryHost: () => process.env.OPEN_BALENA_OS_REGISTRY_HOST?.replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+  postgrestUrl: () => process.env.OPEN_BALENA_POSTGREST_URL?.replace(/\/+$/, ''),
+  contractAllowlist: () => process.env.CONTRACT_ALLOWLIST,
+  storeDeviceTypeMetadata,
+  setHostAppUpdaterRelation,
 };
 
 const relationId = (value: unknown): number | undefined => {
@@ -101,6 +165,12 @@ const relationId = (value: unknown): number | undefined => {
 
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.length > 0 ? value : undefined;
+
+const isRecord = (value: unknown): value is RecordValue =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const matchesDeviceTypeAsset = (value: unknown, asset: DeviceTypeAsset): boolean =>
+  isRecord(value) && Object.entries(asset).every(([key, expected]) => value[key] === expected);
 
 const quote = (value: string): string => `'${value.replace(/'/g, "''")}'`;
 
@@ -121,6 +191,28 @@ const structuredField = (
     }
   }
   throw new Error(`Catalog ${recordDescription} field "${field}" is not valid JSON object or array data.`);
+};
+
+const hostReleaseImageLabels = (graph: SourceGraph, sourceLink: RecordValue): Array<[string, string]> => {
+  if (graph.application.is_host !== true) return [];
+  const sourceReleaseId = relationId(sourceLink.is_part_of__release);
+  const sourceImageId = relationId(sourceLink.image);
+  const sourceRelease = graph.releases.find(({ id }) => relationId(id) === sourceReleaseId);
+  const sourceImage = graph.images.find(({ id }) => relationId(id) === sourceImageId);
+  const sourceServiceId = relationId(sourceImage?.is_a_build_of__service);
+  const serviceName = asString(graph.services.find(({ id }) => relationId(id) === sourceServiceId)?.service_name);
+  if (!sourceRelease || !serviceName) return [];
+  const composition = structuredField(sourceRelease.composition, 'composition', `release ${sourceRelease.commit}`, {});
+  if (!composition || Array.isArray(composition)) return [];
+  const services = composition.services;
+  if (!services || typeof services !== 'object' || Array.isArray(services)) return [];
+  const service = (services as RecordValue)[serviceName];
+  if (!service || typeof service !== 'object' || Array.isArray(service)) return [];
+  const labels = (service as RecordValue).labels;
+  if (!labels || typeof labels !== 'object' || Array.isArray(labels)) return [];
+  return Object.entries(labels as RecordValue).flatMap(([name, value]) =>
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? [[name, String(value)]] : [],
+  );
 };
 
 const extractRecords = (input: unknown): RecordValue[] => {
@@ -313,6 +405,20 @@ const supportsReleaseSemver = (apiVersion: string | undefined): boolean =>
 const supportsApplicationClass = (apiVersion: string | undefined): boolean =>
   semver.gte(semver.coerce(apiVersion) ?? '0.0.0', '0.157.3');
 
+const supportsHostAppImageCatalog = (apiVersion: string | undefined): boolean =>
+  semver.lt(semver.coerce(apiVersion) ?? '0.0.0', HOST_APP_IMAGE_CATALOG_REMOVED_VERSION);
+
+const supportsHostAppUpdaterRelation = (apiVersion: string | undefined): boolean =>
+  semver.gte(semver.coerce(apiVersion) ?? '0.0.0', HOST_APP_UPDATER_RELATION_VERSION);
+
+const supportsReleaseAssetMetadata = (apiVersion: string | undefined): boolean =>
+  semver.gte(semver.coerce(apiVersion) ?? '0.0.0', RELEASE_ASSET_METADATA_VERSION);
+
+const isNonEsrRelease = (release: RecordValue): boolean => {
+  const version = parsedVersion(release.raw_version);
+  return version != null && version.major < ESR_MIN_MAJOR;
+};
+
 const chunks = <T>(values: T[], size = 100): T[][] => {
   const result: T[][] = [];
   for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
@@ -341,7 +447,12 @@ export class BalenaOsSyncManager {
     return relationId(organization?.id);
   }
 
-  private async requestJson(url: string, authorization?: string, init: RequestInit = {}): Promise<unknown> {
+  private async requestJson(
+    url: string,
+    authorization?: string,
+    init: RequestInit = {},
+    allowNotFound = false,
+  ): Promise<unknown> {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
     if (authorization) headers.set('Authorization', authorization);
@@ -352,15 +463,22 @@ export class BalenaOsSyncManager {
       response = await this.dependencies.fetch(url, { ...init, headers });
       if (response.status !== 429 || attempt === 3) break;
       const retryAfter = Number(response.headers.get('Retry-After'));
-      await new Promise((resolve) =>
-        setTimeout(resolve, Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * (attempt + 1)),
-      );
+      await delay(Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * (attempt + 1), undefined, {
+        signal: init.signal ?? undefined,
+      });
     }
+    if (response?.status === 404 && allowNotFound) return undefined;
     if (!response?.ok) {
       if (response?.status === 401) {
-        throw new Error('Synchronization authorization expired or was rejected; sign in again and re-run to resume.');
+        throw new Error(
+          withPermissionHint(
+            'Synchronization authorization expired or was rejected; sign in again and re-run to resume.',
+            response.status,
+          ),
+        );
       }
-      throw new Error(
+      throw new SyncRequestError(
+        response?.status ?? 0,
         `Request failed (${response?.status ?? 'unknown'}): ${response ? await errorMessage(response) : url}`,
       );
     }
@@ -498,11 +616,14 @@ export class BalenaOsSyncManager {
     return { ...image, is_stored_at__image_location: location };
   }
 
-  private async imageCatalog(authorization: string, slug: string): Promise<string[]> {
+  private async imageCatalog(authorization: string, slug: string): Promise<string[] | undefined> {
     const body = (await this.requestJson(
       `${this.dependencies.apiUrl()}/device-types/v1/${encodeURIComponent(slug)}/images`,
       authorization,
+      {},
+      true,
     )) as { versions?: unknown };
+    if (body == null) return undefined;
     if (!Array.isArray(body?.versions) || !body.versions.every((version) => typeof version === 'string')) {
       throw new Error(`The image catalog for ${slug} returned an invalid response.`);
     }
@@ -510,20 +631,262 @@ export class BalenaOsSyncManager {
   }
 
   private async localDeviceTypes(authorization: string): Promise<RecordValue[]> {
-    return this.getAll(
+    const records = await this.getAll(
       this.dependencies.apiUrl(),
       this.dependencies.apiVersion(),
       'device_type',
       { $select: 'id,slug', $orderby: 'slug asc' },
       authorization,
     );
+    const allowlist = allowedDeviceTypeSlugs(this.dependencies.contractAllowlist?.());
+    return records.filter(({ slug }) => allowlist.size === 0 || (typeof slug === 'string' && allowlist.has(slug)));
   }
 
-  private async sourceApplications(deviceTypeSlug: string): Promise<RecordValue[]> {
+  private async synchronizeDeviceTypeAssets(authorization: string, deviceTypes: RecordValue[]): Promise<void> {
+    const persist = this.dependencies.storeDeviceTypeMetadata;
+    if (!persist) throw new Error('Device-type metadata storage is not configured.');
+    const postgrestUrl = this.dependencies.postgrestUrl?.();
+    if (!postgrestUrl) throw new Error('OPEN_BALENA_POSTGREST_URL is required to persist device-type release assets.');
+    const expectedSlugs = allowedDeviceTypeSlugs(this.dependencies.contractAllowlist?.());
+    const missingSlugs = [...expectedSlugs].filter((slug) => !deviceTypes.some((record) => record.slug === slug));
+    if (missingSlugs.length > 0) {
+      throw new Error(`Allowlisted device types are missing from open-balena-api: ${missingSlugs.join(', ')}.`);
+    }
+    const metadata = new Map<string, { version: string; applicationId: number }>();
+    for (const deviceType of deviceTypes) {
+      const slug = asString(deviceType.slug);
+      const deviceTypeId = relationId(deviceType.id);
+      if (!slug || !deviceTypeId) throw new Error('Local device type has no valid ID or slug.');
+      const applications = await this.getAll(
+        this.dependencies.apiUrl(),
+        this.dependencies.apiVersion(),
+        'application',
+        {
+          $filter: `(is_for__device_type eq ${deviceTypeId}) and (is_host eq true) and (not application_tag/any(tag:tag/tag_key eq 'release-policy'))`,
+          $select: 'id,slug',
+          $top: 2,
+        },
+        authorization,
+      );
+      if (applications.length !== 1) {
+        throw new Error(`Device type ${slug} requires exactly one standard Host OS application for config metadata.`);
+      }
+      const applicationId = relationId(applications[0].id);
+      if (!applicationId) throw new Error(`Host OS application for ${slug} has no valid ID.`);
+      const releases = await this.getAll(
+        this.dependencies.apiUrl(),
+        this.dependencies.apiVersion(),
+        'release',
+        {
+          $filter: `(belongs_to__application eq ${applicationId}) and (status eq 'success') and (is_final eq true) and (is_invalidated eq false) and (semver_major gt 0) and (semver_major lt ${ESR_MIN_MAJOR})`,
+          $select: 'id,raw_version',
+          $orderby: 'semver_major desc,semver_minor desc,semver_patch desc,revision desc,variant desc,created_at desc',
+          $top: 1,
+        },
+        authorization,
+      );
+      const releaseId = relationId(releases[0]?.id);
+      const version = asString(releases[0]?.raw_version);
+      if (!releaseId || !version) {
+        throw new Error(`Device type ${slug} has no usable Host OS release for config metadata.`);
+      }
+      this.status.phase = `Synchronizing config metadata for ${slug}`;
+      const filter = `(release eq ${releaseId}) and (asset_key eq 'device-type.json')`;
+      const select = 'id,release,asset_key,asset';
+      const existingAssets = await this.getAll(
+        this.dependencies.apiUrl(),
+        this.dependencies.apiVersion(),
+        'release_asset',
+        { $filter: filter, $select: select, $top: 2 },
+        authorization,
+      );
+      if (existingAssets.length > 1) throw new Error(`Release ${releaseId} has duplicate device-type.json assets.`);
+      const asset = await persist(slug, version);
+      await this.persistDeviceTypeAssetReference(
+        authorization,
+        trimUrl(postgrestUrl),
+        releaseId,
+        existingAssets[0],
+        asset,
+      );
+      const verified = await this.getAll(
+        this.dependencies.apiUrl(),
+        this.dependencies.apiVersion(),
+        'release_asset',
+        { $filter: filter, $select: select, $top: 2 },
+        authorization,
+      );
+      if (
+        verified.length !== 1 ||
+        relationId(verified[0].release) !== releaseId ||
+        verified[0].asset_key !== 'device-type.json' ||
+        !matchesDeviceTypeAsset(verified[0].asset, asset)
+      ) {
+        throw new Error(`Device-type metadata reference for ${slug}, release ${releaseId}, failed OData read-back.`);
+      }
+      metadata.set(slug, { version, applicationId });
+    }
+
+    // release_asset writes have no metadata-cache hook. The same-value host flag
+    // PATCH invokes ob-api's existing application hook without changing targets.
+    this.status.phase = 'Refreshing API device-type metadata';
+    for (const applicationId of new Set([...metadata.values()].map((entry) => entry.applicationId))) {
+      await this.requireMetadataWriteAccess(authorization, 'application', applicationId);
+      await this.requestJson(
+        `${this.dependencies.apiUrl()}/${this.dependencies.apiVersion()}/application(${applicationId})`,
+        authorization,
+        { method: 'PATCH', body: JSON.stringify({ is_host: true }) },
+      );
+    }
+    await this.verifyDeviceTypeMetadata(authorization, metadata);
+  }
+
+  private async persistDeviceTypeAssetReference(
+    authorization: string,
+    postgrestUrl: string,
+    releaseId: number,
+    existing: RecordValue | undefined,
+    asset: DeviceTypeAsset,
+  ): Promise<void> {
+    if (existing && matchesDeviceTypeAsset(existing.asset, asset)) {
+      this.status.unchanged += 1;
+      this.status.processed += 1;
+      return;
+    }
+    let record = existing;
+    const filter = `(release eq ${releaseId}) and (asset_key eq 'device-type.json')`;
+    const select = 'id,release,asset_key,asset';
+    const apiUrl = `${this.dependencies.apiUrl()}/${this.dependencies.apiVersion()}/release_asset`;
+    if (!record) {
+      try {
+        await this.requestJson(apiUrl, authorization, {
+          method: 'POST',
+          body: JSON.stringify({ release: releaseId, asset_key: 'device-type.json' }),
+        });
+      } catch (error) {
+        if (!(error instanceof SyncRequestError) || error.status !== 409) throw error;
+        // A concurrent sync may have created this same unique release/key pair.
+      }
+      const records = await this.getAll(
+        this.dependencies.apiUrl(),
+        this.dependencies.apiVersion(),
+        'release_asset',
+        { $filter: filter, $select: select, $top: 2 },
+        authorization,
+      );
+      if (records.length !== 1) throw new Error(`Release ${releaseId} requires exactly one device-type.json asset.`);
+      record = records[0];
+    }
+    const id = relationId(record.id);
+    if (!id || relationId(record.release) !== releaseId || record.asset_key !== 'device-type.json') {
+      throw new Error(`Release ${releaseId} has an invalid device-type.json asset record.`);
+    }
+
+    await this.requireMetadataWriteAccess(authorization, 'release_asset', id);
+    const query = new URLSearchParams({
+      'id': `eq.${id}`,
+      'release': `eq.${releaseId}`,
+      'asset key': 'eq.device-type.json',
+    });
+    const response = await this.requestJson(
+      `${postgrestUrl}/${encodeURIComponent('release asset')}?${query}`,
+      authorization,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ asset }),
+      },
+    );
+    if (
+      !Array.isArray(response) ||
+      response.length !== 1 ||
+      !isRecord(response[0]) ||
+      relationId(response[0].id) !== id ||
+      relationId(response[0].release) !== releaseId ||
+      response[0]['asset key'] !== 'device-type.json' ||
+      !matchesDeviceTypeAsset(response[0].asset, asset)
+    ) {
+      throw new Error(`PostgREST did not persist the device-type.json reference for release ${releaseId}.`);
+    }
+    if (existing) this.status.updated += 1;
+    else this.status.created += 1;
+    this.status.processed += 1;
+  }
+
+  private async requireMetadataWriteAccess(
+    authorization: string,
+    resource: 'release_asset' | 'application',
+    id: number,
+  ): Promise<void> {
+    // A PATCH can succeed with zero affected rows. canAccess explicitly rejects
+    // row-level permission misses and returns the authorized record's ID.
+    const records = extractRecords(
+      await this.requestJson(
+        `${this.dependencies.apiUrl()}/${this.dependencies.apiVersion()}/${resource}(${id})/canAccess`,
+        authorization,
+        { method: 'POST', body: JSON.stringify({ method: 'PATCH' }) },
+      ),
+    );
+    if (records.length !== 1 || relationId(records[0].id) !== id) {
+      throw new Error(`open-balena-api did not confirm write access to ${resource}(${id}).`);
+    }
+  }
+
+  private async verifyDeviceTypeMetadata(
+    authorization: string,
+    metadata: Map<string, { version: string; applicationId: number }>,
+  ): Promise<void> {
+    const timeout = this.dependencies.metadataVerificationTimeoutMs ?? METADATA_VERIFICATION_TIMEOUT_MS;
+    const interval = this.dependencies.metadataVerificationPollIntervalMs ?? 1000;
+    if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
+      throw new Error('Metadata verification timeout and polling interval must be positive finite milliseconds.');
+    }
+    const deadline = Date.now() + timeout;
+    let issue = 'No API metadata response.';
+    while (Date.now() < deadline) {
+      try {
+        const response = await this.requestJson(`${this.dependencies.apiUrl()}/device-types/v1`, authorization, {
+          signal: AbortSignal.timeout(Math.max(1, Math.min(METADATA_REQUEST_TIMEOUT_MS, deadline - Date.now()))),
+        });
+        if (!Array.isArray(response) || !response.every(isRecord)) {
+          throw new Error('The API device-type metadata endpoint did not return a JSON array.');
+        }
+        const unresolved = [...metadata].filter(
+          ([slug, { version }]) => !response.some((record) => record.slug === slug && record.buildId === version),
+        );
+        if (unresolved.length === 0) return;
+        issue = `Missing or stale API metadata for ${unresolved.map(([slug]) => slug).join(', ')}.`;
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !(
+            ['AbortError', 'TimeoutError'].includes(error.name) ||
+            (error instanceof SyncRequestError && error.status >= 500)
+          )
+        ) {
+          throw error;
+        }
+        issue = error.message;
+      }
+      await new Promise((resolve) => setTimeout(resolve, Math.min(interval, Math.max(0, deadline - Date.now()))));
+    }
+    throw new Error(
+      `Device-type release assets were verified, but ob-api metadata refresh did not complete: ${issue} ` +
+        'Check ob-api access to the internal metadata URL. An already-stuck upstream metadata request cannot be ' +
+        'cleared by cache invalidation; restart the affected ob-api instance and rerun synchronization. ' +
+        'Existing release assets will be reused.',
+    );
+  }
+
+  private async sourceApplications(deviceTypeSlug: string, includeEsr: boolean): Promise<RecordValue[]> {
     const standardSlug = `balena_os/${deviceTypeSlug}`;
     const esrSlug = `${standardSlug}-esr`;
     return this.getAll(this.dependencies.catalogApiUrl(), 'v6', 'application', {
-      $filter: `(is_host eq true) and (is_public eq true) and ((slug eq ${quote(standardSlug)}) or (slug eq ${quote(esrSlug)}))`,
+      $filter: `(is_host eq true) and (is_public eq true) and (${
+        includeEsr
+          ? `(slug eq ${quote(standardSlug)}) or (slug eq ${quote(esrSlug)})`
+          : `slug eq ${quote(standardSlug)}`
+      })`,
       $select: 'id,uuid,app_name,slug,is_host,is_public,is_of__class,is_archived',
       $orderby: 'slug asc',
     });
@@ -534,6 +897,14 @@ export class BalenaOsSyncManager {
       $filter: `(is_host eq false) and (is_public eq true) and (startswith(slug,'balena_os/')) and (endswith(slug,'-supervisor')) and (is_for__device_type/any(type:type/is_of__cpu_architecture/any(architecture:architecture/slug eq ${quote(cpuArchitectureSlug)})))`,
       $select: 'id,uuid,app_name,slug,is_host,is_public,is_of__class,is_archived',
       $orderby: 'slug asc',
+    });
+  }
+
+  private async sourceHostAppUpdaterApplications(): Promise<RecordValue[]> {
+    return this.getAll(this.dependencies.catalogApiUrl(), 'v6', 'application', {
+      $filter: `(is_host eq false) and (is_public eq true) and (slug eq ${quote(HOST_APP_UPDATER_SLUG)})`,
+      $select: 'id,uuid,app_name,slug,is_host,is_public,is_of__class,is_archived',
+      $orderby: 'id asc',
     });
   }
 
@@ -627,7 +998,9 @@ export class BalenaOsSyncManager {
 
   public async getCatalog(authorization: string): Promise<BalenaOsCatalog> {
     const version = this.dependencies.apiVersion();
-    const hasReleaseSemver = supportsReleaseSemver(this.dependencies.apiSoftwareVersion());
+    const softwareVersion = this.dependencies.apiSoftwareVersion();
+    const hasReleaseSemver = supportsReleaseSemver(softwareVersion);
+    const hasHostAppImageCatalog = supportsHostAppImageCatalog(softwareVersion);
     const localTypes = await this.localDeviceTypes(authorization);
     const [organizations, localApplications] = await Promise.all([
       this.getAll(
@@ -697,17 +1070,20 @@ export class BalenaOsSyncManager {
         if (!id || !slug) return [];
         return [
           (async (): Promise<BalenaOsCatalogDeviceType> => {
-            const catalogVersions = await this.imageCatalog(authorization, slug);
-            const catalogVersionSet = new Set(catalogVersions);
-            const sourceApplications = await this.sourceApplications(slug);
+            const catalog = hasHostAppImageCatalog ? await this.imageCatalog(authorization, slug) : undefined;
+            const catalogVersions = catalog ? new Set(catalog) : undefined;
+            const sourceApplications = await this.sourceApplications(slug, catalogVersions != null);
             const usableVersions: string[] = [];
             for (const sourceApplication of sourceApplications) {
               usableVersions.push(
                 ...(await this.sourceReleases(sourceApplication))
-                  .map(({ raw_version }) => asString(raw_version))
                   .filter(
-                    (rawVersion): rawVersion is string => rawVersion != null && catalogVersionSet.has(rawVersion),
-                  ),
+                    (release) =>
+                      release.is_invalidated !== true &&
+                      (catalogVersions ? catalogVersions.has(String(release.raw_version)) : isNonEsrRelease(release)),
+                  )
+                  .map(({ raw_version }) => asString(raw_version))
+                  .filter((rawVersion): rawVersion is string => rawVersion != null),
               );
             }
             const typeApplications = localApplications.filter(
@@ -846,6 +1222,8 @@ export class BalenaOsSyncManager {
     const softwareVersion = this.dependencies.apiSoftwareVersion();
     const hasReleaseSemver = supportsReleaseSemver(softwareVersion);
     const hasApplicationClass = supportsApplicationClass(softwareVersion);
+    const hasHostAppImageCatalog = supportsHostAppImageCatalog(softwareVersion);
+    const synchronizeMetadata = supervisorDeviceTypeId == null && supportsReleaseAssetMetadata(softwareVersion);
     const [organization, applicationType, allDeviceTypes, registryHost, devices] = await Promise.all([
       this.getOne('organization', `id eq ${organizationId}`, 'id,name', authorization),
       this.getOne('application_type', "slug eq 'default'", 'id,slug', authorization),
@@ -888,8 +1266,9 @@ export class BalenaOsSyncManager {
       let catalogVersions: Set<string> | undefined;
       let applications: RecordValue[];
       if (supervisorDeviceTypeId == null) {
-        catalogVersions = new Set(await this.imageCatalog(authorization, slug));
-        applications = await this.sourceApplications(slug);
+        const catalog = hasHostAppImageCatalog ? await this.imageCatalog(authorization, slug) : undefined;
+        catalogVersions = catalog ? new Set(catalog) : undefined;
+        applications = await this.sourceApplications(slug, catalogVersions != null);
       } else {
         const localDeviceType = await this.getOne(
           'device_type',
@@ -915,8 +1294,8 @@ export class BalenaOsSyncManager {
         if (!applicationId) continue;
         releasesByApplication.set(
           applicationId,
-          (await this.sourceReleases(application, true)).filter(
-            ({ raw_version }) => catalogVersions == null || catalogVersions.has(String(raw_version)),
+          (await this.sourceReleases(application, true)).filter((release) =>
+            catalogVersions ? catalogVersions.has(String(release.raw_version)) : isNonEsrRelease(release),
           ),
         );
       }
@@ -929,6 +1308,25 @@ export class BalenaOsSyncManager {
           .map(({ id: releaseId }) => relationId(releaseId))
           .filter((releaseId): releaseId is number => releaseId != null),
       );
+      if (synchronizeMetadata) {
+        for (const releases of releasesByApplication.values()) {
+          const latest = releases
+            .filter((release) => release.is_invalidated !== true && isNonEsrRelease(release))
+            .map((release) => ({ release, version: parsedVersion(release.raw_version) }))
+            .filter(
+              (entry): entry is { release: RecordValue; version: semver.SemVer } =>
+                entry.version != null && entry.version.major > 0,
+            )
+            .sort((left, right) => compareBalenaVersions(right.version, left.version))[0]?.release;
+          const latestId = relationId(latest?.id);
+          if (!latestId)
+            throw new Error(`Device type ${slug} has no usable public Host OS release for config metadata.`);
+          selectedReleaseIds.add(latestId);
+        }
+        if (applications.length === 0) {
+          throw new Error(`Device type ${slug} has no public Host OS application for config metadata.`);
+        }
+      }
       for (const application of applications) {
         const selectedReleases = expandBalenaOsRevisionChain(
           releasesByApplication.get(relationId(application.id) ?? -1) ?? [],
@@ -945,6 +1343,31 @@ export class BalenaOsSyncManager {
           : 'No assignable public Supervisor release matched the selected version.',
       );
     }
+    if (supervisorDeviceTypeId == null && supportsHostAppUpdaterRelation(softwareVersion)) {
+      const updaterApplications = await this.sourceHostAppUpdaterApplications();
+      if (updaterApplications.length !== 1) {
+        throw new Error(`The public ${HOST_APP_UPDATER_SLUG} updater application is unavailable or ambiguous.`);
+      }
+      const updaterApplication = updaterApplications[0];
+      const updaterRelease = (await this.sourceReleases(updaterApplication))
+        .map((release) => ({ release, version: parsedVersion(release.raw_version) }))
+        .filter((entry): entry is { release: RecordValue; version: semver.SemVer } => entry.version != null)
+        .sort((left, right) => compareBalenaVersions(right.version, left.version))[0]?.release;
+      if (!updaterRelease) throw new Error(`The public ${HOST_APP_UPDATER_SLUG} application has no usable release.`);
+      const updaterDeviceType = deviceTypes[0];
+      const updaterDeviceTypeId = relationId(updaterDeviceType.id);
+      const updaterDeviceTypeSlug = asString(updaterDeviceType.slug);
+      if (!updaterDeviceTypeId || !updaterDeviceTypeSlug) {
+        throw new Error('The updater application cannot be associated with a valid local device type.');
+      }
+      const updaterGraph = await this.sourceGraph(
+        { id: updaterDeviceTypeId, slug: updaterDeviceTypeSlug },
+        updaterApplication,
+        [updaterRelease],
+      );
+      updaterGraph.isHostAppUpdater = true;
+      graphs.unshift(updaterGraph);
+    }
 
     this.status.total = graphs.reduce(
       (total, graph) =>
@@ -954,21 +1377,28 @@ export class BalenaOsSyncManager {
         graph.releases.length +
         graph.images.length +
         graph.releaseImages.length +
+        graph.releaseImages.reduce((total, link) => total + hostReleaseImageLabels(graph, link).length, 0) +
+        (graph.isHostAppUpdater ? 1 : 0) +
+        (graph.application.is_host === true && supportsHostAppUpdaterRelation(softwareVersion) ? 1 : 0) +
         (hasReleaseSemver ? 0 : graph.releases.length),
-      0,
+      synchronizeMetadata ? deviceTypes.length : 0,
     );
     this.status.phase = 'Synchronizing catalog';
 
     const synchronizedReleases = new Map<string, number>();
+    let localHostAppUpdaterId: number | undefined;
     for (const graph of graphs) {
       const slug = String(graph.application.slug);
       const sourceUuid = asString(graph.application.uuid);
       if (!sourceUuid) throw new Error(`Catalog application ${slug} has no valid UUID.`);
       const isHost = graph.application.is_host === true;
+      const applicationSelect = `id,uuid,app_name,slug,organization,application_type,is_for__device_type,is_host,is_public,is_archived,should_track_latest_release${
+        supportsHostAppUpdaterRelation(softwareVersion) ? ',should_be_running__release' : ''
+      }${hasApplicationClass ? ',is_of__class' : ''}`;
       const existingApplication = await this.getOne(
         'application',
         `uuid eq ${quote(sourceUuid)}`,
-        `id,uuid,app_name,slug,organization,application_type,is_for__device_type,is_host,is_public,is_archived,should_track_latest_release${hasApplicationClass ? ',is_of__class' : ''}`,
+        applicationSelect,
         authorization,
       );
       if (existingApplication && existingApplication.is_host !== isHost) {
@@ -986,16 +1416,26 @@ export class BalenaOsSyncManager {
         should_track_latest_release: true,
       };
       if (!existingApplication) applicationPayload.slug = slug;
-      if (hasApplicationClass) applicationPayload.is_of__class = 'app';
+      if (hasApplicationClass) applicationPayload.is_of__class = graph.isHostAppUpdater ? 'block' : 'app';
       const localApplication = await this.write(
         'application',
         existingApplication,
         applicationPayload,
         `uuid eq ${quote(sourceUuid)}`,
-        `id,uuid,app_name,slug,organization,application_type,is_for__device_type,is_host,is_public,is_archived,should_track_latest_release${hasApplicationClass ? ',is_of__class' : ''}`,
+        applicationSelect,
         authorization,
       );
       const localApplicationId = relationId(localApplication.id)!;
+      if (graph.isHostAppUpdater) localHostAppUpdaterId = localApplicationId;
+      if (isHost && supportsHostAppUpdaterRelation(softwareVersion)) {
+        if (!localHostAppUpdaterId) throw new Error('The local Host OS updater application was not synchronized.');
+        if (!this.dependencies.setHostAppUpdaterRelation) {
+          throw new Error('Host OS updater relationship synchronization is not configured.');
+        }
+        await this.dependencies.setHostAppUpdaterRelation(authorization, localApplicationId, localHostAppUpdaterId);
+        this.status.updated += 1;
+        this.status.processed += 1;
+      }
 
       const existingServices = await this.getAll(
         this.dependencies.apiUrl(),
@@ -1078,6 +1518,19 @@ export class BalenaOsSyncManager {
         );
         releaseMap.set(sourceReleaseId, relationId(local.id)!);
         synchronizedReleases.set(`${sourceUuid}:${rawVersion}`, relationId(local.id)!);
+      }
+
+      if (graph.isHostAppUpdater) {
+        const localUpdaterReleaseId = releaseMap.values().next().value;
+        if (!localUpdaterReleaseId) throw new Error('The local Host OS updater release was not synchronized.');
+        await this.write(
+          'application',
+          localApplication,
+          { should_be_running__release: localUpdaterReleaseId },
+          `uuid eq ${quote(sourceUuid)}`,
+          applicationSelect,
+          authorization,
+        );
       }
 
       if (!hasReleaseSemver && releaseMap.size > 0) {
@@ -1198,7 +1651,7 @@ export class BalenaOsSyncManager {
         const existing = existingLinks.find(
           (link) => relationId(link.is_part_of__release) === localReleaseId && relationId(link.image) === localImageId,
         );
-        await this.write(
+        const localLink = await this.write(
           'release_image',
           existing,
           { image: localImageId, is_part_of__release: localReleaseId },
@@ -1206,10 +1659,38 @@ export class BalenaOsSyncManager {
           'id,image,is_part_of__release',
           authorization,
         );
+        const localLinkId = relationId(localLink.id);
+        if (!localLinkId) throw new Error(`Catalog release-image relation for ${slug} has no valid ID.`);
+        const labels = hostReleaseImageLabels(graph, sourceLink);
+        if (labels.length > 0) {
+          const existingLabels = await this.getAll(
+            this.dependencies.apiUrl(),
+            apiVersion,
+            'image_label',
+            {
+              $filter: `release_image eq ${localLinkId}`,
+              $select: 'id,release_image,label_name,value',
+            },
+            authorization,
+          );
+          for (const [labelName, value] of labels) {
+            const existingLabel = existingLabels.find((label) => label.label_name === labelName);
+            await this.write(
+              'image_label',
+              existingLabel,
+              { release_image: localLinkId, label_name: labelName, value },
+              `(release_image eq ${localLinkId}) and (label_name eq ${quote(labelName)})`,
+              'id,release_image,label_name,value',
+              authorization,
+            );
+          }
+        }
       }
 
       this.status.phase = `Synchronized ${slug}`;
     }
+
+    if (synchronizeMetadata) await this.synchronizeDeviceTypeAssets(authorization, deviceTypes);
 
     this.status = {
       ...this.status,

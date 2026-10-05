@@ -234,7 +234,7 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
               disabled={status === 'connecting'}
               onChange={setTargetId}
               ariaLabel='Terminal target'
-              sx={{ 'width': 240, 'bgcolor': '#fff', 'color': '#111923', '& .MuiSelect-icon': { color: '#111923' } }}
+              sx={{ width: 240 }}
             />
             <Button size='small' variant='contained' onClick={action} disabled={!token || !deviceUuid}>
               {status === 'connecting' ? 'Cancel connection' : 'Start terminal'}

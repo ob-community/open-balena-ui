@@ -61,6 +61,7 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets
     setBytes(0);
     setError('');
     setMessage('');
+    let received = 0;
     try {
       // Invoke the picker before the first await, while the click's user activation is still available.
       const picker = globalThis as typeof globalThis & Picker;
@@ -112,7 +113,6 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets
         if (!response.ok) throw await responseError(response, 'Download failed.');
         if (!response.body) throw new Error('The download did not contain a stream.');
         const total = Number(response.headers.get('Content-Length'));
-        let received = 0;
         const stream = response.body.pipeThrough(
           new TransformStream<Uint8Array, Uint8Array>({
             transform(chunk, output) {
@@ -144,7 +144,7 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets
         setMessage(
           mode === 'upload'
             ? `Uploaded ${file?.name} to ${selected.label}: ${path}`
-            : `Downloaded ${selected.label}: ${path}`,
+            : `Downloaded ${selected.label}: ${path} (${received.toLocaleString()} bytes)`,
         );
       }
     } catch (failure) {

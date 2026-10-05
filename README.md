@@ -261,6 +261,8 @@ downloads into a chosen local file; other browsers use a clearly indicated brows
 [REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for session ownership, authentication, and transfer
 limitations.
 
+Successful downloads display the actual received byte count alongside the source path.
+
 **Download save-prompt timing:** Browsers supporting streamed saves show the destination picker before checking the
 remote file. The picker requires transient user activation from the Download click; waiting for remote authorization
 and SSH/SFTP checks first can exhaust that activation and prevent the picker from opening. Consequently, errors such

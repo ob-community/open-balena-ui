@@ -60,7 +60,7 @@ const transferHarness = (globals = {}) => {
     useEffect: () => {},
   };
   const { RemoteFileTransfer } = loadComponent(
-    '..\\ui\\RemoteFileTransfer.tsx',
+    path.join('..', 'ui', 'RemoteFileTransfer.tsx'),
     {
       'react': react,
       '@mui/icons-material/Download': { default: 'DownloadIcon', __esModule: true },
@@ -230,30 +230,33 @@ test('the dashboard fullscreen button follows the selected legacy integration, n
       const modules = Object.fromEntries(
         paths.map((name, index) => [name, { default: names[index], __esModule: true }]),
       );
-      const { default: DashboardLayout } = loadComponent('..\\dashboards\\device\\dashboardLayout.tsx', {
-        ...modules,
-        'react': {},
-        '@mui/material': {
-          Box: 'Box',
-          Card: 'Card',
-          useTheme: () => ({ palette: { mode: 'dark', common: { white: '#fff' } } }),
-        },
-        '@mui/material/styles': { alpha: (color: string) => color },
-        'react-admin': {
-          useRecordContext: () => ({ id: 1 }),
-          Title: 'Title',
-          TabbedShowLayout: { Tab: 'Tab' },
-        },
-        '@mui/icons-material': { OpenInFull: 'OpenInFull' },
-        '../../lib/reactAppEnv': {
-          __esModule: true,
-          default: {
-            REACT_APP_OPEN_BALENA_REMOTE_URL: remoteUrl,
-            REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED: enabled,
+      const { default: DashboardLayout } = loadComponent(
+        path.join('..', 'dashboards', 'device', 'dashboardLayout.tsx'),
+        {
+          ...modules,
+          'react': {},
+          '@mui/material': {
+            Box: 'Box',
+            Card: 'Card',
+            useTheme: () => ({ palette: { mode: 'dark', common: { white: '#fff' } } }),
           },
+          '@mui/material/styles': { alpha: (color: string) => color },
+          'react-admin': {
+            useRecordContext: () => ({ id: 1 }),
+            Title: 'Title',
+            TabbedShowLayout: { Tab: 'Tab' },
+          },
+          '@mui/icons-material': { OpenInFull: 'OpenInFull' },
+          '../../lib/reactAppEnv': {
+            __esModule: true,
+            default: {
+              REACT_APP_OPEN_BALENA_REMOTE_URL: remoteUrl,
+              REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED: enabled,
+            },
+          },
+          '../../ui/DeviceLogSelection': { DeviceLogSelectionProvider: 'DeviceLogSelectionProvider' },
         },
-        '../../ui/DeviceLogSelection': { DeviceLogSelectionProvider: 'DeviceLogSelectionProvider' },
-      });
+      );
       assert.equal(
         elements(DashboardLayout()).some((element) => element.type === 'DeviceConnectButton'),
         !!remoteUrl,

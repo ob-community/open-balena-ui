@@ -3,9 +3,14 @@ import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import test, { type TestContext } from 'node:test';
 import express, { Router } from 'express';
-import { createApiRouter } from './routes/api';
+
+process.env.OPEN_BALENA_S3_URL = 'https://s3.example.test';
+process.env.OPEN_BALENA_S3_ACCESS_KEY = 'test-access';
+process.env.OPEN_BALENA_S3_SECRET_KEY = 'test-secret';
+const apiRoutes = import('./routes/api');
 
 const fixture = async (t: TestContext, remoteRouter?: Router) => {
+  const { createApiRouter } = await apiRoutes;
   const app = express();
   app.use(createApiRouter(remoteRouter));
   const server = app.listen(0, '127.0.0.1');

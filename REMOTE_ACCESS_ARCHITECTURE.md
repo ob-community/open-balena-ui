@@ -549,7 +549,43 @@ counting/validation transform into an SFTP write stream. Cancellation destroys b
 The browser sends the selected `File` directly as the XMLHttpRequest body with bearer authentication. Upload progress
 reports bytes sent by the browser, not an acknowledgement that the device has committed them. Completion is shown only
 after the server returns success. The selected filename and size are displayed separately from the compact action
-buttons. Upload and download paths are independent, absolute Host OS paths, even when a container terminal is selected.
+buttons. Upload and download paths are independent. The File transfer selector is independent of the active terminal tab
+and defaults to Host OS. It uses the identical target list and badge renderer as the terminal picker: Host OS, running
+App services, then running supported Supervisor services. Its label changes between **Upload to** and **Download from**;
+paths are absolute inside the selected filesystem. Target/mode changes are disabled during a transfer. If a selected
+container stops, another target must be selected explicitly: transfers never silently fall back to Host OS.
+
+### Container filesystem targeting
+
+Both HTTP transfer routes accept an optional validated `container` query parameter. Omitting it retains Host OS paths.
+Authorization, human-user SSH authentication, quotas, host verification, key reuse, and the SFTP streaming pipeline are
+unchanged. For container transfers, ob-ui resolves the same service label/explicit Supervisor selector used by
+terminals, then asks the host engine for the running container's process ID over an SSH exec channel. Invalid/zero PIDs,
+missing containers, exec failures, excessive output, timeout, and cancellation are explicit failures.
+
+Host SFTP accesses the Linux process filesystem through `/proc/<pid>/root`, including the container's mounted volumes;
+no SSH/SFTP daemon, helper binary, or shell needs to be installed in the container image. Paths are resolved component
+by component with SFTP `lstat`/`readlink`. Absolute symlinks restart at the **container** root rather than the host
+root, relative links are normalized within that root, and more than 40 symlinks fail. Only a missing final component is
+accepted for creating a new upload; missing parents and permission errors are surfaced. The unpredictable upload partial
+and final rename occur in this resolved container filesystem.
+
+```mermaid
+flowchart LR
+    B[Browser: target + absolute path] --> A[Device authorization + user SSH]
+    A --> H{Host OS or container?}
+    H -->|Host OS| P[Original host path]
+    H -->|Container| E[Shared engine selector: inspect running PID]
+    E --> R["/proc/PID/root + container-aware symlink resolution"]
+    P --> S[Host SFTP streaming]
+    R --> S
+    S --> F[Selected filesystem or mounted volume]
+```
+
+This requires balenaOS/Linux procfs and host SSH/SFTP permission to traverse the selected process root. Access retains
+the host SSH session's Unix privileges, not the container's configured Unix user; the existing host-access authorization
+is therefore still the security boundary. This is filesystem targeting, not a container sandbox. A restart/removal can
+invalidate the selected process root and interrupt a transfer; reselect/retry against the new running instance.
 
 The initial implementation streams one HTTP request into an unpredictable sibling `.part` path, verifies the received
 length when the browser supplied one, and renames the partial file to the requested target only after success. It
@@ -594,6 +630,14 @@ On browsers supporting `showSaveFilePicker`, the Download click opens the native
 work, preserving user activation. The authenticated response stream passes through a byte-counting transform into the
 chosen file's writable stream. Cancellation aborts the fetch and the writable pipeline. Cancelling the picker is shown
 as cancellation, not a connection failure.
+
+This ordering deliberately means that missing-file, permission, authorization, tunnel, SSH, and SFTP errors can appear
+**after** the destination picker, for either Host OS or container sources. The response is validated before the chosen
+file's writable stream is opened, so remote validation failures do not start writing downloaded bytes. Waiting for an
+asynchronous remote check before invoking the picker risks losing the browser's transient user activation. A robust
+check-first flow would require a second explicit Save click, or a debounced background pre-check that adds remote
+requests and still cannot eliminate a check/download race. The current UX retains the single-click flow without
+background checks on source-path edits.
 
 If that API is unavailable, the UI explicitly explains that the complete download is held in **browser memory** before
 an object-URL download is triggered. This fallback still never stages bytes on ob-ui disk, but is not a bounded-memory

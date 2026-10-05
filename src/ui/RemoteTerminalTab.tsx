@@ -1,7 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { Alert, Box, Button, MenuItem, Select, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import React from 'react';
 import {
   encodeTerminalInput,
@@ -9,16 +9,12 @@ import {
   responseError,
   type RemoteControlMessage,
   type RemoteSession,
+  type RemoteTarget as TerminalTarget,
 } from '../lib/builtInRemoteAccess';
 import { createTerminalDecoder } from '../lib/remoteAccessUi';
-import { ServiceBadge } from './ServiceBadge';
+import { RemoteTargetSelect } from './RemoteTargetSelect';
 
-export interface TerminalTarget {
-  id: string;
-  label: string;
-  target: 'host' | 'container';
-  container?: string;
-}
+export type { RemoteTarget as TerminalTarget } from '../lib/builtInRemoteAccess';
 export type TerminalStatus = 'disconnected' | 'connecting' | 'connected';
 
 const terminalFontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
@@ -232,20 +228,14 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
             <Typography variant='subtitle1' fontWeight={600}>
               Start a terminal session
             </Typography>
-            <Select
-              size='small'
+            <RemoteTargetSelect
+              targets={targets}
               value={selected?.id ?? ''}
               disabled={status === 'connecting'}
-              onChange={(event) => setTargetId(event.target.value)}
-              inputProps={{ 'aria-label': 'Terminal target' }}
+              onChange={setTargetId}
+              ariaLabel='Terminal target'
               sx={{ 'width': 240, 'bgcolor': '#fff', 'color': '#111923', '& .MuiSelect-icon': { color: '#111923' } }}
-            >
-              {targets.map((target) => (
-                <MenuItem key={target.id} value={target.id}>
-                  <ServiceBadge name={target.label} />
-                </MenuItem>
-              ))}
-            </Select>
+            />
             <Button size='small' variant='contained' onClick={action} disabled={!token || !deviceUuid}>
               {status === 'connecting' ? 'Cancel connection' : 'Start terminal'}
             </Button>

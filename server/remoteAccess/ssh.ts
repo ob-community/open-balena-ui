@@ -113,7 +113,7 @@ export const openSftp = (client: Client): Promise<SFTPWrapper> =>
     );
   });
 
-export const containerShellCommand = (container: string): string => {
+export const containerSelectionCommand = (container: string): string => {
   const selector = validateContainerName(container);
   const service = selector === 'balena_supervisor' ? 'core' : selector;
   return (
@@ -123,10 +123,12 @@ export const containerShellCommand = (container: string): string => {
     (selector === 'balena_supervisor'
       ? `if [ -z "$cid" ]; then cid=$("$engine" ps -q --filter 'name=^/balena_supervisor$' | head -n 1); fi; `
       : '') +
-    `[ -n "$cid" ] || { echo "Service container is not running." >&2; exit 1; }; ` +
-    `exec "$engine" exec -it "$cid" /bin/sh`
+    `[ -n "$cid" ] || { echo "Service container is not running." >&2; exit 1; }; `
   );
 };
+
+export const containerShellCommand = (container: string): string =>
+  containerSelectionCommand(container) + `exec "$engine" exec -it "$cid" /bin/sh`;
 
 export const openShell = (
   client: Client,

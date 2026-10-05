@@ -13,8 +13,16 @@ import { loadRemoteAccessConfig, type RemoteAccessConfig } from './config';
 import { UserSshKeyManager } from './keys';
 import { decodeChannelData, encodeChannelData, parseControlMessage } from './protocol';
 import { connectSsh, openSftp, openShell, OperationQuota, type SshLease } from './ssh';
+import { resolveTransferPath } from './files';
 import { TicketStore, type RemoteTicket } from './tickets';
-import { contentDisposition, isDeviceUuid, originAllowed, parseSingleRange, validateRemotePath } from './validation';
+import {
+  contentDisposition,
+  isDeviceUuid,
+  originAllowed,
+  parseSingleRange,
+  validateRemotePath,
+  validateContainerName,
+} from './validation';
 
 interface TerminalChannel {
   stream: ClientChannel;
@@ -63,10 +71,17 @@ const identifyAndAuthorize = async (
   return identity;
 };
 
-const transferParameters = (req: Request, config: RemoteAccessConfig): { deviceUuid: string; remotePath: string } => {
+const transferParameters = (
+  req: Request,
+  config: RemoteAccessConfig,
+): { deviceUuid: string; remotePath: string; container?: string } => {
   const deviceUuid = req.query.deviceUuid;
   if (!isDeviceUuid(deviceUuid)) throw new Error('A valid device UUID is required.');
-  return { deviceUuid, remotePath: validateRemotePath(req.query.path, config.maxPathBytes) };
+  return {
+    deviceUuid,
+    remotePath: validateRemotePath(req.query.path, config.maxPathBytes),
+    container: req.query.container === undefined ? undefined : validateContainerName(req.query.container),
+  };
 };
 
 export interface RemoteAccessBackend {
@@ -125,7 +140,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
         res.status(403).json({ error: 'invalid_origin', message: 'Remote access origin is not allowed.' });
         return;
       }
-      const { deviceUuid, remotePath } = transferParameters(req, config);
+      const { deviceUuid, remotePath, container } = transferParameters(req, config);
       const lengthHeader = req.get('Content-Length');
       const declaredLength = lengthHeader == null ? undefined : Number(lengthHeader);
       if (
@@ -140,8 +155,16 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
       ssh = await connectSsh(config, keys, quota, identity, deviceUuid, controller.signal);
       const sftp = await openSftp(ssh.client);
       uploadSftp = sftp;
+      const targetPath = await resolveTransferPath(
+        ssh.client,
+        sftp,
+        remotePath,
+        container,
+        controller.signal,
+        config.connectTimeoutMs,
+      );
       const targetExists = await new Promise<boolean>((resolve, reject) =>
-        sftp.stat(remotePath, (error) => {
+        sftp.stat(targetPath, (error) => {
           if (!error) resolve(true);
           else if ((error as Error & { code?: number }).code === 2) resolve(false);
           else reject(error);
@@ -151,7 +174,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
         res.status(409).json({ error: 'target_exists', message: 'The upload target already exists.' });
         return;
       }
-      temporaryPath = `${remotePath}.obui-${randomBytes(12).toString('hex')}.part`;
+      temporaryPath = `${targetPath}.obui-${randomBytes(12).toString('hex')}.part`;
       const counter = new Transform({
         transform(chunk: Buffer, _encoding, callback) {
           uploadedBytes += chunk.length;
@@ -165,7 +188,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
       await pipeline(req, counter, output, { signal: controller.signal });
       if (declaredLength != null && uploadedBytes !== declaredLength) throw new Error('Upload length mismatch.');
       await new Promise<void>((resolve, reject) =>
-        sftp.rename(temporaryPath!, remotePath, (error) => (error ? reject(error) : resolve())),
+        sftp.rename(temporaryPath!, targetPath, (error) => (error ? reject(error) : resolve())),
       );
       temporaryPath = undefined;
       res.status(201).json({ bytes: uploadedBytes });
@@ -188,13 +211,21 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
         res.status(403).json({ error: 'invalid_origin', message: 'Remote access origin is not allowed.' });
         return;
       }
-      const { deviceUuid, remotePath } = transferParameters(req, config);
+      const { deviceUuid, remotePath, container } = transferParameters(req, config);
       const controller = requestAbort(req, res);
       const identity = await identifyAndAuthorize(req, res, config, deviceUuid);
       ssh = await connectSsh(config, keys, quota, identity, deviceUuid, controller.signal);
       const sftp = await openSftp(ssh.client);
+      const sourcePath = await resolveTransferPath(
+        ssh.client,
+        sftp,
+        remotePath,
+        container,
+        controller.signal,
+        config.connectTimeoutMs,
+      );
       const stats = await new Promise<Stats>((resolve, reject) =>
-        sftp.stat(remotePath, (error, value) => (error ? reject(error) : resolve(value))),
+        sftp.stat(sourcePath, (error, value) => (error ? reject(error) : resolve(value))),
       );
       if (!stats.isFile() || !Number.isSafeInteger(stats.size) || stats.size < 0) {
         throw new Error('The requested remote path is not a valid file.');
@@ -221,7 +252,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
         return;
       }
       await new Promise<void>((resolve, reject) => {
-        const input = sftp.createReadStream(remotePath, { start, end });
+        const input = sftp.createReadStream(sourcePath, { start, end });
         input.once('error', reject);
         input.once('end', resolve);
         res.once('close', () => {

@@ -33,3 +33,20 @@ test('transfer paths are encoded as query data', () => {
     `/remote/sftp/upload?deviceUuid=${'a'.repeat(32)}&path=%2Fvar%2Flib%2Fdata+report.txt`,
   );
 });
+
+test('both transfer directions explicitly carry the selected container without changing host URLs', () => {
+  for (const operation of ['upload', 'download'] as const) {
+    const url = new URL(
+      remoteTransferUrl(operation, 'a'.repeat(32), '/tmp/data report.txt', 'balena_supervisor'),
+      'http://localhost',
+    );
+    assert.equal(url.searchParams.get('container'), 'balena_supervisor');
+    assert.equal(url.searchParams.get('path'), '/tmp/data report.txt');
+    assert.equal(
+      new URL(remoteTransferUrl(operation, 'a'.repeat(32), '/tmp/file'), 'http://localhost').searchParams.has(
+        'container',
+      ),
+      false,
+    );
+  }
+});

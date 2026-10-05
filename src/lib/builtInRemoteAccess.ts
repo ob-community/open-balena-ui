@@ -4,6 +4,11 @@ export interface RemoteSession {
   expiresAt: number;
 }
 
+export type RemoteTarget = {
+  id: string;
+  label: string;
+} & ({ target: 'host'; container?: never } | { target: 'container'; container: string });
+
 export interface RemoteControlMessage {
   v: 1;
   type: string;
@@ -36,8 +41,14 @@ export const decodeTerminalOutput = async (data: Blob | ArrayBuffer): Promise<{ 
   return { channel, output: new TextDecoder().decode(buffer.slice(4)) };
 };
 
-export const remoteTransferUrl = (operation: 'upload' | 'download', deviceUuid: string, path: string): string => {
+export const remoteTransferUrl = (
+  operation: 'upload' | 'download',
+  deviceUuid: string,
+  path: string,
+  container?: string,
+): string => {
   const query = new URLSearchParams({ deviceUuid, path });
+  if (container !== undefined) query.set('container', container);
   return `/remote/sftp/${operation}?${query.toString()}`;
 };
 

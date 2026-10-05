@@ -2,8 +2,9 @@ import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
 import { Alert, Box, Button, LinearProgress, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import React from 'react';
-import { remoteTransferUrl, responseError } from '../lib/builtInRemoteAccess';
+import { remoteTransferUrl, responseError, type RemoteTarget } from '../lib/builtInRemoteAccess';
 import { isAbsoluteDevicePath, isTransferCancellation, transferFilename } from '../lib/remoteAccessUi';
+import { RemoteTargetSelect } from './RemoteTargetSelect';
 
 interface SaveHandle {
   createWritable(): Promise<WritableStream<Uint8Array>>;
@@ -14,10 +15,13 @@ interface Picker {
 interface Props {
   token: string;
   deviceUuid: string;
+  targets: RemoteTarget[];
 }
 
-export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
+export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets }) => {
   const [mode, setMode] = React.useState<'upload' | 'download'>('upload');
+  const [targetId, setTargetId] = React.useState('host');
+  const selected = targets.find((target) => target.id === targetId);
   const [uploadPath, setUploadPath] = React.useState('');
   const [downloadPath, setDownloadPath] = React.useState('');
   const [file, setFile] = React.useState<File>();
@@ -40,7 +44,14 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
 
   const transfer = async () => {
     const path = (mode === 'upload' ? uploadPath : downloadPath).trim();
-    if (operation.current || !token || !deviceUuid || !isAbsoluteDevicePath(path) || (mode === 'upload' && !file))
+    if (
+      operation.current ||
+      !token ||
+      !deviceUuid ||
+      !selected ||
+      !isAbsoluteDevicePath(path) ||
+      (mode === 'upload' && !file)
+    )
       return;
     const controller = new AbortController();
     operation.current = controller;
@@ -62,7 +73,7 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
           const xhr = new XMLHttpRequest();
           const abort = () => xhr.abort();
           controller.signal.addEventListener('abort', abort, { once: true });
-          xhr.open('PUT', remoteTransferUrl('upload', deviceUuid, path));
+          xhr.open('PUT', remoteTransferUrl('upload', deviceUuid, path, selected.container));
           xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           xhr.upload.onprogress = (event) => {
             if (!current()) return;
@@ -94,7 +105,7 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
       } else {
         const handle = handlePromise ? await handlePromise : undefined;
         if (!current()) return;
-        const response = await fetch(remoteTransferUrl('download', deviceUuid, path), {
+        const response = await fetch(remoteTransferUrl('download', deviceUuid, path, selected.container), {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
@@ -130,7 +141,11 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
       }
       if (current()) {
         setProgress(100);
-        setMessage(mode === 'upload' ? `Uploaded ${file?.name} to ${path}` : `Downloaded ${path}`);
+        setMessage(
+          mode === 'upload'
+            ? `Uploaded ${file?.name} to ${selected.label}: ${path}`
+            : `Downloaded ${selected.label}: ${path}`,
+        );
       }
     } catch (failure) {
       if (operation.current === controller) {
@@ -149,13 +164,33 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
   const invalid = !!path && !isAbsoluteDevicePath(path);
   return (
     <Box sx={{ borderTop: 1, borderColor: 'divider', px: 2, pb: 1.5, flexShrink: 0 }}>
-      <Stack direction='row' alignItems='center' spacing={2}>
-        <Typography variant='subtitle2'>File transfer</Typography>
-        <Tabs value={mode} onChange={(_, value: 'upload' | 'download') => setMode(value)} sx={{ minHeight: 40 }}>
-          <Tab value='upload' label='Upload' disabled={active} sx={{ minHeight: 40, py: 1 }} />
-          <Tab value='download' label='Download' disabled={active} sx={{ minHeight: 40, py: 1 }} />
-        </Tabs>
+      <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} spacing={1} sx={{ pt: 1 }}>
+        <Stack direction='row' alignItems='center' spacing={2} sx={{ flex: 1 }}>
+          <Typography variant='subtitle2'>File transfer</Typography>
+          <Tabs value={mode} onChange={(_, value: 'upload' | 'download') => setMode(value)} sx={{ minHeight: 40 }}>
+            <Tab value='upload' label='Upload' disabled={active} sx={{ minHeight: 40, py: 1 }} />
+            <Tab value='download' label='Download' disabled={active} sx={{ minHeight: 40, py: 1 }} />
+          </Tabs>
+        </Stack>
+        <RemoteTargetSelect
+          targets={targets}
+          value={selected?.id ?? ''}
+          onChange={(value) => {
+            setTargetId(value);
+            setError('');
+            setMessage('');
+            setProgress(undefined);
+            setBytes(0);
+          }}
+          ariaLabel='File transfer target'
+          label={mode === 'upload' ? 'Upload to' : 'Download from'}
+          disabled={active}
+          sx={{ minWidth: 180 }}
+        />
       </Stack>
+      {!selected && !active && (
+        <Alert severity='warning'>The selected target is no longer running. Choose another target.</Alert>
+      )}
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-end' }} sx={{ mt: 1 }}>
         {mode === 'upload' && (
           <Button
@@ -172,8 +207,8 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
         <TextField
           size='small'
           fullWidth
-          label={mode === 'upload' ? 'Absolute device target path' : 'Absolute device source path'}
-          placeholder='/mnt/data/file.bin'
+          label={`Absolute ${selected?.target === 'container' ? 'container' : 'device'} ${mode === 'upload' ? 'target' : 'source'} path`}
+          placeholder={selected?.target === 'container' ? '/tmp/file.bin' : '/mnt/data/file.bin'}
           value={path}
           disabled={active}
           error={invalid}
@@ -188,7 +223,9 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid }) => {
           variant='contained'
           sx={{ flexShrink: 0 }}
           startIcon={mode === 'upload' ? <UploadIcon /> : <DownloadIcon />}
-          disabled={active || !token || !deviceUuid || !isAbsoluteDevicePath(path) || (mode === 'upload' && !file)}
+          disabled={
+            active || !token || !deviceUuid || !selected || !isAbsoluteDevicePath(path) || (mode === 'upload' && !file)
+          }
           onClick={() => void transfer()}
         >
           {mode === 'upload' ? 'Upload' : 'Download'}

@@ -254,10 +254,21 @@ requiring image labels. Targets are ordered Host OS, App services, then supporte
 colors and ordering are used in the service tables and logs picker. Use `+` to add independent terminal tabs and the
 expand button to fill the browser viewport without reconnecting sessions or hiding the device name. Close a shell using
 its tab's `X`. Idle shells are kept alive on both the browser WebSocket and upstream SSH tunnel. The Upload/Download
-panel accepts absolute Host OS target/source paths and shows transfer progress and cancellation. Supported browsers
-stream downloads into a chosen local file; other browsers use a clearly indicated browser-memory fallback. See
+panel has an independent Host OS/container selector with the terminal's ordering and colors. Enter an absolute path
+inside the selected filesystem to upload or download; progress and cancellation are shown. Container transfers use host
+SFTP against the running container's filesystem and require no SFTP server inside the image. Supported browsers stream
+downloads into a chosen local file; other browsers use a clearly indicated browser-memory fallback. See
 [REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for session ownership, authentication, and transfer
 limitations.
+
+**Download save-prompt timing:** Browsers supporting streamed saves show the destination picker before checking the
+remote file. The picker requires transient user activation from the Download click; waiting for remote authorization
+and SSH/SFTP checks first can exhaust that activation and prevent the picker from opening. Consequently, errors such
+as "No such file", permission errors, or connection failures appear after the save prompt, for both Host OS and
+container downloads. Remote validation failures occur before downloaded bytes are written. We intentionally do not
+pre-check paths while typing: that would add debouncing delays and remote requests, and a successful check cannot
+guarantee the file still exists or remains readable when the download begins. Browsers using the browser-memory
+fallback instead fetch the file successfully before triggering the local download.
 
 The HTTP, HTTPS, and VNC label discovery described below is available only through the legacy `open-balena-remote` flow.
 To make use of that legacy auto-discovery, add tags to each container within your application's `docker-compose` file

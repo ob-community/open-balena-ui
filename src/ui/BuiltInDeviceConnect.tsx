@@ -218,7 +218,7 @@ export const BuiltInDeviceConnect: React.FC<BuiltInDeviceConnectProps> = ({ reco
           </Box>
         ))}
       </Box>
-      <RemoteFileTransfer token={token} deviceUuid={deviceUuid} />
+      <RemoteFileTransfer token={token} deviceUuid={deviceUuid} targets={targets} />
     </Box>
   );
 };

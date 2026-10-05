@@ -14,6 +14,8 @@ import TagsWidget from './tagsWidget';
 import DeviceConnectButton from '../../ui/DeviceConnectButton';
 import { OpenInFull } from '@mui/icons-material';
 import SummaryWidget from './summaryWidget';
+import environment from '../../lib/reactAppEnv';
+import { DeviceLogSelectionProvider } from '../../ui/DeviceLogSelection';
 
 const DashboardLayout: React.FC = () => {
   const record = useRecordContext();
@@ -24,7 +26,7 @@ const DashboardLayout: React.FC = () => {
   }
 
   return (
-    <>
+    <DeviceLogSelectionProvider key={record.id} deviceId={record.id}>
       <Box
         sx={{
           display: 'flex',
@@ -73,48 +75,52 @@ const DashboardLayout: React.FC = () => {
           </Card>
 
           <Card sx={{ padding: 0, marginTop: '15px', position: 'relative' }}>
-            <DeviceConnectButton
-              size='small'
-              sx={{
-                'width': 32,
-                'height': 32,
-                'minWidth': 32,
-                'padding': 0,
-                'display': 'inline-flex',
-                'alignItems': 'center',
-                'justifyContent': 'center',
-                'gap': 0,
-                'borderRadius': '6px',
-                'position': 'absolute',
-                'top': 10,
-                'right': 15,
-                'color':
-                  theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.9) : theme.palette.text.secondary,
-                'backgroundColor':
-                  theme.palette.mode === 'dark'
-                    ? alpha(theme.palette.common.white, 0.14)
-                    : theme.palette.background.paper,
-                'border': 'none',
-                'boxShadow': 'none',
-                '&:hover': {
-                  backgroundColor:
+            {!environment.REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED && (
+              <DeviceConnectButton
+                size='small'
+                sx={{
+                  'width': 32,
+                  'height': 32,
+                  'minWidth': 32,
+                  'padding': 0,
+                  'display': 'inline-flex',
+                  'alignItems': 'center',
+                  'justifyContent': 'center',
+                  'gap': 0,
+                  'borderRadius': '6px',
+                  'position': 'absolute',
+                  'top': 10,
+                  'right': 15,
+                  'color':
                     theme.palette.mode === 'dark'
-                      ? alpha(theme.palette.common.white, 0.22)
-                      : alpha(theme.palette.background.paper, 0.9),
-                  boxShadow: 'none',
-                },
-                '& .MuiButton-startIcon': {
-                  margin: 0,
-                },
-              }}
-              connectIcon={<OpenInFull fontSize='small' />}
-              connectIconTooltip='Open Fullscreen View'
-            />
+                      ? alpha(theme.palette.common.white, 0.9)
+                      : theme.palette.text.secondary,
+                  'backgroundColor':
+                    theme.palette.mode === 'dark'
+                      ? alpha(theme.palette.common.white, 0.14)
+                      : theme.palette.background.paper,
+                  'border': 'none',
+                  'boxShadow': 'none',
+                  '&:hover': {
+                    backgroundColor:
+                      theme.palette.mode === 'dark'
+                        ? alpha(theme.palette.common.white, 0.22)
+                        : alpha(theme.palette.background.paper, 0.9),
+                    boxShadow: 'none',
+                  },
+                  '& .MuiButton-startIcon': {
+                    margin: 0,
+                  },
+                }}
+                connectIcon={<OpenInFull fontSize='small' />}
+                connectIconTooltip='Open Fullscreen View'
+              />
+            )}
             <DeviceConnect />
           </Card>
         </div>
       </Box>
-    </>
+    </DeviceLogSelectionProvider>
   );
 };
 

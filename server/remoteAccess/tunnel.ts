@@ -1,4 +1,5 @@
 import tls from 'node:tls';
+import net from 'node:net';
 import type { Duplex } from 'node:stream';
 import type { RemoteAccessConfig } from './config';
 import type { RemoteIdentity } from './auth';
@@ -12,12 +13,15 @@ export const openTunnel = (
   new Promise((resolve, reject) => {
     let settled = false;
     let response = Buffer.alloc(0);
-    const socket = tls.connect({
-      host: config.tunnel.host,
-      port: config.tunnel.port,
-      servername: config.tunnel.servername,
-      rejectUnauthorized: true,
-    });
+    const secure = config.tunnel.protocol === 'https:';
+    const socket = secure
+      ? tls.connect({
+          host: config.tunnel.host,
+          port: config.tunnel.port,
+          servername: config.tunnel.servername,
+          rejectUnauthorized: true,
+        })
+      : net.connect({ host: config.tunnel.host, port: config.tunnel.port });
     const fail = (error: Error): void => {
       if (settled) return;
       settled = true;
@@ -32,7 +36,7 @@ export const openTunnel = (
     }
     socket.setTimeout(config.connectTimeoutMs, () => fail(new Error('Tunnel connection timed out.')));
     socket.once('error', fail);
-    socket.once('secureConnect', () => {
+    socket.once(secure ? 'secureConnect' : 'connect', () => {
       const credentials = Buffer.from(`${identity.username}:${identity.token}`, 'utf8').toString('base64');
       socket.write(
         `CONNECT ${deviceUuid}.balena:${config.targetPort} HTTP/1.1\r\n` +

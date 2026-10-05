@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { utils as sshUtils } from 'ssh2';
 import type { Request as ExpressRequest } from 'express';
 import { authorizeDevice, bearerToken, resolveRemoteIdentity } from './auth';
 import { loadRemoteAccessConfig, parseBoolean, parseHostKeys, parseTunnelEndpoint } from './config';
@@ -51,11 +52,20 @@ test('canonical identity and device authorization use bearer headers only', asyn
 
 test('remote access configuration is strict and applies safe defaults', () => {
   assert.deepEqual(parseTunnelEndpoint('tunnel.internal:8443'), {
+    protocol: 'https:',
     host: 'tunnel.internal',
     port: 8443,
     servername: 'tunnel.internal',
   });
-  assert.throws(() => parseTunnelEndpoint('http://tunnel.internal'));
+  assert.deepEqual(parseTunnelEndpoint('http://ob-vpn.openbalena.svc.cluster.local:3128'), {
+    protocol: 'http:',
+    host: 'ob-vpn.openbalena.svc.cluster.local',
+    port: 3128,
+    servername: 'ob-vpn.openbalena.svc.cluster.local',
+  });
+  assert.equal(parseTunnelEndpoint('http://tunnel.internal').port, 80);
+  assert.throws(() => parseTunnelEndpoint('ftp://tunnel.internal'));
+  assert.throws(() => parseTunnelEndpoint('http://tunnel.internal/path'));
   assert.equal(parseBoolean(undefined), false);
   assert.equal(parseBoolean('true'), true);
   assert.throws(() => parseBoolean('yes'));
@@ -174,7 +184,17 @@ test('Ed25519 key manager reuses, refcounts, and removes registered keys', async
 
   const generated = generateEd25519SshKey();
   assert.match(generated.publicKey, /^ssh-ed25519 /);
-  assert.match(generated.privateKey, /BEGIN PRIVATE KEY/);
+  assert.match(generated.privateKey, /BEGIN OPENSSH PRIVATE KEY/);
+  const parsed = sshUtils.parseKey(generated.privateKey);
+  assert.ok(!(parsed instanceof Error) && !Array.isArray(parsed));
+  if (parsed instanceof Error || Array.isArray(parsed)) throw new Error('Expected one supported SSH key.');
+  assert.equal(parsed.type, 'ssh-ed25519');
+  assert.equal(parsed.getPublicSSH().toString('base64'), generated.publicKey.split(' ')[1]);
+  const authenticationPayload = Buffer.from('SSH public-key authentication regression test');
+  const signature = parsed.sign(authenticationPayload);
+  assert.ok(Buffer.isBuffer(signature));
+  if (!Buffer.isBuffer(signature)) throw new Error('Expected an SSH authentication signature.');
+  assert.equal(parsed.verify(authenticationPayload, signature), true);
 
   const manager = new UserSshKeyManager('https://db.example.test', 10);
   const identity = { userId: 7, username: 'alice', token: 'secret-token' };

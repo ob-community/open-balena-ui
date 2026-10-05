@@ -1,4 +1,5 @@
 export interface TunnelEndpoint {
+  protocol: 'http:' | 'https:';
   host: string;
   port: number;
   servername: string;
@@ -41,12 +42,20 @@ export const parseBoolean = (value: string | undefined, fallback = false): boole
 export const parseTunnelEndpoint = (value: string): TunnelEndpoint => {
   const candidate = value.includes('://') ? value : `https://${value}`;
   const url = new URL(candidate);
-  if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('OPEN_BALENA_TUNNEL_URL must be an HTTPS host with an optional port.');
+  if (
+    !['http:', 'https:'].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error('OPEN_BALENA_TUNNEL_URL must be an HTTP(S) host with an optional port.');
   }
   return {
+    protocol: url.protocol === 'http:' ? 'http:' : 'https:',
     host: url.hostname,
-    port: url.port ? Number(url.port) : 443,
+    port: url.port ? Number(url.port) : url.protocol === 'http:' ? 80 : 443,
     servername: url.hostname,
   };
 };

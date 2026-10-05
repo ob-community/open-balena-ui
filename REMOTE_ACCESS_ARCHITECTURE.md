@@ -154,6 +154,11 @@ The Node HTTP server owns one `upgrade` handler. Only the documented remote WebS
 
 The key manager owns private-key material and public-key database records.
 
+The private key is exported in **OpenSSH private-key format**, using the existing `micro-key-producer/ssh.js` helper
+with a cryptographically random 32-byte seed. Generic Ed25519 PKCS#8 PEM is not supported by the deployed `ssh2` parser
+and must not be substituted. Regression tests parse the exported key with `ssh2`, verify its public half matches the
+registered key, and exercise signing and signature verification.
+
 Its cache key is the authenticated openBalena user ID. One key may support many simultaneous and sequential operations
 by that same user. It is never shared with another user.
 
@@ -169,7 +174,8 @@ Each entry contains:
 
 ### SSH session manager
 
-The session manager opens TLS HTTP CONNECT sockets and passes them to `ssh2`. Its responsibilities are:
+The session manager opens HTTP CONNECT sockets over TLS for HTTPS endpoints, or plain TCP for explicitly configured
+trusted-private-network HTTP endpoints, and passes them to `ssh2`. Its responsibilities are:
 
 - tunnel handshake and response validation;
 - SSH authentication as the canonical username;
@@ -295,8 +301,12 @@ sequenceDiagram
     participant T as Tunnel
     participant S as Device SSH
 
-    U->>T: TLS ClientHello with verified tunnel hostname
-    T-->>U: TLS established
+    alt HTTPS tunnel endpoint
+        U->>T: TLS ClientHello with verified tunnel hostname
+        T-->>U: TLS established
+    else HTTP endpoint on trusted private network
+        U->>T: Plain TCP connection to CONNECT listener
+    end
     U->>T: CONNECT UUID.balena:22222 HTTP/1.1
     U->>T: Proxy-Authorization for current user
     T-->>U: HTTP 200 Connection Established
@@ -310,6 +320,14 @@ sequenceDiagram
 
 The CONNECT parser accepts only a bounded HTTP response header and requires a successful status. Proxy credentials and
 the caller JWT are redacted from every error.
+
+For the Mapped dev cluster, the checked infrastructure manifests expose
+`http://ob-vpn.openbalena.svc.cluster.local:3128` as the direct CONNECT listener without PROXY headers. Port `443` is
+the VPN listener requiring PROXY protocol; port `80` is the VPN HTTP API. Plain HTTP CONNECT sends the proxy
+username/token without application-layer TLS, so it is suitable only on a trusted private network or encrypted private
+tunnel. The subsequent SSH connection still encrypts terminal/file payloads. The checked Cloudflare ingress
+configuration routes `vpn.mgmt.edge-dev.mapped.com` to port `80`; it does not define the
+`tunnel.mgmt.edge-dev.mapped.com` Spectrum mapping.
 
 ## SSH host-key trust
 
@@ -326,27 +344,83 @@ mismatching pin.
 Long term, a deployment-managed SSH host CA is preferable to individual pins if balenaOS provisioning can supply host
 certificates.
 
+## Browser workspace and session ownership
+
+The built-in workspace has a tab strip, a terminal area, and a separate Upload/Download panel. Add a terminal with the
+`+` button, choose Host OS or a running application service in the centered overlay, and select **Start terminal**. The
+overlay disappears after the SSH channel opens. The start action becomes **Cancel connection** during connection
+establishment. Close a connected shell with its tab's `X`; there is no duplicate Disconnect button. Connection state is
+shown by a dot in the tab, rather than a detached status label next to competing actions.
+
+Each tab owns its xterm instance, terminal buffer, connection state, cancellation controller, and authenticated
+WebSocket. **The current UI opens one WSS connection per tab, using logical channel 1 on each connection.** The server
+protocol supports multiple channels on one connection, but the UI deliberately isolates tabs for independent failure and
+teardown. Every connection still uses the same public HTTPS port; there are no per-tab listening ports. Tabs share the
+server's per-user ephemeral key, not a browser-owned private key.
+
+```mermaid
+flowchart LR
+    subgraph "One browser workspace"
+        H[Host OS tab / xterm]
+        C[Container tab / xterm]
+        F[Upload / Download panel]
+    end
+    subgraph "One ob-ui HTTPS listener"
+        WH[WSS connection / channel 1]
+        WC[WSS connection / channel 1]
+        HTTP[Streaming HTTPS routes]
+        K[Per-user ephemeral key]
+    end
+    H <--> WH
+    C <--> WC
+    F <--> HTTP
+    WH --> K
+    WC --> K
+    HTTP --> K
+```
+
+Switching tabs hides, but does not unmount, the inactive terminal. Closing a tab tears down only its connection.
+Expanding the workspace changes the existing subtree to a fixed, full-browser-viewport layout; it does not open a second
+dialog, request native browser fullscreen, or reconnect terminals. Collapse and Escape restore the dashboard layout.
+Only visible terminals are fitted to their current dimensions. The title bar retains the device name when expanded. Host
+OS is listed first in the target picker, followed by App services and then supported Supervisor services, in the same
+order as the dashboard tables. Service-name-based colored badges are shared by those tables, terminal targets, terminal
+tabs, and the logs container picker.
+
+The terminal's measurement and rendering elements use the same monospace font stack. A scoped override isolates xterm
+from the application's universal proportional-font rule; otherwise xterm's fixed-width cell layout produces uneven
+spacing even though the terminal options specify a monospace font.
+
+Connection cancellation uses both an abort signal for ticket requests and an attempt-generation guard so late async
+results cannot create a socket after cancellation or unmount. Browser-initiated WebSocket closes use code `1000`:
+browser callers cannot send the protocol-reserved `1002` or `1011` codes. Server-originated error text is retained in
+the affected tab. Failed channel opens produce channel-scoped `error` and `closed` messages; device access is checked
+again for every `open`, even after ticket authentication.
+
 ## Terminal protocol
 
 WebSocket supplies framing but not independent logical streams. The application protocol therefore has an explicit
 version and channel identifier.
 
-Representative control messages:
+Control messages are JSON with `v: 1`:
 
-| Type          | Direction         | Purpose                                     |
-| ------------- | ----------------- | ------------------------------------------- |
-| `open`        | browser to server | Open a host or validated container terminal |
-| `opened`      | server to browser | Confirm SSH channel creation                |
-| `input`       | browser to server | Terminal input                              |
-| `output`      | server to browser | Terminal output                             |
-| `resize`      | browser to server | Set PTY rows and columns                    |
-| `exit`        | server to browser | Report remote exit code or signal           |
-| `close`       | both              | Close one logical channel                   |
-| `error`       | server to browser | Typed, non-secret failure                   |
-| `ping`/`pong` | both              | Application liveness                        |
+| Type        | Direction         | Purpose                                          |
+| ----------- | ----------------- | ------------------------------------------------ |
+| `auth`      | browser to server | Consume a ticket in the first message            |
+| `ready`     | server to browser | Confirm ticket authentication                    |
+| `open`      | browser to server | Open a host or validated container terminal      |
+| `opened`    | server to browser | Confirm SSH channel creation                     |
+| `resize`    | browser to server | Set PTY rows and columns                         |
+| `exit`      | server to browser | Report remote exit code or signal                |
+| `close`     | browser to server | Request logical channel closure                  |
+| `closed`    | server to browser | Confirm logical channel closure                  |
+| `error`     | server to browser | Non-secret failure, optionally scoped to channel |
+| `heartbeat` | both              | Optional application heartbeat and nonce echo    |
 
-Each message carries protocol version and logical channel ID. Numeric dimensions, lengths, and channel IDs are bounded
-before allocation.
+Terminal input/output are binary WebSocket messages: a four-byte unsigned big-endian channel ID followed by the raw
+terminal bytes. Channel-scoped control messages include `channel`; connection-level messages do not. The browser uses an
+incremental UTF-8 decoder per terminal so multibyte characters split across frames are preserved. Numeric dimensions,
+lengths, and channel IDs are bounded before allocation. Server WebSocket ping/pong frames also detect dead peers.
 
 ### Flow control
 
@@ -358,11 +432,87 @@ and resumes it only after every blocked channel drains.
 
 Terminal traffic is never multiplexed with file bytes. Bulk transfers use HTTP so they cannot starve interactive output.
 
+### Idle sessions and keepalives
+
+There is no terminal typing/output inactivity deadline. Two different network hops require independent keepalives:
+
+- **Browser to ob-ui:** the server sends WebSocket ping frames every 30 seconds. The browser's WebSocket implementation
+  answers with pong frames automatically, including when a terminal tab is hidden. If a previous ping remains unanswered
+  at the next probe, the server terminates that dead WebSocket and closes its SSH channels.
+- **ob-ui through the CONNECT tunnel to the device:** `ssh2` sends SSH-level keepalive requests every 30 seconds. This
+  is essential because browser WebSocket ping/pong does not produce any traffic through the upstream CONNECT tunnel.
+  Without SSH probes, an idle tunnel can be dropped by proxy/network inactivity limits even while the browser remains
+  connected. Three consecutive unanswered SSH probes cause transport failure and cleanup; a responsive but otherwise
+  idle SSH transport stays open.
+
+An open shell retains an active ephemeral-key reference regardless of typing activity. The configurable key-idle timer
+(10 minutes by default) starts only when the user's last shell or transfer releases its reference. Closing/refreshing
+the browser, losing its connectivity, explicitly closing a terminal tab, or a real SSH/device failure releases
+references. Keepalives cannot preserve a shell across a device restart, a broken network, or an explicit remote shell
+exit.
+
+The automated regression runs a real SSH server through a local CONNECT proxy with a short idle timeout, scales only the
+test's probe interval, verifies the connection survives beyond that timeout without shell input, and verifies its key
+and operation quota are retained until closure.
+
 ### Container terminals
 
 Container names are validated against a narrow character and length policy. They are never concatenated into an
 arbitrary shell command. The server invokes only the fixed, documented balena container-entry operation with the
 validated name. Arbitrary command selection is outside the browser protocol.
+
+The Supervisor-group `core` target uses the reserved `balena_supervisor` selector, while an App service named `core`
+continues to use its normal service-name selector. For the Supervisor target, resolution first checks the `core` service
+label, then the exact canonical container name `balena_supervisor`; older Supervisor core containers do not carry the
+normal application service-name label. Other targets never use this fallback. The logs picker likewise distinguishes
+Supervisor core from an App service named core: it includes that core service's tagged messages and untagged/default
+Supervisor entries, without including other application messages.
+
+## Device log viewer
+
+Logs use the existing openBalena `GET /device/v2/<uuid>/logs` API with the logged-in user's bearer token. They do not
+travel over terminal WebSockets, open an SSH connection, or acquire an ephemeral SSH key. Keeping the log viewer active
+therefore does not postpone SSH-key cleanup after the user's last shell/file operation ends.
+
+The dashboard's device-scoped selection provider is shared by the App/Supervisor checklist menus and the service-table
+log buttons. Buttons toggle sources rather than replacing all other selections. Host OS appears first in the Supervisor
+checklist, followed by the Supervisor services in dashboard order. Group checkboxes select/deselect all their sources.
+Returning to **Select Container (clear selection)**, or unchecking every source, immediately empties the window and
+stops polling. A new device starts with no selected sources.
+
+While sources are selected, one non-overlapping polling loop fetches the API's combined snapshot immediately and then
+approximately two seconds after each request completes. Selected-source filtering happens in the browser, so the number
+of API requests does not grow with the number of selected sources. Requests are aborted and timers removed when the
+viewer unmounts, the device changes, or all sources are deselected. Failures appear explicitly in an alert; repeated
+identical errors do not flood the console.
+
+Numeric millisecond timestamps and ISO timestamps are normalized to ISO. Snapshots are merged in chronological order,
+deduplicating already captured entries while preserving repeated identical entries within a snapshot. Overlapping Host
+OS/default Supervisor-core selections do not duplicate physical log entries. The browser retains at most 5,000 entries
+and prevents evicted history from being replayed. This is a bounded tail viewer: messages lost from the API's tail
+between polls cannot be recovered, and a download is not a complete historical device-log archive.
+
+Rendering is React text and styled spans, never log-supplied HTML. ANSI SGR colors, bold/italic/dim styles, and
+indexed/RGB colors are preserved; other terminal controls and OSC links are stripped. JSON `level`/`severity` fields
+supply fallback severity colors when a container emits structured logs without ANSI. Stderr and system flags continue
+supplying their existing error/warning colors. All content spans use the same monospace stack, isolated from the global
+app font rule.
+
+**Clear logs** empties the captured buffer and records a timestamp cutoff at least as recent as the newest displayed
+entry and the browser's current clock. Old snapshots and in-flight responses cannot repopulate pre-clear history. The
+cutoff survives source changes, including deselecting/reselecting all sources, and resets on viewer reload/device
+change. Accurate device/browser clocks are required for time-based clear and timestamp filters. Scrolling upward pauses
+automatic bottom-follow; scrolling back to the bottom resumes it.
+
+**Download displayed logs** creates a browser-only UTF-8 text download containing the currently selected and filtered
+entries, with ISO timestamp and source labels. ANSI controls are excluded from exported text. Nothing is staged on
+ob-ui.
+
+Free-text search matches message substrings without case sensitivity. An added filter is an OR group of alternatives;
+multiple filter groups and free-text search are ANDed. Message operators support contains/not contains, equality/
+inequality, starts-with/not starts-with, and ends-with/not ends-with. Timestamp operators support before, after,
+equality, and inequality. Local-time inputs are converted to timezone-qualified ISO timestamps. Invalid filters are
+rejected with visible validation errors. Active filter chips can be edited or deleted.
 
 ## Streaming uploads
 
@@ -396,11 +546,16 @@ sequenceDiagram
 The server does not use Express JSON/body buffering on upload byte routes. Request bodies flow through a bounded
 counting/validation transform into an SFTP write stream. Cancellation destroys both sides of the pipeline.
 
+The browser sends the selected `File` directly as the XMLHttpRequest body with bearer authentication. Upload progress
+reports bytes sent by the browser, not an acknowledgement that the device has committed them. Completion is shown only
+after the server returns success. The selected filename and size are displayed separately from the compact action
+buttons. Upload and download paths are independent, absolute Host OS paths, even when a container terminal is selected.
+
 The initial implementation streams one HTTP request into an unpredictable sibling `.part` path, verifies the received
-length when the browser supplied one, and renames the partial file to the requested target only after success. It removes
-the partial file after an error or cancellation and rejects a target that already exists during preflight. It does not
-claim restart-resumable upload semantics. A later resumable protocol may persist confirmed remote offsets, but any
-persisted state must contain only metadata, never file content. Multi-replica resumability would also require shared
+length when the browser supplied one, and renames the partial file to the requested target only after success. It
+removes the partial file after an error or cancellation and rejects a target that already exists during preflight. It
+does not claim restart-resumable upload semantics. A later resumable protocol may persist confirmed remote offsets, but
+any persisted state must contain only metadata, never file content. Multi-replica resumability would also require shared
 metadata and a distributed lock for each upload ID.
 
 ## Streaming downloads
@@ -434,6 +589,16 @@ sequenceDiagram
 Downloads support `HEAD`, a single `Range`, `206`, `Content-Range`, and `416`. The browser receives a safe
 `Content-Disposition` filename. The current implementation does not supply a strong ETag or implement `If-Range`, so a
 caller must not combine ranged responses when the remote file may have changed.
+
+On browsers supporting `showSaveFilePicker`, the Download click opens the native save picker before any asynchronous
+work, preserving user activation. The authenticated response stream passes through a byte-counting transform into the
+chosen file's writable stream. Cancellation aborts the fetch and the writable pipeline. Cancelling the picker is shown
+as cancellation, not a connection failure.
+
+If that API is unavailable, the UI explicitly explains that the complete download is held in **browser memory** before
+an object-URL download is triggered. This fallback still never stages bytes on ob-ui disk, but is not a bounded-memory
+browser download and is unsuitable for very large files. Progress and Cancel controls are shared by the two modes; mode
+switching is disabled during an active transfer.
 
 SFTP is required. The implementation does not silently fall back to interpolated `cat`, `dd`, `tar`, or legacy SCP
 commands. If a device lacks SFTP, the API returns an explicit capability error.
@@ -556,23 +721,23 @@ uploads and downloads; the current upload protocol restarts from byte zero.
 The implementation recognizes the following remote-access settings. Exact parsing and defaults are tested in server
 code.
 
-| Variable                                       |             Default | Purpose                                                                |
-| ---------------------------------------------- | ------------------: | ---------------------------------------------------------------------- |
-| `REACT_APP_OPEN_BALENA_REMOTE_URL`             |               empty | Non-empty selects the legacy remote service                            |
-| `OPEN_BALENA_TUNNEL_URL`                       |                none | Internal TLS tunnel endpoint used by built-in access                   |
-| `OPEN_BALENA_SSH_TARGET_PORT`                  |             `22222` | Device SSH port requested through CONNECT                              |
-| `OPEN_BALENA_SSH_KEY_IDLE_TTL_MS`              |            `600000` | Delay after the final operation before deleting a user's ephemeral key |
-| `OPEN_BALENA_SSH_HOST_KEYS`                    |                none | Device/wildcard SHA-256 host-key pins                                  |
-| `OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS`   |             `false` | Compatibility escape hatch for old/unmanaged device host keys          |
-| `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS`           | ob-ui origin policy | Explicit additional browser origins for WSS                            |
-| `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS`        |             `15000` | Tunnel and SSH connection timeout                                      |
-| `OPEN_BALENA_REMOTE_TICKET_TTL_MS`             |             `30000` | Single-use WebSocket ticket lifetime                                   |
-| `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER`   |                 `8` | Simultaneous terminals/transfers per user                              |
-| `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP`     |                 `8` | Simultaneous terminal WebSockets per source IP                         |
-| `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET`   |                 `4` | Logical terminal channels per WebSocket                                |
-| `OPEN_BALENA_REMOTE_MAX_MESSAGE_BYTES`         |           `1048576` | Maximum WebSocket message size                                         |
-| `OPEN_BALENA_REMOTE_MAX_UPLOAD_BYTES`          |        `1073741824` | Maximum accepted upload length                                         |
-| `OPEN_BALENA_REMOTE_MAX_PATH_BYTES`            |              `4096` | Maximum UTF-8 byte length of a remote path                             |
+| Variable                                     |             Default | Purpose                                                                      |
+| -------------------------------------------- | ------------------: | ---------------------------------------------------------------------------- |
+| `REACT_APP_OPEN_BALENA_REMOTE_URL`           |               empty | Non-empty selects the legacy remote service                                  |
+| `OPEN_BALENA_TUNNEL_URL`                     |                none | HTTPS tunnel, or explicit HTTP CONNECT endpoint on a trusted private network |
+| `OPEN_BALENA_SSH_TARGET_PORT`                |             `22222` | Device SSH port requested through CONNECT                                    |
+| `OPEN_BALENA_SSH_KEY_IDLE_TTL_MS`            |            `600000` | Delay after the final operation before deleting a user's ephemeral key       |
+| `OPEN_BALENA_SSH_HOST_KEYS`                  |                none | Device/wildcard SHA-256 host-key pins                                        |
+| `OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS` |             `false` | Compatibility escape hatch for old/unmanaged device host keys                |
+| `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS`         | ob-ui origin policy | Explicit additional browser origins for WSS                                  |
+| `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS`      |             `15000` | Tunnel and SSH connection timeout                                            |
+| `OPEN_BALENA_REMOTE_TICKET_TTL_MS`           |             `30000` | Single-use WebSocket ticket lifetime                                         |
+| `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER` |                 `8` | Simultaneous terminals/transfers per user                                    |
+| `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP`   |                 `8` | Simultaneous terminal WebSockets per source IP                               |
+| `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET` |                 `4` | Logical terminal channels per WebSocket                                      |
+| `OPEN_BALENA_REMOTE_MAX_MESSAGE_BYTES`       |           `1048576` | Maximum WebSocket message size                                               |
+| `OPEN_BALENA_REMOTE_MAX_UPLOAD_BYTES`        |        `1073741824` | Maximum accepted upload length                                               |
+| `OPEN_BALENA_REMOTE_MAX_PATH_BYTES`          |              `4096` | Maximum UTF-8 byte length of a remote path                                   |
 
 Built-in mode must refuse to start a remote operation with a clear configuration error when its tunnel endpoint or
 required authorization dependencies are missing. The rest of open-balena-ui remains available.
@@ -652,6 +817,21 @@ After acceptance:
 - no file-system staging calls.
 
 ### Deployment acceptance
+
+Live development acceptance on device 25 verified host SSH, simultaneous host and `ugshell` terminals, independent tab
+closure, expansion/collapse preserving the same terminal DOM and connections, and connection-error recovery. A small
+upload/download round trip verified exact content, ranged reads, duplicate-target rejection, missing-source errors, and
+cleanup of the scratch files. The redesigned Download control's streamed-save path was tested with a recording writable
+sink in place of the native OS save dialog. This does not replace a manual native-dialog test or large-file and
+supported-device-version acceptance.
+
+Follow-up acceptance verified equal-width monospace character measurement, the device name in the expanded title,
+matching App/Supervisor order and badge colors in the terminal and logs pickers, and a working canonical Supervisor
+`core` shell. Simultaneous Host OS and Supervisor core shells remained connected for 370 seconds with no terminal input
+or output; both successfully executed a command afterward. Closing core's tab left Host OS connected. This validates
+survival beyond the reported three-to-five-minute idle disconnect window, not immunity to genuine transport failures.
+
+The broader deployment acceptance matrix remains:
 
 - oldest and newest supported balenaOS versions;
 - simultaneous terminals across users and devices;

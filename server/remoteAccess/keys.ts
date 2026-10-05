@@ -1,4 +1,5 @@
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import sshKey from 'micro-key-producer/ssh.js';
 import type { RemoteIdentity } from './auth';
 
 interface KeyEntry {
@@ -15,22 +16,9 @@ export interface KeyLease {
   release(): void;
 }
 
-const sshString = (value: Buffer): Buffer => {
-  const size = Buffer.alloc(4);
-  size.writeUInt32BE(value.length);
-  return Buffer.concat([size, value]);
-};
-
 export const generateEd25519SshKey = (): { privateKey: string; publicKey: string } => {
-  const pair = generateKeyPairSync('ed25519');
-  const jwk = pair.publicKey.export({ format: 'jwk' });
-  if (!jwk.x) throw new Error('Unable to export Ed25519 key.');
-  const algorithm = Buffer.from('ssh-ed25519');
-  const blob = Buffer.concat([sshString(algorithm), sshString(Buffer.from(jwk.x, 'base64url'))]);
-  return {
-    privateKey: pair.privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
-    publicKey: `ssh-ed25519 ${blob.toString('base64')} open-balena-ui`,
-  };
+  const { privateKey, publicKey } = sshKey(randomBytes(32), 'open-balena-ui');
+  return { privateKey, publicKey };
 };
 
 export class UserSshKeyManager {

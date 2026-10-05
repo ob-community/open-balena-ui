@@ -343,6 +343,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
         pendingChannels.set(message.channel, controller);
         let ssh: SshLease | undefined;
         try {
+          await authorizeDevice(authenticated.identity, config.apiUrl, authenticated.deviceUuid, controller.signal);
           ssh = await connectSsh(
             config,
             keys,
@@ -396,7 +397,15 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
         } catch (error) {
           pendingChannels.delete(message.channel);
           ssh?.close();
-          throw error;
+          if (!controller.signal.aborted) {
+            json(socket, {
+              type: 'error',
+              channel: message.channel,
+              code: 'channel_open_failed',
+              message: errorMessage(error),
+            });
+            json(socket, { type: 'closed', channel: message.channel });
+          }
         }
       } catch (error) {
         json(socket, { type: 'error', code: 'protocol_error', message: errorMessage(error) });

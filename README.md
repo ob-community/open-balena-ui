@@ -19,10 +19,10 @@ open-balena.
 This project uses `open-balena-api` for operational data and depends on
 [open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) for administrator identity and
 authorization resources that the API does not expose with the required global semantics, plus narrowly scoped
-server-only Host OS metadata writes that public OData cannot perform. Device terminals and file
-transfers are built in when `REACT_APP_OPEN_BALENA_REMOTE_URL` is unset. Configuring that variable retains compatibility
-with [open-balena-remote](https://github.com/ob-community/open-balena-remote). See
-[DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid provider and
+server-only Host OS metadata writes that public OData cannot perform. Device terminals and file transfers are built in
+when `REACT_APP_OPEN_BALENA_REMOTE_URL` is unset. Configuring that variable retains compatibility with
+[open-balena-remote](https://github.com/ob-community/open-balena-remote). See [DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md)
+for the security and deployment implications of the hybrid provider and
 [REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for the complete remote-access deployment model.
 
 ## Configuration
@@ -80,28 +80,28 @@ Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host 
 start an additive, idempotent synchronization into the required `balena_os` system organization. The server reads the
 public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates
 the application/release/service/image graph through open-balena-api. A server-only direct-database exception links each
-Host OS application to its updater because public OData does not expose that internal relation. It also materializes Host OS
-image labels from the public release composition so Supervisors distinguish OS payloads from ordinary services. On
-open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph and links Host OS
+Host OS application to its updater because public OData does not expose that internal relation. It also materializes
+Host OS image labels from the public release composition so Supervisors distinguish OS payloads from ordinary services.
+On open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph and links Host OS
 applications to it so Helios can plan the actual OS transition. It does not delete local records. On API v46.1+, sync
 also stores allowlisted device-type JSON in private S3-compatible storage and writes local release assets pointing to
 the UI's read-only metadata endpoint. It creates and authorizes the release/key records through OData, then persists
 only their WebResource references through internal PostgREST because PineJS rejects ordinary JSON asset writes. It
 verifies all references, triggers the API's host-application metadata-cache hook, and checks API metadata before
-reporting completion. This lets ob-api generate device config without public S3 metadata reads. The
-asset URL contains no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed. An
-internal metadata URL only needs to be reachable by ob-api: it is not sent to devices in normal balenaOS provisioning or
-target-state responses. Provisioning images and device image pulls use their separate helper/registry routes. For
-chart-managed installations, the infrastructure chart owns the automated, idempotent MinIO-to-SeaweedFS migration and
-private bucket/credential setup. Operators do not run manual migration commands in this UI repository; follow the
-installation's infrastructure chart deployment guide. Existing MinIO deployments remain supported. Progress is kept in
-server memory, so the UI polls every five seconds and the UI server must remain running until the job finishes. The
-configured registry endpoint must either serve the public image directly or proxy missing paths to the source registry.
-Synchronization does not copy registry blobs and does not automatically change any fleet or device target release. The
-`balena_os` organization owns the imported catalog records only; Host OS releases are installation-wide and do not need
-to share an organization with a target fleet. Synchronization is disabled until that system organization exists.
-Registry locations are rewritten when records are synchronized; rerun the sync after changing
-`OPEN_BALENA_OS_REGISTRY_HOST` to update existing imported image records.
+reporting completion. This lets ob-api generate device config without public S3 metadata reads. The asset URL contains
+no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed. An internal metadata URL
+only needs to be reachable by ob-api: it is not sent to devices in normal balenaOS provisioning or target-state
+responses. Provisioning images and device image pulls use their separate helper/registry routes. For chart-managed
+installations, the infrastructure chart owns the automated, idempotent MinIO-to-SeaweedFS migration and private
+bucket/credential setup. Operators do not run manual migration commands in this UI repository; follow the installation's
+infrastructure chart deployment guide. Existing MinIO deployments remain supported. Progress is kept in server memory,
+so the UI polls every five seconds and the UI server must remain running until the job finishes. The configured registry
+endpoint must either serve the public image directly or proxy missing paths to the source registry. Synchronization does
+not copy registry blobs and does not automatically change any fleet or device target release. The `balena_os`
+organization owns the imported catalog records only; Host OS releases are installation-wide and do not need to share an
+organization with a target fleet. Synchronization is disabled until that system organization exists. Registry locations
+are rewritten when records are synchronized; rerun the sync after changing `OPEN_BALENA_OS_REGISTRY_HOST` to update
+existing imported image records.
 
 See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for the complete deployment, registry, organization,
 security, and update-lifecycle configuration.
@@ -182,8 +182,10 @@ unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) fo
 
 Built-in remote access uses these server-only variables:
 
-- `OPEN_BALENA_TUNNEL_URL` Required internal HTTPS endpoint for the openBalena CONNECT tunnel, for example
-  `https://tunnel.openbalena.svc.cluster.local:443`. The UI server connects to this endpoint; browsers do not.
+- `OPEN_BALENA_TUNNEL_URL` Required HTTP(S) endpoint for the openBalena CONNECT tunnel. Use HTTPS for external
+  endpoints, or `http://ob-vpn.openbalena.svc.cluster.local:3128` on a trusted private network. Plain HTTP exposes proxy
+  authentication to that network; SSH payloads remain encrypted. The VPN port `443` can require PROXY protocol and is
+  not interchangeable with the direct CONNECT port. The UI server connects here; browsers do not.
 - `OPEN_BALENA_SSH_TARGET_PORT` Device SSH port requested through the tunnel. Defaults to `22222`.
 - `OPEN_BALENA_SSH_KEY_IDLE_TTL_MS` How long the per-user ephemeral SSH key remains registered after that user's last
   terminal or transfer closes. Defaults to `600000` (10 minutes).
@@ -211,16 +213,40 @@ These variables can be supplied through the standard Vite `.env` files (for exam
 `.env.<mode>` when invoking `vite --mode <mode>`). The active mode is already set for the provided `npm run dev` and
 `npm run dev:local` scripts.
 
+## Device logs
+
+The device dashboard polls logs automatically about every two seconds while at least one source is selected. Use the App
+and Supervisor checklist menus to combine sources; Host OS is the first Supervisor-menu entry. The log buttons in
+service tables toggle the same selections. Clearing all selections empties the viewer and stops polling.
+
+Log contents use the terminal's monospace font. ANSI colors are preserved safely, and structured JSON `level`/`severity`
+fields color informational, warning, and error messages. Download exports the currently displayed, filtered entries as
+plain text. Clear removes existing entries and prevents old API history from reappearing on subsequent polls or source
+changes; the cutoff resets when the viewer is reloaded or a different device is opened.
+
+Search is case-insensitive. **Add filter** supports message and timestamp conditions, with **Add alternative** combining
+conditions using OR. Separate filters and the search query combine using AND. Timestamp inputs use local time and are
+stored as timezone-qualified ISO timestamps. The browser retains at most 5,000 captured entries, not unlimited device
+history. See [REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md#device-log-viewer) for details.
+
 ## Exposing Device Connection Endpoints
 
 Each device has a "Connect" button. Built-in mode offers Host OS and running application-container SSH targets without
-requiring image labels. The HTTP, HTTPS, and VNC label discovery described below is available only through the legacy
-`open-balena-remote` flow. To make use of that legacy auto-discovery, add tags to each container within your
-application's `docker-compose` file where you would like to expose services. Examples of the three types of services
-available to expose are provided below (http, https and vnc); note that ssh services are enabled by default and do not
-need labels. When a device is running an application that exposes container services using the label constructs below,
-you will see the service appear in the list of available connections for that container when clicking the "Connect"
-button for that device in the admin ui.
+requiring image labels. Targets are ordered Host OS, App services, then supported Supervisor services; the same service
+colors and ordering are used in the service tables and logs picker. Use `+` to add independent terminal tabs and the
+expand button to fill the browser viewport without reconnecting sessions or hiding the device name. Close a shell using
+its tab's `X`. Idle shells are kept alive on both the browser WebSocket and upstream SSH tunnel. The Upload/Download
+panel accepts absolute Host OS target/source paths and shows transfer progress and cancellation. Supported browsers
+stream downloads into a chosen local file; other browsers use a clearly indicated browser-memory fallback. See
+[REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for session ownership, authentication, and transfer
+limitations.
+
+The HTTP, HTTPS, and VNC label discovery described below is available only through the legacy `open-balena-remote` flow.
+To make use of that legacy auto-discovery, add tags to each container within your application's `docker-compose` file
+where you would like to expose services. Examples of the three types of services available to expose are provided below
+(http, https and vnc); note that ssh services are enabled by default and do not need labels. When a device is running an
+application that exposes container services using the label constructs below, you will see the service appear in the
+list of available connections for that container when clicking the "Connect" button for that device in the admin ui.
 
 HTTP Services:
 

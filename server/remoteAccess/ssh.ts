@@ -5,6 +5,7 @@ import type { RemoteIdentity } from './auth';
 import type { RemoteAccessConfig } from './config';
 import type { UserSshKeyManager } from './keys';
 import { openTunnel } from './tunnel';
+import { validateContainerName } from './validation';
 
 export interface SshLease {
   client: Client;
@@ -80,6 +81,8 @@ export const connectSsh = async (
         username: identity.username,
         privateKey: keyLease!.privateKey,
         readyTimeout: config.connectTimeoutMs,
+        keepaliveInterval: 30_000,
+        keepaliveCountMax: 3,
         hostVerifier: hostKeyVerifier(config, deviceUuid),
       });
     });
@@ -110,6 +113,21 @@ export const openSftp = (client: Client): Promise<SFTPWrapper> =>
     );
   });
 
+export const containerShellCommand = (container: string): string => {
+  const selector = validateContainerName(container);
+  const service = selector === 'balena_supervisor' ? 'core' : selector;
+  return (
+    `if [ -x /usr/bin/balena-engine ]; then engine=/usr/bin/balena-engine; else engine=/usr/bin/docker; fi; ` +
+    `cid=$("$engine" ps -q --filter label=io.balena.service-name=${service} | head -n 1); ` +
+    // The Supervisor's core service can run as the unlabelled, canonical balena_supervisor container.
+    (selector === 'balena_supervisor'
+      ? `if [ -z "$cid" ]; then cid=$("$engine" ps -q --filter 'name=^/balena_supervisor$' | head -n 1); fi; `
+      : '') +
+    `[ -n "$cid" ] || { echo "Service container is not running." >&2; exit 1; }; ` +
+    `exec "$engine" exec -it "$cid" /bin/sh`
+  );
+};
+
 export const openShell = (
   client: Client,
   columns: number,
@@ -133,14 +151,7 @@ export const openShell = (
     };
     const terminal = { term: 'xterm-256color', cols: columns, rows, width: 0, height: 0 };
     if (container) {
-      client.exec(
-        `if [ -x /usr/bin/balena-engine ]; then engine=/usr/bin/balena-engine; else engine=/usr/bin/docker; fi; ` +
-          `cid=$("$engine" ps -q --filter label=io.balena.service-name=${container} | head -n 1); ` +
-          `[ -n "$cid" ] || { echo "Service container is not running." >&2; exit 1; }; ` +
-          `exec "$engine" exec -it "$cid" /bin/sh`,
-        { pty: terminal },
-        callback,
-      );
+      client.exec(containerShellCommand(container), { pty: terminal }, callback);
     } else {
       client.shell(terminal, callback);
     }

@@ -1,12 +1,8 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import { createServer } from 'node:http';
-import registryImageRoutes from './routes/registryImage';
-import adminDatabaseRoutes from './routes/adminDatabase';
-import deviceUpdateRoutes from './routes/deviceUpdates';
-import balenaOsRoutes from './routes/balenaOs';
-import deviceTypeMetadataRoutes from './routes/deviceTypeMetadata';
-import { createClientHtmlRouter } from './routes/clientHtml';
+import { createApiRouter } from './routes/api';
+import { createClientRouter } from './routes/clientHtml';
 import { bootstrapGlobalAdminFromEnvironment } from './bootstrapGlobalAdmin';
 import { createRemoteAccessBackend, type RemoteAccessBackend } from './remoteAccess';
 
@@ -20,24 +16,15 @@ const app = express();
 const server = createServer(app);
 let remoteAccess: RemoteAccessBackend | undefined;
 
-app.use('/', deviceTypeMetadataRoutes);
-app.use('/', registryImageRoutes);
-app.use('/', adminDatabaseRoutes);
-app.use('/', deviceUpdateRoutes);
-app.use('/', balenaOsRoutes);
 if (process.env.OPEN_BALENA_TUNNEL_URL) {
   try {
     remoteAccess = createRemoteAccessBackend();
-    app.use('/', remoteAccess.router);
     remoteAccess.attach(server);
   } catch (error) {
     console.error('Unable to configure built-in remote access:', error);
   }
 }
 if (!remoteAccess) {
-  app.all(/^\/remote(?:\/|$)/, (_req, res) => {
-    res.status(503).json({ error: 'remote_access_unavailable', message: 'Remote access is not configured.' });
-  });
   server.on('upgrade', (request, socket) => {
     if (new URL(request.url ?? '', 'http://localhost').pathname === '/remote/ws') {
       socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
@@ -48,8 +35,8 @@ if (!remoteAccess) {
     }
   });
 }
-app.use(express.static(CLIENT_DIR, { index: false }));
-app.use(createClientHtmlRouter({ clientDir: CLIENT_DIR, remoteAccessEnabled: Boolean(remoteAccess) }));
+app.use(createApiRouter(remoteAccess?.router));
+app.use(createClientRouter({ clientDir: CLIENT_DIR, remoteAccessEnabled: Boolean(remoteAccess) }));
 
 const start = async (): Promise<void> => {
   await bootstrapGlobalAdminFromEnvironment();

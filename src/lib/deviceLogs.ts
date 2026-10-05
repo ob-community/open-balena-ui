@@ -45,7 +45,7 @@ const ansiColors = [
   '#9ff0f0',
   '#ffffff',
 ];
-const ansiSequence = /\u001b(?:\][^\u0007]*(?:\u0007|\u001b\\)|\[[0-?]*[ -/]*[@-~]|[=>])/g;
+const ansiSequence = /\u001b(?:\][^\u0007]*?(?:\u0007|\u001b\\)|\[[0-?]*[ -/]*[@-~]|[=>])/g;
 
 const indexedColor = (index: number): string | undefined => {
   if (!Number.isInteger(index) || index < 0 || index > 255) return undefined;

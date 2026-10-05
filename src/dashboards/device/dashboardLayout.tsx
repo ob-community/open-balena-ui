@@ -75,7 +75,7 @@ const DashboardLayout: React.FC = () => {
           </Card>
 
           <Card sx={{ padding: 0, marginTop: '15px', position: 'relative' }}>
-            {!environment.REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED && (
+            {!!environment.REACT_APP_OPEN_BALENA_REMOTE_URL && (
               <DeviceConnectButton
                 size='small'
                 sx={{

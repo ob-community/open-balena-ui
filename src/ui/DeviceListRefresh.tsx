@@ -19,6 +19,7 @@ import {
 import { relationshipId } from '../lib/deviceServicePresentation';
 import type { ResourceRecord } from '../types/resource';
 import { useDeviceRefreshActions } from './useDeviceRefreshActions';
+import { latestDeviceSnapshot } from '../lib/deviceSnapshots';
 
 type InstallSnapshot = {
   records: ResourceRecord[];
@@ -108,7 +109,11 @@ export const mergeDeviceRows = (
     const update = byId.get(String(record.id));
     if (
       !update ||
-      (Object.keys(update).every((field) => Object.is(record[field], update[field])) &&
+      (Object.keys(update).every(
+        (field) =>
+          Object.is(record[field], update[field]) &&
+          (!authoritative || Object.prototype.hasOwnProperty.call(record, field)),
+      ) &&
         (!authoritative || Object.keys(record).length === Object.keys(update).length))
     )
       return record;
@@ -124,6 +129,7 @@ export const applyDeviceRowRefresh = (
   fresh: ResourceRecord[],
   sourceIds: Identifier[],
 ) => {
+  fresh = fresh.map((record) => latestDeviceSnapshot(record)?.record ?? record);
   // getMany returns full records; omitted old status fields must not survive.
   client.setQueryData<GetListResult<ResourceRecord>>(listKey, (current) => {
     if (!current) return current;
@@ -179,6 +185,9 @@ const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
       enabled: busyIds.length > 0,
       refetchInterval: activeDeviceRefreshMs,
       refetchIntervalInBackground: false,
+      // Keep provider snapshot identities; structural sharing can otherwise
+      // manufacture records without their request provenance.
+      structuralSharing: false,
     },
   );
 
@@ -248,20 +257,17 @@ const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
       filter: filterValues,
     },
   ]);
-  const applied = React.useRef(0);
   React.useEffect(() => {
-    if (
-      !activeDevices.data ||
-      activeDevices.isFetching ||
-      activeDevices.error ||
-      activeDevices.isPlaceholderData ||
-      activeDevices.dataUpdatedAt <= applied.current
-    )
+    if (!activeDevices.data || activeDevices.isFetching || activeDevices.error || activeDevices.isPlaceholderData)
       return;
-    applied.current = activeDevices.dataUpdatedAt;
     const fresh = activeDevices.data;
-    for (const record of fresh)
-      deviceSnapshots.current[String(record.id)] = { record, updatedAt: activeDevices.dataUpdatedAt };
+    for (const record of fresh) {
+      const snapshot = latestDeviceSnapshot(record);
+      deviceSnapshots.current[String(record.id)] = {
+        record: snapshot?.record ?? record,
+        updatedAt: snapshot?.requestedAt ?? 0,
+      };
+    }
     applyDeviceRowRefresh(client, JSON.parse(listKey), fresh, busyIds);
   }, [
     activeDevices.data,
@@ -280,7 +286,8 @@ const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
       if (!pending?.length) continue;
       const snapshot = installs[String(record.id)];
       const deviceSnapshot = deviceSnapshots.current[String(record.id)];
-      const device = deviceSnapshot?.record ?? record;
+      const latest = latestDeviceSnapshot(deviceSnapshot?.record ?? record);
+      const device = latest?.record ?? deviceSnapshot?.record ?? record;
       settle(
         record.id,
         settleDeviceActions(
@@ -288,7 +295,7 @@ const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
           device,
           snapshot?.records ?? [],
           {
-            device: deviceSnapshot?.updatedAt ?? 0,
+            device: latest?.requestedAt ?? deviceSnapshot?.updatedAt ?? 0,
             // A status-filtered fallback cannot prove that a stopped install was removed.
             installs: snapshot?.complete ? snapshot.updatedAt : 0,
           },

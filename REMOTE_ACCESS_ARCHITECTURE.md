@@ -203,18 +203,24 @@ sequenceDiagram
 
     B->>U: POST remote session (Bearer user JWT, device UUID)
     U->>U: Verify JWT signature and claims
-    U->>DB: Resolve signed user ID to canonical username
+    U->>A: Resolve canonical user via /user/v1/whoami
     U->>A: GET host OS access for UUID (same Bearer JWT)
+    A-->>U: Authorized or denied
+    U->>U: Create random single-use WSS ticket
+    U-->>B: Ticket and expiry
+    B->>U: WSS upgrade on /remote/ws
+    U->>U: Validate Origin
+    B->>U: First auth message with ticket
+    U->>U: Consume ticket atomically
+    U-->>B: Ready for channel requests
+    B->>U: Open terminal channel
+    U->>A: Recheck host OS access for UUID
     A-->>U: Authorized or denied
     alt First active SSH/SFTP operation for user
         U->>U: Generate Ed25519 key in memory
         U->>DB: Insert public-key row owned by user
         DB-->>U: Key row ID
     end
-    U->>U: Create random single-use WSS ticket
-    U-->>B: Ticket and expiry
-    B->>U: WSS upgrade with ticket
-    U->>U: Validate Origin and consume ticket atomically
     U->>T: TLS + CONNECT UUID.balena:22222
     Note over U,T: Proxy auth uses canonical username and caller token
     T-->>U: 200 tunnel established
@@ -236,10 +242,15 @@ authenticated HTTPS request. ob-ui returns a cryptographically random, single-us
 - stored only in memory unless multi-replica deployment requires a shared store;
 - bound to user ID, device UUID, and expected Origin;
 - expired after a short interval;
-- consumed atomically during upgrade;
+- consumed atomically in the first authentication message after an Origin-validated upgrade;
 - useless after first use.
 
 The user JWT is never placed in the WebSocket URL.
+
+Pending tickets have independent per-user and per-process limits, defaulting to 8 and 1024 respectively. These bound
+ticket memory even though successful authenticated requests do not consume the general failure-rate quota. Issuance
+over either cap returns HTTP `429` with `Retry-After`. A cleanup timer removes expired tickets without further traffic;
+consumption (including a failed origin match) releases the ticket slot, and shutdown clears all tickets and timers.
 
 ### Device authorization
 
@@ -286,9 +297,15 @@ The default idle delay is ten minutes. Operators can change it with `OPEN_BALENA
 only when the final terminal or transfer using the key releases its reference. A new operation cancels the timer and
 reuses the key.
 
+Acquisition, deletion, and deletion retries are serialized per user. If cleanup has already begun, a new acquisition
+waits for it and obtains a registered replacement instead of leasing the key being deleted. Failed deletion entries
+are quarantined from reuse; a subsequent acquisition must complete their removal before creating a replacement.
+Shutdown prevents new leases while registered-key cleanup runs.
+
 Every key row has a unique ob-ui-specific title containing a non-secret session identifier. This avoids overwriting
-user-managed keys and supports cleanup. Normal cleanup deletes the exact row ID created by the manager. Startup/periodic
-orphan cleanup may delete only rows bearing the reserved prefix and old enough to exceed the documented safety interval.
+user-managed keys and supports cleanup. Normal cleanup deletes the exact row ID created by the manager. Before creating
+a key, opportunistic orphan cleanup may delete only rows bearing the reserved prefix and old enough to exceed the
+documented safety interval; it is not a guarantee of immediate cleanup after an abrupt process exit.
 
 JavaScript cannot guarantee physical memory zeroization. The implementation minimizes private-key lifetime, never
 serializes it outside the SSH library boundary, and releases all references after cleanup.
@@ -320,6 +337,8 @@ sequenceDiagram
 
 The CONNECT parser accepts only a bounded HTTP response header and requires a successful status. Proxy credentials and
 the caller JWT are redacted from every error.
+Premature socket EOF/closure before the complete CONNECT response rejects establishment and releases its key lease and
+operation quota. Handshake listeners are removed after success or failure; successful sockets remain available to SSH.
 
 For the Mapped dev cluster, the checked infrastructure manifests expose
 `http://ob-vpn.openbalena.svc.cluster.local:3128` as the direct CONNECT listener without PROXY headers. Port `443` is
@@ -462,9 +481,10 @@ arbitrary shell command. The server invokes only the fixed, documented balena co
 validated name. Arbitrary command selection is outside the browser protocol.
 
 The Supervisor-group `core` target uses the reserved `balena_supervisor` selector, while an App service named `core`
-continues to use its normal service-name selector. For the Supervisor target, resolution first checks the `core` service
-label, then the exact canonical container name `balena_supervisor`; older Supervisor core containers do not carry the
-normal application service-name label. Other targets never use this fallback. The logs picker likewise distinguishes
+continues to use its normal service-name selector. The Supervisor target resolves only the exact canonical container
+name `balena_supervisor`, independently of application service labels. An App service labelled `core` therefore cannot
+capture Supervisor terminals or transfers, including when the Supervisor itself has no service-name label.
+The logs picker likewise distinguishes
 Supervisor core from an App service named core: it includes that core service's tagged messages and untagged/default
 Supervisor entries, without including other application messages.
 
@@ -549,9 +569,10 @@ counting/validation transform into an SFTP write stream. Cancellation destroys b
 The browser sends the selected `File` directly as the XMLHttpRequest body with bearer authentication. Upload progress
 reports bytes sent by the browser, not an acknowledgement that the device has committed them. Completion is shown only
 after the server returns success. The selected filename and size are displayed separately from the compact action
-buttons. Upload and download paths are independent. The File transfer selector is independent of the active terminal tab
-and defaults to Host OS. It uses the identical target list and badge renderer as the terminal picker: Host OS, running
-App services, then running supported Supervisor services. Its label changes between **Upload to** and **Download from**;
+buttons. Upload and download paths and filesystem selections are independent. Both selections default to Host OS and
+are independent of the active terminal tab. They use the identical target list and badge renderer as the terminal
+picker: Host OS, running App services, then running supported Supervisor services. The active mode displays either
+**Upload to** or **Download from** without changing the other mode's selection;
 paths are absolute inside the selected filesystem. Target/mode changes are disabled during a transfer. If a selected
 container stops, another target must be selected explicitly: transfers never silently fall back to Host OS.
 
@@ -776,6 +797,8 @@ code.
 | `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS`         | ob-ui origin policy | Explicit additional browser origins for WSS                                  |
 | `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS`      |             `15000` | Tunnel and SSH connection timeout                                            |
 | `OPEN_BALENA_REMOTE_TICKET_TTL_MS`           |             `30000` | Single-use WebSocket ticket lifetime                                         |
+| `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER` |                `8` | Maximum unconsumed terminal tickets per user                                 |
+| `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS`     |              `1024` | Maximum unconsumed terminal tickets per server process                       |
 | `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER` |                 `8` | Simultaneous terminals/transfers per user                                    |
 | `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP`   |                 `8` | Simultaneous terminal WebSockets per source IP                               |
 | `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET` |                 `4` | Logical terminal channels per WebSocket                                      |

@@ -186,6 +186,8 @@ unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) fo
 - `REACT_APP_OPEN_BALENA_REMOTE_URL` Optional URL of a legacy `open-balena-remote` instance, for example
   `http://remote.openbalena.local:10000`. When this is non-empty, device Connect windows use the legacy iframe flow.
   Leave it empty or unset to use the built-in terminal and streaming SFTP implementation.
+  An explicitly empty runtime value overrides a legacy URL embedded at build time; an absent runtime setting retains
+  the build-time default. Legacy mode retains its fullscreen control even when the built-in gateway is also configured.
 
 - `REACT_APP_OPEN_BALENA_API_URL` The URL (accessible to API) of the `open-balena-api` instance, i.e.
   `https://api.openbalena.local`
@@ -215,6 +217,10 @@ Built-in remote access uses these server-only variables:
   WebSockets. Same-origin requests are allowed automatically.
 - `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS` Tunnel and SSH connection timeout. Defaults to `15000`.
 - `OPEN_BALENA_REMOTE_TICKET_TTL_MS` Lifetime of single-use WebSocket tickets. Defaults to `30000`.
+- `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER` Maximum unconsumed terminal tickets per user. Defaults to `8`.
+- `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS` Maximum unconsumed terminal tickets per server process. Defaults to `1024`.
+  Exceeding either pending-ticket limit returns HTTP `429` with `Retry-After`. Expired tickets are removed automatically,
+  without requiring another request, and consumption releases their slots.
 - `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER` Maximum concurrent terminal/SFTP operations per user. Defaults to `8`.
 - `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP` Maximum simultaneous terminal WebSockets per source IP. Defaults to `8`.
 - `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET` Maximum logical terminals per browser WebSocket. Defaults to `4`.
@@ -798,6 +804,10 @@ API limiter retains its stricter 100-failure quota and slowdown; BalenaOS status
 remain outside these quotas. A normal HTML navigation carries no JWT and is therefore treated as unauthenticated even if
 the UI has a token in local storage; authenticated API requests explicitly send their bearer token. No authentication
 cookie or token-in-URL mechanism is introduced.
+
+Explicit HTML entrypoints, including percent-encoded forms of `index.html`, use the same protected runtime-injected
+response as SPA navigation; they are not served as raw static assets. Remote streaming routes are mounted before
+general JSON parsers so JSON file uploads are neither buffered nor consumed by unrelated API middleware.
 
 Credential verification runs inside each limiter's asynchronous key generator, so the limiter is the first middleware
 on these routes rather than a separate authentication handler preceding it. Only verified JWT claims select an

@@ -13,6 +13,8 @@ export interface RemoteAccessConfig {
   connectTimeoutMs: number;
   keyIdleTtlMs: number;
   ticketTtlMs: number;
+  maxPendingTicketsPerUser: number;
+  maxPendingTickets: number;
   maxOperationsPerUser: number;
   maxWebSocketsPerIp: number;
   maxChannelsPerSocket: number;
@@ -103,6 +105,8 @@ export const loadRemoteAccessConfig = (environment: NodeJS.ProcessEnv = process.
     connectTimeoutMs: integer(environment.OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS, 15_000, 100),
     keyIdleTtlMs: integer(environment.OPEN_BALENA_SSH_KEY_IDLE_TTL_MS, 600_000, 0),
     ticketTtlMs: integer(environment.OPEN_BALENA_REMOTE_TICKET_TTL_MS, 30_000, 1_000),
+    maxPendingTicketsPerUser: integer(environment.OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER, 8, 1),
+    maxPendingTickets: integer(environment.OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS, 1024, 1),
     maxOperationsPerUser: integer(environment.OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER, 8, 1),
     maxWebSocketsPerIp: integer(environment.OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP, 8, 1),
     maxChannelsPerSocket: integer(environment.OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET, 4, 1),

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, static as staticFiles } from 'express';
 import rateLimit from 'express-rate-limit';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,6 +27,31 @@ interface ClientHtmlOptions {
   maxRequests?: number;
   windowMs?: number;
 }
+
+export const createClientRouter = (options: ClientHtmlOptions = {}): Router => {
+  const router = Router();
+  const assets = staticFiles(options.clientDir ?? 'dist/client', { index: false });
+  router.use((req, res, next) => {
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(req.path).replace(/\\/g, '/').replace(/\/+$/, '');
+    } catch {
+      res.status(400).json({ message: 'Invalid request path.' });
+      return;
+    }
+    const name = path.posix
+      .basename(pathname)
+      .split(':')[0]
+      .replace(/[. ]+$/, '');
+    if (/\.html?$/i.test(name)) {
+      next();
+      return;
+    }
+    assets(req, res, next);
+  });
+  router.use(createClientHtmlRouter(options));
+  return router;
+};
 
 export const createClientHtmlRouter = ({
   clientDir = 'dist/client',

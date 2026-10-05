@@ -6,13 +6,16 @@ import test from 'node:test';
 import { Client, Server, type ConnectConfig } from 'ssh2';
 import { loadRemoteAccessConfig } from './config';
 import { generateEd25519SshKey, UserSshKeyManager } from './keys';
-import { connectSsh, containerShellCommand, OperationQuota } from './ssh';
+import { connectSsh, containerSelectionCommand, containerShellCommand, OperationQuota } from './ssh';
 
-test('container shells resolve service labels and only the Supervisor selector has an exact-name fallback', () => {
-  const core = containerShellCommand('balena_supervisor');
-  assert.ok(core.indexOf('label=io.balena.service-name=core') < core.indexOf('name=^/balena_supervisor$'));
-  assert.match(core, /if \[ -z "\$cid" \]; then/);
-  assert.match(core, /exec "\$engine" exec -it "\$cid" \/bin\/sh$/);
+test('Supervisor selection cannot match an App service named core', () => {
+  const supervisor = containerSelectionCommand('balena_supervisor');
+  assert.match(supervisor, /--filter 'name=\^\/balena_supervisor\$'/);
+  assert.doesNotMatch(supervisor, /label=|service-name=core/);
+  assert.equal((supervisor.match(/\bps -q\b/g) ?? []).length, 1);
+  assert.ok(containerShellCommand('balena_supervisor').startsWith(supervisor));
+  assert.match(containerShellCommand('balena_supervisor'), /exec "\$engine" exec -it "\$cid" \/bin\/sh$/);
+  assert.match(containerSelectionCommand('core'), /--filter label=io\.balena\.service-name=core /);
   assert.doesNotMatch(containerShellCommand('ugcontainer'), /balena_supervisor/);
   assert.doesNotMatch(containerShellCommand('core'), /balena_supervisor/);
   assert.doesNotMatch(containerShellCommand('core-next'), /balena_supervisor/);

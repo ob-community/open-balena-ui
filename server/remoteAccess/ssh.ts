@@ -115,14 +115,11 @@ export const openSftp = (client: Client): Promise<SFTPWrapper> =>
 
 export const containerSelectionCommand = (container: string): string => {
   const selector = validateContainerName(container);
-  const service = selector === 'balena_supervisor' ? 'core' : selector;
   return (
     `if [ -x /usr/bin/balena-engine ]; then engine=/usr/bin/balena-engine; else engine=/usr/bin/docker; fi; ` +
-    `cid=$("$engine" ps -q --filter label=io.balena.service-name=${service} | head -n 1); ` +
-    // The Supervisor's core service can run as the unlabelled, canonical balena_supervisor container.
     (selector === 'balena_supervisor'
-      ? `if [ -z "$cid" ]; then cid=$("$engine" ps -q --filter 'name=^/balena_supervisor$' | head -n 1); fi; `
-      : '') +
+      ? `cid=$("$engine" ps -q --filter 'name=^/balena_supervisor$' | head -n 1); `
+      : `cid=$("$engine" ps -q --filter label=io.balena.service-name=${selector} | head -n 1); `) +
     `[ -n "$cid" ] || { echo "Service container is not running." >&2; exit 1; }; `
   );
 };

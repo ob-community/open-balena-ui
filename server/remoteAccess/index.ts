@@ -14,7 +14,7 @@ import { UserSshKeyManager } from './keys';
 import { decodeChannelData, encodeChannelData, parseControlMessage } from './protocol';
 import { connectSsh, openSftp, openShell, OperationQuota, type SshLease } from './ssh';
 import { resolveTransferPath } from './files';
-import { TicketStore, type RemoteTicket } from './tickets';
+import { TicketLimitError, TicketStore, type RemoteTicket } from './tickets';
 import {
   contentDisposition,
   isDeviceUuid,
@@ -92,7 +92,10 @@ export interface RemoteAccessBackend {
 
 export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): RemoteAccessBackend => {
   const router = Router();
-  const tickets = new TicketStore(config.ticketTtlMs);
+  const tickets = new TicketStore(config.ticketTtlMs, {
+    maxPerUser: config.maxPendingTicketsPerUser,
+    maxTotal: config.maxPendingTickets,
+  });
   const keys = new UserSshKeyManager(config.postgrestUrl, config.keyIdleTtlMs);
   const quota = new OperationQuota(config.maxOperationsPerUser);
   const webSockets = new WebSocketServer({
@@ -124,7 +127,12 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
         const issued = tickets.issue(identity, body.deviceUuid, origin);
         res.status(201).json({ version: 1, ...issued });
       } catch (error) {
-        sendError(res, error, 403);
+        if (error instanceof TicketLimitError) {
+          res.set('Retry-After', String(Math.ceil(config.ticketTtlMs / 1000)));
+          res.status(429).json({ error: 'ticket_limit', message: error.message });
+        } else {
+          sendError(res, error, 403);
+        }
       }
     },
   );

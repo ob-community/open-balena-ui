@@ -49,6 +49,29 @@ test('container structured log levels get severity colors without guessing from 
   assert.equal(logSeverity({ ...entry(1), isSystem: true }), 'warning');
 });
 
+test('OSC hyperlinks stop at the first BEL or ESC-backslash terminator and preserve displayed and exported labels', () => {
+  const selections = [{ serviceId: 0, serviceName: 'Host OS' }];
+  for (const openTerminator of ['\u0007', '\u001b\\']) {
+    for (const closeTerminator of ['\u0007', '\u001b\\']) {
+      const message = `before \u001b]8;;https://example.test${openTerminator}\u001b[31mlink label\u001b[0m\u001b]8;;${closeTerminator} after`;
+      assert.deepEqual(parseLogText(message), [
+        { text: 'before ', style: {} },
+        { text: 'link label', style: { color: '#ee6666' } },
+        { text: ' after', style: {} },
+      ]);
+      assert.equal(plainLogMessage(message), 'before link label after');
+      assert.equal(
+        exportDeviceLogs([entry(1000, message)], selections),
+        '[1970-01-01T00:00:01.000Z] [Host OS] before link label after\n',
+      );
+    }
+  }
+  assert.equal(
+    plainLogMessage('\u001b]0;window title\u001b\\first\u001b]0;another title\u001b\\second'),
+    'firstsecond',
+  );
+});
+
 test('poll snapshots merge chronologically without duplicating history or losing identical occurrences', () => {
   const snapshot = [entry(3000, 'last', 42), entry(1000, 'first'), entry(2000, 'same', 42), entry(2000, 'same', 42)];
   const first = mergeLogSnapshot({ entries: [] }, snapshot);

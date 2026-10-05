@@ -20,7 +20,9 @@ interface Props {
 
 export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets }) => {
   const [mode, setMode] = React.useState<'upload' | 'download'>('upload');
-  const [targetId, setTargetId] = React.useState('host');
+  const [uploadTargetId, setUploadTargetId] = React.useState('host');
+  const [downloadTargetId, setDownloadTargetId] = React.useState('host');
+  const targetId = mode === 'upload' ? uploadTargetId : downloadTargetId;
   const selected = targets.find((target) => target.id === targetId);
   const [uploadPath, setUploadPath] = React.useState('');
   const [downloadPath, setDownloadPath] = React.useState('');
@@ -176,7 +178,8 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets
           targets={targets}
           value={selected?.id ?? ''}
           onChange={(value) => {
-            setTargetId(value);
+            if (mode === 'upload') setUploadTargetId(value);
+            else setDownloadTargetId(value);
             setError('');
             setMessage('');
             setProgress(undefined);

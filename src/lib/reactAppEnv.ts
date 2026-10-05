@@ -26,9 +26,9 @@ const readRuntimeEnv = (): RuntimeEnv => {
 
 const buildEnv: RuntimeEnv = typeof __OBUI_BUILD_ENV__ === 'undefined' ? {} : __OBUI_BUILD_ENV__;
 
-const readEnv = (key: string): string | undefined => {
+const readEnv = (key: string, allowEmptyRuntime = false): string | undefined => {
   const runtimeValue = readRuntimeEnv()[key];
-  if (typeof runtimeValue === 'string' && runtimeValue.length > 0) {
+  if (typeof runtimeValue === 'string' && (allowEmptyRuntime || runtimeValue.length > 0)) {
     return runtimeValue;
   }
 
@@ -41,7 +41,7 @@ const readEnv = (key: string): string | undefined => {
 
 const env = {
   get REACT_APP_OPEN_BALENA_REMOTE_URL() {
-    return readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL');
+    return readEnv('REACT_APP_OPEN_BALENA_REMOTE_URL', true);
   },
   get REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED() {
     return readEnv('REACT_APP_OPEN_BALENA_BUILT_IN_REMOTE_ENABLED') === 'true';

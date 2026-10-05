@@ -8,6 +8,7 @@ interface KeyEntry {
   recordId: number;
   token: string;
   refs: number;
+  removing?: boolean;
   timer?: NodeJS.Timeout;
 }
 
@@ -22,9 +23,11 @@ export const generateEd25519SshKey = (): { privateKey: string; publicKey: string
 };
 
 export class UserSshKeyManager {
-  private readonly entries = new Map<number, Promise<KeyEntry>>();
+  private readonly entries = new Map<number, KeyEntry>();
+  private readonly operations = new Map<number, Promise<void>>();
   private readonly titlePrefix = 'open-balena-ui-ephemeral';
   private shuttingDown = false;
+  private shutdownPromise?: Promise<void>;
 
   public constructor(
     private readonly postgrestUrl: string,
@@ -33,43 +36,82 @@ export class UserSshKeyManager {
 
   public async acquire(identity: RemoteIdentity): Promise<KeyLease> {
     if (this.shuttingDown) throw new Error('Remote access is shutting down.');
-    let pending = this.entries.get(identity.userId);
-    if (!pending) {
-      pending = this.create(identity);
-      this.entries.set(identity.userId, pending);
-      pending.catch(() => this.entries.delete(identity.userId));
-    }
-    const entry = await pending;
-    if (entry.timer) clearTimeout(entry.timer);
-    entry.timer = undefined;
-    entry.token = identity.token;
-    entry.refs += 1;
-    let released = false;
-    return {
-      privateKey: entry.privateKey,
-      release: () => {
-        if (released) return;
-        released = true;
-        entry.refs = Math.max(0, entry.refs - 1);
-        if (entry.refs === 0) {
-          this.scheduleRemoval(identity.userId, entry, this.idleTtlMs);
+    return this.serialize(identity.userId, async () => {
+      if (this.shuttingDown) throw new Error('Remote access is shutting down.');
+      let entry = this.entries.get(identity.userId);
+      if (entry?.removing) {
+        // A failed DELETE may have reached the API: never lease that key again.
+        entry.token = identity.token;
+        try {
+          await this.deleteRecord(entry);
+        } catch (error) {
+          if (!this.shuttingDown) {
+            this.scheduleRemoval(identity.userId, entry, Math.min(Math.max(this.idleTtlMs, 1_000), 60_000));
+          }
+          throw error;
         }
-      },
-    };
+        this.entries.delete(identity.userId);
+        entry = undefined;
+      }
+      if (!entry) {
+        entry = await this.create(identity);
+        this.entries.set(identity.userId, entry);
+      }
+      if (this.shuttingDown) throw new Error('Remote access is shutting down.');
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = undefined;
+      entry.token = identity.token;
+      entry.refs += 1;
+      const leasedEntry = entry;
+      let released = false;
+      return {
+        privateKey: entry.privateKey,
+        release: () => {
+          if (released) return;
+          released = true;
+          leasedEntry.refs = Math.max(0, leasedEntry.refs - 1);
+          if (leasedEntry.refs === 0 && !this.shuttingDown) {
+            this.scheduleRemoval(identity.userId, leasedEntry, this.idleTtlMs);
+          }
+        },
+      };
+    });
   }
 
-  public async shutdown(): Promise<void> {
+  public shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
     this.shuttingDown = true;
-    const entries = await Promise.allSettled(this.entries.values());
-    const removals = await Promise.allSettled(
-      entries.flatMap((result) => (result.status === 'fulfilled' ? [this.deleteRecord(result.value)] : [])),
-    );
-    for (const removal of removals) {
-      if (removal.status === 'rejected') {
-        console.error('Unable to remove an ephemeral SSH key during shutdown:', removal.reason);
+    const userIds = new Set([...this.entries.keys(), ...this.operations.keys()]);
+    this.shutdownPromise = (async () => {
+      const removals = await Promise.allSettled(
+        [...userIds].map((userId) =>
+          this.serialize(userId, async () => {
+            const entry = this.entries.get(userId);
+            if (entry) await this.deleteRecord(entry);
+          }),
+        ),
+      );
+      for (const removal of removals) {
+        if (removal.status === 'rejected') {
+          console.error('Unable to remove an ephemeral SSH key during shutdown:', removal.reason);
+        }
       }
-    }
-    this.entries.clear();
+      this.entries.clear();
+    })();
+    return this.shutdownPromise;
+  }
+
+  private serialize<T>(userId: number, operation: () => Promise<T>): Promise<T> {
+    const result = (this.operations.get(userId) ?? Promise.resolve()).then(operation);
+    const completion = result.then(
+      () => {},
+      () => {},
+    );
+    this.operations.set(userId, completion);
+    void completion.then(() => {
+      if (this.operations.get(userId) === completion) this.operations.delete(userId);
+    });
+    return result;
   }
 
   private async create(identity: RemoteIdentity): Promise<KeyEntry> {
@@ -98,16 +140,19 @@ export class UserSshKeyManager {
   }
 
   private async remove(userId: number, entry: KeyEntry): Promise<void> {
-    if (entry.refs !== 0) return;
-    const current = this.entries.get(userId);
-    if (!current || (await current) !== entry) return;
-    try {
-      await this.deleteRecord(entry);
-      this.entries.delete(userId);
-    } catch (error) {
-      console.error('Unable to remove an idle ephemeral SSH key; cleanup will be retried:', error);
-      this.scheduleRemoval(userId, entry, Math.min(Math.max(this.idleTtlMs, 1_000), 60_000));
-    }
+    await this.serialize(userId, async () => {
+      if (this.shuttingDown || entry.refs !== 0 || this.entries.get(userId) !== entry) return;
+      entry.removing = true;
+      try {
+        await this.deleteRecord(entry);
+        this.entries.delete(userId);
+      } catch (error) {
+        console.error('Unable to remove an idle ephemeral SSH key; cleanup will be retried:', error);
+        if (!this.shuttingDown) {
+          this.scheduleRemoval(userId, entry, Math.min(Math.max(this.idleTtlMs, 1_000), 60_000));
+        }
+      }
+    });
   }
 
   private scheduleRemoval(userId: number, entry: KeyEntry, delay: number): void {

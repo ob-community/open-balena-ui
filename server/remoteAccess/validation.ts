@@ -64,6 +64,11 @@ export const originAllowed = (origin: string | undefined, host: string | undefin
 };
 
 export const contentDisposition = (remotePath: string): string => {
-  const name = path.posix.basename(remotePath).replace(/["\\\r\n]/g, '_') || 'download';
-  return `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+  const name = path.posix.basename(remotePath) || 'download';
+  const fallback = name.replace(/["\\]|[^\x20-\x7e]/g, '_');
+  const encoded = encodeURIComponent(name).replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 };

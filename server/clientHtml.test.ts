@@ -8,11 +8,11 @@ import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 import express from 'express';
 import { SignJWT } from 'jose';
-import { createClientHtmlRouter } from './routes/clientHtml';
+import { createClientRouter } from './routes/clientHtml';
 
 const fixture = async (
   t: TestContext,
-  options: Parameters<typeof createClientHtmlRouter>[0] = {},
+  options: Parameters<typeof createClientRouter>[0] = {},
   html: string | undefined = '<html><!--OBUI_RUNTIME_ENV--><body>SPA</body></html>',
 ) => {
   const clientDir = await mkdtemp(path.join(os.tmpdir(), 'obui-client-html-'));
@@ -21,8 +21,7 @@ const fixture = async (
   await writeFile(path.join(clientDir, 'asset.js'), 'window.fixtureAsset = true;');
   const app = express();
   app.get('/fixture-api', (_req, res) => res.json({ ok: true }));
-  app.use(express.static(clientDir, { index: false }));
-  app.use(createClientHtmlRouter({ ...options, clientDir }));
+  app.use(createClientRouter({ ...options, clientDir }));
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(async () => {
@@ -110,6 +109,38 @@ test('forged or expired authentication cannot bypass the unauthenticated failure
   }
   assert.equal((await fetch(`${baseUrl}/`, { headers: { Authorization: 'Bearer another-forged-token' } })).status, 429);
   assert.equal(reads, 0);
+});
+
+test('explicit and encoded HTML entrypoints share injection and the anonymous quota, unlike static assets', async (t) => {
+  const { baseUrl } = await fixture(t, {
+    maxRequests: 3,
+    env: { REACT_APP_OPEN_BALENA_API_URL: 'https://runtime.example.test' },
+  });
+  for (const route of ['/index.html', '/%69ndex.html', '/index%2ehtml?cache=1']) {
+    const response = await fetch(`${baseUrl}${route}`);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    const serialized = /window\.__OBUI_ENV__ = Object\.freeze\((.*?)\);/.exec(html)?.[1];
+    assert.ok(serialized);
+    assert.equal(JSON.parse(serialized).REACT_APP_OPEN_BALENA_API_URL, 'https://runtime.example.test');
+  }
+  for (const route of ['/INDEX.HTML', '/index.html/', '/index.html%5c', '/index.html.']) {
+    const response = await fetch(`${baseUrl}${route}`);
+    assert.equal(response.status, 429);
+    await response.text();
+  }
+  const asset = await fetch(`${baseUrl}/asset.js`);
+  assert.equal(asset.status, 200);
+  assert.equal(await asset.text(), 'window.fixtureAsset = true;');
+});
+
+test('invalid supplied credentials cannot fetch explicit or encoded HTML through static serving', async (t) => {
+  const { baseUrl } = await fixture(t, { env: { OPEN_BALENA_JWT_SECRET: 'test-secret' } });
+  for (const route of ['/index.html', '/index%2Ehtml', '/%69ndex.html']) {
+    const response = await fetch(`${baseUrl}${route}`, { headers: { Authorization: 'Bearer malformed' } });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { success: false, message: 'Invalid token' });
+  }
 });
 
 test('authenticated failures are limited per verified user rather than per token or shared client IP', async (t) => {

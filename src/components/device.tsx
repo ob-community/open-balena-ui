@@ -5,6 +5,7 @@ import {
   Create,
   CreateButton,
   Datagrid,
+  DatagridBody,
   ExportButton,
   FilterButton,
   FormDataConsumer,
@@ -23,7 +24,6 @@ import {
   TopToolbar,
   required,
   useGetOne,
-  useGetManyReference,
   useRedirect,
   useListContext,
   WithRecord,
@@ -50,10 +50,12 @@ import DeviceStructuredFilter from '../ui/DeviceStructuredFilter';
 import DeviceUpdateStatusIcon from '../ui/DeviceUpdateStatusIcon';
 import { deviceOnlineStatusField, getDeviceOverallState, isDeviceOnline, isDeviceUpdating } from '../lib/deviceStatus';
 import ConnectionLastConnected from '../ui/ConnectionLastConnected';
+import DeviceListRefresh, { useDeviceListImageInstalls, VisibleDeviceDatagridRow } from '../ui/DeviceListRefresh';
+import { steadyDeviceRefreshMs } from '../lib/deviceRefresh';
+import { DeviceRefreshContext } from '../ui/DeviceRefreshContext';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
-const deviceStatusRefreshInterval = 30000;
 
 export const OnlineField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
   const theme = useTheme();
@@ -107,6 +109,10 @@ const ReleaseFieldContent: React.FC<{
   source?: string;
   theme: Theme;
 }> = ({ record, source, theme }) => {
+  const listImageInstalls = useDeviceListImageInstalls(record?.id);
+  const deviceRefresh = React.useContext(DeviceRefreshContext);
+  const updatingImageInstalls =
+    deviceRefresh?.deviceId === String(record?.id) ? deviceRefresh.installs : listImageInstalls;
   if (!record || !source) {
     return null;
   }
@@ -119,23 +125,6 @@ const ReleaseFieldContent: React.FC<{
     error,
   } = useGetOne('application', { id: applicationId }, { enabled: shouldFetchFleet });
   const deviceUpdateReported = isDeviceUpdating(record);
-  const { data: updatingImageInstalls = [] } = useGetManyReference(
-    'image install',
-    {
-      target: 'device',
-      id: record.id,
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: {
-        'status@in': '(Downloading,Downloaded,Installing,Installed,Starting,Stopping,configuring)',
-      },
-    },
-    {
-      enabled: record.id !== undefined && record.id !== null && !deviceUpdateReported,
-      refetchInterval: deviceStatusRefreshInterval,
-      refetchIntervalInBackground: false,
-    },
-  );
 
   if (shouldFetchFleet && isPending) {
     return <p>Loading</p>;
@@ -285,52 +274,59 @@ export const DeviceList: React.FC<ListProps<any>> = (props) => {
       actions={<DeviceListActions />}
       sort={{ field: 'connectivity', order: 'DESC' }}
       pagination={<ExtendedPagination />}
-      queryOptions={{ refetchInterval: deviceStatusRefreshInterval, refetchIntervalInBackground: false }}
+      queryOptions={{ refetchInterval: steadyDeviceRefreshMs, refetchIntervalInBackground: false }}
     >
-      <Datagrid rowClick={false} bulkActionButtons={<CustomBulkActionButtons />} size='medium'>
-        <ReferenceField label='Name' source='id' reference='device' link='show'>
-          <TextField source='device name' />
-        </ReferenceField>
+      <DeviceListRefresh>
+        <Datagrid
+          rowClick={false}
+          bulkActionButtons={<CustomBulkActionButtons />}
+          size='medium'
+          body={<DatagridBody row={<VisibleDeviceDatagridRow />} />}
+        >
+          <ReferenceField label='Name' source='id' reference='device' link='show'>
+            <TextField source='device name' />
+          </ReferenceField>
 
-        <OnlineField label='Status' source={deviceOnlineStatusField} />
+          <OnlineField label='Status' source={deviceOnlineStatusField} />
 
-        <ReleaseField label='Current Release' source='is running-release' />
+          <ReleaseField label='Current Release' source='is running-release' />
 
-        <ReferenceField label='Fleet' source='belongs to-application' reference='application'>
-          <TextField source='app name' />
-        </ReferenceField>
+          <ReferenceField label='Fleet' source='belongs to-application' reference='application'>
+            <TextField source='app name' />
+          </ReferenceField>
 
-        <ReferenceField label='Device Type' source='is of-device type' reference='device type' link={false}>
-          <TextField source='slug' />
-        </ReferenceField>
+          <ReferenceField label='Device Type' source='is of-device type' reference='device type' link={false}>
+            <TextField source='slug' />
+          </ReferenceField>
 
-        <FunctionField
-          label='OS'
-          render={(record) =>
-            record['os version'] && record['os variant'] ? `${record['os version']}-${record['os variant']}` : ''
-          }
-        />
-
-        <VpnLastConnectedField label='VPN last connected' source='last vpn event' sortable sortBy='last vpn event' />
-
-        <FunctionField
-          label='UUID'
-          render={(record) => <CopyChip title={record['uuid']} label={record['uuid'].substring(0, 7)} />}
-        />
-
-        <Toolbar sx={{ background: 'none', padding: '0' }}>
-          <ShowButton variant='outlined' label='' size='small' />
-          <WithRecord
-            render={(device) => (
-              <>
-                <DeviceServicesButton variant='outlined' size='small' device={device} />
-                <DeviceConnectButton variant='outlined' size='small' record={device} />
-              </>
-            )}
+          <FunctionField
+            label='OS'
+            render={(record) =>
+              record['os version'] && record['os variant'] ? `${record['os version']}-${record['os variant']}` : ''
+            }
           />
-          <DeleteDeviceButton variant='outlined' size='small' style={{ marginRight: '0 !important' }} />
-        </Toolbar>
-      </Datagrid>
+
+          <VpnLastConnectedField label='VPN last connected' source='last vpn event' sortable sortBy='last vpn event' />
+
+          <FunctionField
+            label='UUID'
+            render={(record) => <CopyChip title={record['uuid']} label={record['uuid'].substring(0, 7)} />}
+          />
+
+          <Toolbar sx={{ background: 'none', padding: '0' }}>
+            <ShowButton variant='outlined' label='' size='small' />
+            <WithRecord
+              render={(device) => (
+                <>
+                  <DeviceServicesButton variant='outlined' size='small' device={device} />
+                  <DeviceConnectButton variant='outlined' size='small' record={device} />
+                </>
+              )}
+            />
+            <DeleteDeviceButton variant='outlined' size='small' style={{ marginRight: '0 !important' }} />
+          </Toolbar>
+        </Datagrid>
+      </DeviceListRefresh>
     </List>
   );
 };

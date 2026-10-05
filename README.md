@@ -14,6 +14,24 @@ open-balena.
 - [Built-in remote access](REMOTE_ACCESS_ARCHITECTURE.md) documents browser terminals, tunnel and SSH authentication,
   ephemeral key lifecycle, streaming SFTP transfers, trust boundaries, configuration, and operations.
 
+## Device refresh behavior
+
+- Device lists (including dashboard device cards) refresh every 30 seconds. Visible rows reporting configuration or
+  deployment activity refresh in batched requests approximately every second, without refetching the entire list or
+  changing its membership, ordering, or pagination. Offscreen rows do not start fast polling.
+- A device's show page refreshes device state and service installation state every 30 seconds when steady. It switches
+  to approximately one-second polling when the device reports an ongoing operation, including on initial page load, or
+  when its effective Host OS, Supervisor, or application target has not yet been reached.
+- Editing those targets or starting, stopping, or restarting a container immediately enables fast polling. An accepted
+  request remains tracked until fresh, post-acknowledgment state shows completion, failure, or a superseding target; an
+  unchanged pre-request snapshot cannot complete it. Failed requests stop being tracked. Queued changes remain pending
+  until the device reports an outcome; polling does not invent a timeout or cancel device operations.
+- The show page shares its device and installation queries across the summary and service widgets instead of running
+  independent timers. Immutable release metadata is cached separately; fleet/latest-release discovery remains on a
+  30-second cadence. Historical installations from unrelated releases do not keep a settled device polling rapidly.
+- Periodic device polling runs only while the browser page is in the foreground. Log polling remains independent at
+  approximately two seconds while sources are selected; device refreshes do not reconnect SSH terminals.
+
 ## Dependencies
 
 This project uses `open-balena-api` for operational data and depends on

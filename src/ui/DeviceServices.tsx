@@ -21,7 +21,6 @@ import {
   useNotify,
   useRecordContext,
 } from 'react-admin';
-import utf8decode from '../lib/utf8decode';
 import { withPermissionHint } from '../lib/httpErrorMessage';
 import SemVerChip from './SemVerChip';
 import environment from '../lib/reactAppEnv';
@@ -31,6 +30,8 @@ import { deviceServiceLogSource, relationshipId, type PresentedDeviceService } f
 import { ServiceBadge } from './ServiceBadge';
 import { useDeviceServicePresentation } from './useDeviceServicePresentation';
 import { useDeviceLogSelection } from './DeviceLogSelection';
+import { refreshDeviceStateQueries, useDeviceRefreshActions } from './useDeviceRefreshActions';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface DeviceServicesProps {
   device: ResourceRecord;
@@ -138,7 +139,10 @@ const DeviceServiceTable: React.FC<{
                 >
                   <Button
                     aria-label='Start service'
-                    onClick={() => invokeSupervisor(serviceRecord, 'start')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void invokeSupervisor(serviceRecord, 'start');
+                    }}
                     disabled={isRunning || isExecutingCommand}
                     variant='text'
                     sx={{ p: '4px', m: '4px', minWidth: 0 }}
@@ -148,7 +152,10 @@ const DeviceServiceTable: React.FC<{
 
                   <Button
                     aria-label='Stop service'
-                    onClick={() => invokeSupervisor(serviceRecord, 'stop')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void invokeSupervisor(serviceRecord, 'stop');
+                    }}
                     disabled={!isRunning || isExecutingCommand}
                     variant='text'
                     sx={{ p: '4px', m: '4px', minWidth: 0 }}
@@ -158,7 +165,10 @@ const DeviceServiceTable: React.FC<{
 
                   <Button
                     aria-label='Restart service'
-                    onClick={() => invokeSupervisor(serviceRecord, 'restart')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void invokeSupervisor(serviceRecord, 'restart');
+                    }}
                     disabled={isExecutingCommand}
                     variant='text'
                     sx={{ p: '4px', m: '4px', minWidth: 0 }}
@@ -187,6 +197,8 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
   const notify = useNotify();
   const record = useRecordContext<ResourceRecord>();
   const presentation = useDeviceServicePresentation(device);
+  const refreshActions = useDeviceRefreshActions();
+  const queryClient = useQueryClient();
 
   const [isExecutingCommand, setIsExecutingCommand] = React.useState(false);
 
@@ -214,6 +226,12 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
       }
 
       setIsExecutingCommand(true);
+      const actionId = refreshActions.begin({
+        deviceId: device.id,
+        kind: command,
+        imageInstallId: imageInstall.id,
+        imageId,
+      });
 
       try {
         const response = await fetch(
@@ -233,24 +251,17 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
           throw new HttpError(response.statusText, response.status);
         }
 
-        const body = response.body;
-        if (!body) {
-          return;
-        }
-
-        const streamData = await body.getReader().read();
-        if (streamData.value) {
-          const result = utf8decode(streamData.value);
-          if (result === 'OK') {
-            notify(`Successfully executed command ${command} on device ${deviceName}`, {
-              type: 'success',
-            });
-          }
-        }
+        const result = (await response.text()).trim();
+        if (response.status !== 204 && result !== 'OK')
+          throw new Error('The Supervisor returned an unexpected command response.');
+        refreshActions.acknowledge(actionId);
+        refreshDeviceStateQueries(queryClient, device.id);
+        notify(`Successfully executed command ${command} on device ${deviceName}`, { type: 'success' });
       } catch (error) {
+        refreshActions.cancel(actionId);
         notify(
           withPermissionHint(
-            `Error: Could not execute command ${command} on device ${deviceName}`,
+            `Error: Could not execute command ${command} on device ${deviceName}${error instanceof Error ? `: ${error.message}` : ''}`,
             error instanceof HttpError ? error.status : undefined,
           ),
           { type: 'error' },
@@ -259,7 +270,15 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
         setIsExecutingCommand(false);
       }
     },
-    [authProvider, device, notify],
+    [
+      authProvider,
+      device,
+      notify,
+      refreshActions.begin,
+      refreshActions.acknowledge,
+      refreshActions.cancel,
+      queryClient,
+    ],
   );
 
   if (!record) {

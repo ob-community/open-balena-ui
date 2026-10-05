@@ -6,7 +6,6 @@ import {
   TextField,
   Title,
   Loading,
-  useGetManyReference,
   useGetOne,
   useRecordContext,
   RecordContextProvider,
@@ -31,9 +30,9 @@ import {
 } from '../../ui/DeviceFieldEditor';
 import { queuedOsUpdateMode } from '../../lib/deviceServicePresentation';
 import ConnectionLastConnected from '../../ui/ConnectionLastConnected';
+import { DeviceRefreshContext } from '../../ui/DeviceRefreshContext';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
-const deviceStateRefreshInterval = 30000;
 
 export const formatOsVariant = (variant: unknown): string => {
   if (variant === 'prod') return 'Production';
@@ -87,12 +86,7 @@ const DeviceVersionTransition: React.FC<{ reportedField: string; targetField: st
   targetField,
 }) => {
   const record = useRecordContext<ResourceRecord>();
-  const { data: refreshedDevice } = useGetOne<ResourceRecord>(
-    'device',
-    { id: record?.id ?? 0 },
-    { enabled: record != null, refetchInterval: deviceStateRefreshInterval },
-  );
-  const currentRecord = refreshedDevice ?? record;
+  const currentRecord = record;
   const targetValue = currentRecord?.[targetField];
   const targetRecord = expandedRelease(targetValue);
   const targetReleaseId = releaseId(targetValue);
@@ -114,21 +108,8 @@ const DeviceVersionTransition: React.FC<{ reportedField: string; targetField: st
 
 const DeviceState: React.FC = () => {
   const record = useRecordContext<ResourceRecord>();
-  const { data: imageInstalls = [] } = useGetManyReference<ResourceRecord>(
-    'image install',
-    {
-      target: 'device',
-      id: record?.id,
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: {},
-    },
-    {
-      enabled: record?.id !== undefined && record?.id !== null,
-      refetchInterval: deviceStateRefreshInterval,
-      refetchIntervalInBackground: false,
-    },
-  );
+  const refresh = React.useContext(DeviceRefreshContext);
+  const imageInstalls = refresh?.installs ?? [];
 
   if (!record) {
     return null;

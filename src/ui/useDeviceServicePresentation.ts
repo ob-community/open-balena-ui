@@ -1,12 +1,19 @@
 import { useGetList, useGetMany, useGetOne } from 'react-admin';
 import { hasSupervisorServiceTable, presentDeviceServices, relationshipId } from '../lib/deviceServicePresentation';
 import type { ResourceRecord } from '../types/resource';
+import React from 'react';
+import { DeviceRefreshContext } from './DeviceRefreshContext';
+import { useDeviceRefreshActions } from './useDeviceRefreshActions';
+import { getDeviceRefreshInterval } from '../lib/deviceRefresh';
 
 const relationshipIds = (records: ResourceRecord[], field: string) => [
   ...new Set(records.map((record) => relationshipId(record[field])).filter((id) => id !== undefined)),
 ];
 
 export const useDeviceServicePresentation = (device?: ResourceRecord) => {
+  const refresh = React.useContext(DeviceRefreshContext);
+  const managed = refresh?.deviceId === String(device?.id);
+  const { actions } = useDeviceRefreshActions();
   const installs = useGetList<ResourceRecord>(
     'image install',
     {
@@ -14,7 +21,14 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
       sort: { field: 'id', order: 'ASC' },
       filter: { device: device?.id },
     },
-    { enabled: device !== undefined },
+    {
+      enabled: device !== undefined,
+      refetchInterval: managed
+        ? false
+        : (query) => getDeviceRefreshInterval(device, query.state.data?.data, actions[String(device?.id)] ?? []),
+      refetchIntervalInBackground: false,
+      staleTime: managed ? Infinity : 30_000,
+    },
   );
   const imageIds = relationshipIds(installs.data ?? [], 'installs-image');
   const images = useGetMany<ResourceRecord>('image', { ids: imageIds }, { enabled: imageIds.length > 0 });

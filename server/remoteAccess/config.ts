@@ -23,6 +23,7 @@ export interface RemoteAccessConfig {
   maxPathBytes: number;
   allowedOrigins: Set<string>;
   publicOrigin?: string;
+  trustedProxy: TrustedProxyPolicy;
   hostKeys: Map<string, Set<string>>;
   allowUnverifiedHostKeys: boolean;
 }
@@ -135,7 +136,9 @@ export const loadRemoteAccessConfig = (environment: NodeJS.ProcessEnv = process.
     maxPathBytes: integer(environment.OPEN_BALENA_REMOTE_MAX_PATH_BYTES, 4096, 1),
     allowedOrigins,
     publicOrigin: parsePublicOrigin(environment.OPEN_BALENA_REMOTE_PUBLIC_ORIGIN),
+    trustedProxy: createTrustedProxyPolicy(environment.OPEN_BALENA_REMOTE_TRUSTED_PROXIES),
     hostKeys: parseHostKeys(environment.OPEN_BALENA_SSH_HOST_KEYS),
     allowUnverifiedHostKeys: parseBoolean(environment.OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS, false),
   };
 };
+import { createTrustedProxyPolicy, type TrustedProxyPolicy } from './clientAddress';

@@ -20,6 +20,11 @@ Pending changes settle only from device/install requests started strictly after 
 merely finish later. Supervisor version choices use the release ID resolved by the save endpoint before acknowledgment,
 so completing a version-based update returns polling to its steady-state interval.
 
+Managed dashboard widgets use the refresh owner's current installation snapshot, loading state, and errors rather
+than a second permanently fresh installation query. External container state and release changes therefore update
+service statuses, terminal/file-transfer choices, and log sources without manual invalidation. Standalone widgets keep
+their own adaptive polling when no matching refresh owner is present.
+
 - Device lists (including dashboard device cards) refresh every 30 seconds. Visible rows reporting configuration or
   deployment activity refresh in batched requests approximately every second, without refetching the entire list or
   changing its membership, ordering, or pagination. Offscreen rows do not start fast polling.
@@ -224,14 +229,23 @@ Built-in remote access uses these server-only variables:
 - `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS` Optional comma-separated additional browser origins allowed for terminal and
   transfer requests. Same-origin checks compare scheme, hostname, and effective port; a different scheme is not
   implicitly allowed. Additional origins must be configured explicitly.
-- `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS` Tunnel and SSH connection timeout. Defaults to `15000`.
+- `OPEN_BALENA_REMOTE_TRUSTED_PROXIES` Optional comma-separated trusted proxy IPs/CIDRs, for example
+  `10.0.0.10/32,10.0.0.11/32`. Empty trusts none. HTTP and WebSocket client addresses follow `X-Forwarded-For` only
+  through explicitly trusted hops, stopping at the nearest untrusted address. Configure only actual ingress/proxy
+  addresses; do not trust arbitrary forwarded headers or all client networks. Blanket IPv4/IPv6 `/0` policies are rejected.
+  This address policy does not replace `OPEN_BALENA_REMOTE_PUBLIC_ORIGIN` for TLS-offload origin checks.
+- `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS` Tunnel/SSH connection timeout and deadline for each key-store HTTP operation,
+  including its response body. Defaults to `15000`.
 - `OPEN_BALENA_REMOTE_TICKET_TTL_MS` Lifetime of single-use WebSocket tickets. Defaults to `30000`.
 - `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER` Maximum unconsumed terminal tickets per user. Defaults to `8`.
 - `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS` Maximum unconsumed terminal tickets per server process. Defaults to `1024`.
   Exceeding either pending-ticket limit returns HTTP `429` with `Retry-After`. Expired tickets are removed automatically,
   without requiring another request, and consumption releases their slots.
 - `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER` Maximum concurrent terminal/SFTP operations per user. Defaults to `8`.
-- `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP` Maximum simultaneous terminal WebSockets per source IP. Defaults to `8`.
+- `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP` Pre-authentication bound on simultaneous terminal WebSockets per resolved
+  client IP. Defaults to `8`. Trusted-proxy configuration prevents all browsers behind an ingress from sharing its IP
+  bucket; clients sharing a real NAT still share a bucket and may require a larger limit. Authenticated SSH/SFTP
+  operation quotas remain separate, per user.
 - `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET` Maximum logical terminals per browser WebSocket. Defaults to `4`.
 - `OPEN_BALENA_REMOTE_MAX_MESSAGE_BYTES` Maximum WebSocket message size. Defaults to `1048576`.
 - `OPEN_BALENA_REMOTE_MAX_UPLOAD_BYTES` Maximum upload size. Defaults to `1073741824` (1 GiB).

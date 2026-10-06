@@ -7,6 +7,7 @@ import {
   Button,
   Checkbox,
   IconButton,
+  LinearProgress,
   Menu,
   MenuItem,
   Stack,
@@ -240,6 +241,7 @@ export const DeviceLogs: React.FC = () => {
   return (
     <>
       {presentation.error && <Alert severity='error'>Unable to load log sources: {presentation.error.message}</Alert>}
+      {presentation.isPending && <LinearProgress aria-label='Loading log sources' />}
       <Stack direction='row' alignItems='center' flexWrap='wrap' sx={{ px: 1.5, py: 0.5 }}>
         <Typography variant='subtitle2' sx={{ flex: 1 }}>
           Logs

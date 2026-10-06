@@ -16,6 +16,7 @@ import { connectSsh, openSftp, openShell, OperationQuota, type SshLease } from '
 import { resolveTransferPath } from './files';
 import { parseRemoteTarget, type ContainerSelector } from '../../src/lib/remoteTarget';
 import { TicketLimitError, TicketStore, type RemoteTicket } from './tickets';
+import { resolveClientAddress } from './clientAddress';
 import {
   contentDisposition,
   effectiveRequestOrigin,
@@ -103,7 +104,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
     maxPerUser: config.maxPendingTicketsPerUser,
     maxTotal: config.maxPendingTickets,
   });
-  const keys = new UserSshKeyManager(config.postgrestUrl, config.keyIdleTtlMs);
+  const keys = new UserSshKeyManager(config.postgrestUrl, config.keyIdleTtlMs, config.connectTimeoutMs);
   const quota = new OperationQuota(config.maxOperationsPerUser);
   const webSockets = new WebSocketServer({
     noServer: true,
@@ -112,6 +113,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
   });
   const sockets = new Set<WebSocket>();
   const socketsByIp = new Map<string, number>();
+  const clientAddresses = new WeakMap<WebSocket, string>();
 
   router.post(
     '/remote/session',
@@ -290,8 +292,12 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
   };
 
   webSockets.on('connection', (socket, request) => {
+    const remoteAddress = clientAddresses.get(socket);
+    if (!remoteAddress) {
+      socket.close(1008, 'A validated client address is required.');
+      return;
+    }
     sockets.add(socket);
-    const remoteAddress = request.socket.remoteAddress ?? 'unknown';
     socketsByIp.set(remoteAddress, (socketsByIp.get(remoteAddress) ?? 0) + 1);
     const origin = request.headers.origin ? new URL(request.headers.origin).origin : '';
     let authenticated: RemoteTicket | undefined;
@@ -502,13 +508,22 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
       socket.destroy();
       return;
     }
-    const remoteAddress = request.socket.remoteAddress ?? 'unknown';
+    let remoteAddress: string;
+    try {
+      remoteAddress = resolveClientAddress(request, config.trustedProxy);
+    } catch {
+      socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n', () => socket.destroy());
+      return;
+    }
     if ((socketsByIp.get(remoteAddress) ?? 0) >= config.maxWebSocketsPerIp) {
       socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
-    webSockets.handleUpgrade(request, socket, head, (webSocket) => webSockets.emit('connection', webSocket, request));
+    webSockets.handleUpgrade(request, socket, head, (webSocket) => {
+      clientAddresses.set(webSocket, remoteAddress);
+      webSockets.emit('connection', webSocket, request);
+    });
   };
 
   return {

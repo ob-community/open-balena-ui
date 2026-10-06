@@ -20,7 +20,9 @@ import { useDeviceRefreshActions } from './useDeviceRefreshActions';
 interface DeviceRefreshState {
   deviceId: string;
   interval: number;
-  installs: ResourceRecord[];
+  installs: ResourceRecord[] | undefined;
+  installsIsPending: boolean;
+  installsError: Error | null;
 }
 export const DeviceRefreshContext = React.createContext<DeviceRefreshState | undefined>(undefined);
 const pinField = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
@@ -133,9 +135,11 @@ export const DeviceRefreshProvider: React.FC<React.PropsWithChildren<{ deviceId:
     () => ({
       deviceId,
       interval,
-      installs: installs.data?.records ?? [],
+      installs: installs.data?.records,
+      installsIsPending: installs.isPending,
+      installsError: installs.error,
     }),
-    [deviceId, interval, installs.data],
+    [deviceId, interval, installs.data, installs.isPending, installs.error],
   );
   return (
     <DeviceRefreshContext.Provider value={value}>

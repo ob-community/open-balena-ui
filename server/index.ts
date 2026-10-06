@@ -6,6 +6,7 @@ import { createClientRouter } from './routes/clientHtml';
 import { bootstrapGlobalAdminFromEnvironment } from './bootstrapGlobalAdmin';
 import { createRemoteAccessBackend, type RemoteAccessBackend } from './remoteAccess';
 import { attachUnavailableRemoteUpgrade } from './remoteAccess/unavailable';
+import { createTrustedProxyPolicy } from './remoteAccess/clientAddress';
 
 dotenv.config();
 
@@ -14,6 +15,7 @@ const HOST = '0.0.0.0';
 const CLIENT_DIR = 'dist/client';
 
 const app = express();
+app.set('trust proxy', createTrustedProxyPolicy(process.env.OPEN_BALENA_REMOTE_TRUSTED_PROXIES));
 const server = createServer(app);
 let remoteAccess: RemoteAccessBackend | undefined;
 

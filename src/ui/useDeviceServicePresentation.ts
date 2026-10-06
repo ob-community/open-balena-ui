@@ -22,15 +22,19 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
       filter: { device: device?.id },
     },
     {
-      enabled: device !== undefined,
+      enabled: device !== undefined && !managed,
       refetchInterval: managed
         ? false
         : (query) => getDeviceRefreshInterval(device, query.state.data?.data, actions[String(device?.id)] ?? []),
       refetchIntervalInBackground: false,
-      staleTime: managed ? Infinity : 30_000,
+      staleTime: 30_000,
     },
   );
-  const imageIds = relationshipIds(installs.data ?? [], 'installs-image');
+  const installsIsPending = managed ? refresh.installsIsPending : installs.isPending;
+  const installsError = managed ? refresh.installsError : installs.error;
+  const installSnapshot = managed ? refresh.installs : installs.data;
+  const installRecords = !installsIsPending && !installsError ? (installSnapshot ?? []) : [];
+  const imageIds = relationshipIds(installRecords, 'installs-image');
   const images = useGetMany<ResourceRecord>('image', { ids: imageIds }, { enabled: imageIds.length > 0 });
   const serviceIds = relationshipIds(images.data ?? [], 'is a build of-service');
   const services = useGetMany<ResourceRecord>('service', { ids: serviceIds }, { enabled: serviceIds.length > 0 });
@@ -45,7 +49,7 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
     hasSupervisorServiceTable(release.data?.['raw version'] ?? release.data?.raw_version);
   return {
     ...presentDeviceServices({
-      installs: installs.data ?? [],
+      installs: installRecords,
       images: images.data ?? [],
       services: services.data ?? [],
       appReleaseId: relationshipId(device?.['is running-release']),
@@ -54,10 +58,15 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
     }),
     showSupervisorServices,
     isPending:
-      (device !== undefined && installs.isPending) ||
+      (device !== undefined && installsIsPending) ||
       (imageIds.length > 0 && images.isPending) ||
       (serviceIds.length > 0 && services.isPending) ||
       (supervisorReleaseId !== undefined && release.isPending),
-    error: installs.error ?? images.error ?? services.error ?? release.error,
+    error:
+      installsError ??
+      (imageIds.length > 0 ? images.error : undefined) ??
+      (serviceIds.length > 0 ? services.error : undefined) ??
+      (supervisorReleaseId !== undefined ? release.error : undefined) ??
+      null,
   };
 };

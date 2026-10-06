@@ -284,12 +284,12 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
   if (!record) {
     return null;
   }
+  if (presentation.error) {
+    return <Alert severity='error'>Unable to load device services: {presentation.error.message}</Alert>;
+  }
 
   return (
     <>
-      {presentation.error ? (
-        <Alert severity='error'>Unable to load device services: {presentation.error.message}</Alert>
-      ) : null}
       <Typography variant='h6' component='h2' sx={{ mb: 1 }}>
         App
       </Typography>

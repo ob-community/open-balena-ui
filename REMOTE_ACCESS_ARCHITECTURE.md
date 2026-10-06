@@ -308,6 +308,17 @@ waits for it and obtains a registered replacement instead of leasing the key bei
 are quarantined from reuse; a subsequent acquisition must complete their removal before creating a replacement.
 Shutdown prevents new leases while registered-key cleanup runs.
 
+Caller cancellation also covers queued or in-flight key acquisition. It promptly releases that SSH operation's quota
+without aborting shared registration/cleanup work needed by another caller. A lease produced after its caller cancels
+is released, and cancelled queued callers do not acquire unused leases. Each key-store lookup, registration, or deletion
+has a headers-through-response-body deadline using `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS`; this also bounds orphan
+cleanup, deletion retries, and shutdown HTTP work.
+
+The deadline is per HTTP request, not one overall acquisition/queue/shutdown deadline. Cancellation does not stop that
+shared work even when its sole caller leaves; any late lease follows normal idle cleanup. If a POST commits a public
+key but times out before returning its row ID, immediate deletion cannot be guaranteed: later age-qualified orphan
+cleanup handles that record.
+
 Every key row has a unique ob-ui-specific title containing a non-secret session identifier. This avoids overwriting
 user-managed keys and supports cleanup. Normal cleanup deletes the exact row ID created by the manager. Before creating
 a key, opportunistic orphan cleanup may delete only rows bearing the reserved prefix and old enough to exceed the
@@ -419,6 +430,12 @@ releases that session label; a new connection captures its current target label.
 The terminal's measurement and rendering elements use the same monospace font stack. A scoped override isolates xterm
 from the application's universal proportional-font rule; otherwise xterm's fixed-width cell layout produces uneven
 spacing even though the terminal options specify a monospace font.
+
+On managed device dashboards, service presentation consumes the refresh owner's live install records and
+loading/error state. Its image metadata lookup is keyed from those current records, including newly installed releases.
+The separate legacy installation query is disabled there; independent widgets without a matching owner retain their
+own adaptive querying. External start/stop/release changes consequently flow into service statuses, running targets,
+and log-source choices.
 
 Connection cancellation uses both an abort signal for ticket requests and an attempt-generation guard so late async
 results cannot create a socket after cancellation or unmount. Browser-initiated WebSocket closes use code `1000`:
@@ -816,12 +833,13 @@ code.
 | `OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS` |             `false` | Compatibility escape hatch for old/unmanaged device host keys                |
 | `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS`         | ob-ui origin policy | Explicit additional browser origins for WSS                                  |
 | `OPEN_BALENA_REMOTE_PUBLIC_ORIGIN`           |                none | Browser-facing origin for TLS-terminating proxies; otherwise use direct socket origin |
-| `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS`      |             `15000` | Tunnel and SSH connection timeout                                            |
+| `OPEN_BALENA_REMOTE_TRUSTED_PROXIES`         |                none | Trusted proxy IPs/CIDRs for HTTP and WebSocket client-address resolution       |
+| `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS`      |             `15000` | Tunnel/SSH timeout and per-request key-store HTTP deadline including body     |
 | `OPEN_BALENA_REMOTE_TICKET_TTL_MS`           |             `30000` | Single-use WebSocket ticket lifetime                                         |
 | `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER` |                `8` | Maximum unconsumed terminal tickets per user                                 |
 | `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS`     |              `1024` | Maximum unconsumed terminal tickets per server process                       |
 | `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER` |                 `8` | Simultaneous terminals/transfers per user                                    |
-| `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP`   |                 `8` | Simultaneous terminal WebSockets per source IP                               |
+| `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP`   |                 `8` | Pre-authentication WebSocket bound per resolved client IP                     |
 | `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET` |                 `4` | Logical terminal channels per WebSocket                                      |
 | `OPEN_BALENA_REMOTE_MAX_MESSAGE_BYTES`       |           `1048576` | Maximum WebSocket message size                                               |
 | `OPEN_BALENA_REMOTE_MAX_UPLOAD_BYTES`        |        `1073741824` | Maximum accepted upload length                                               |
@@ -829,6 +847,20 @@ code.
 
 Built-in mode must refuse to start a remote operation with a clear configuration error when its tunnel endpoint or
 required authorization dependencies are missing. The rest of open-balena-ui remains available.
+
+### Trusted proxies and connection bounds
+
+Without `OPEN_BALENA_REMOTE_TRUSTED_PROXIES`, the transport peer is the client address and forwarded IP headers are
+ignored. Behind a reverse proxy, list only its trusted IPs/CIDRs. HTTP rate limiting and WebSocket connection accounting
+then use the same trusted-hop policy: traverse from the actual socket peer and stop at the nearest untrusted address.
+A spoofed leftmost forwarded value cannot override that boundary. Blanket trust-all CIDRs are rejected.
+
+WebSocket addresses are resolved once before upgrade, validated, and retained for increment/decrement accounting.
+Browsers with different resolved client IPs no longer share an ingress address's eight slots. The limit remains a
+pre-authentication bound, not a substitute for per-user operation quotas. Genuine shared NATs still share one bucket;
+operators can raise `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP` to accommodate that deployment.
+Proxy address trust does not infer the public HTTPS origin; TLS-terminating deployments must still configure
+`OPEN_BALENA_REMOTE_PUBLIC_ORIGIN`.
 
 ## Audit and observability
 

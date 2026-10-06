@@ -32,11 +32,14 @@ export class UserSshKeyManager {
   public constructor(
     private readonly postgrestUrl: string,
     private readonly idleTtlMs: number,
+    private readonly connectTimeoutMs = 15_000,
   ) {}
 
-  public async acquire(identity: RemoteIdentity): Promise<KeyLease> {
+  public async acquire(identity: RemoteIdentity, signal?: AbortSignal): Promise<KeyLease> {
+    if (signal?.aborted) throw new Error('Remote key acquisition aborted.');
     if (this.shuttingDown) throw new Error('Remote access is shutting down.');
-    return this.serialize(identity.userId, async () => {
+    const acquisition = this.serialize(identity.userId, async () => {
+      if (signal?.aborted) throw new Error('Remote key acquisition aborted.');
       if (this.shuttingDown) throw new Error('Remote access is shutting down.');
       let entry = this.entries.get(identity.userId);
       if (entry?.removing) {
@@ -75,6 +78,25 @@ export class UserSshKeyManager {
           }
         },
       };
+    });
+    return new Promise<KeyLease>((resolve, reject) => {
+      const abort = (): void => reject(new Error('Remote key acquisition aborted.'));
+      signal?.addEventListener('abort', abort, { once: true });
+      void acquisition.then(
+        (lease) => {
+          signal?.removeEventListener('abort', abort);
+          if (signal?.aborted) {
+            // Registration is shared work; cancellation only relinquishes this caller's reference.
+            lease.release();
+            abort();
+          } else resolve(lease);
+        },
+        (error: unknown) => {
+          signal?.removeEventListener('abort', abort);
+          reject(error);
+        },
+      );
+      if (signal?.aborted) abort();
     });
   }
 
@@ -117,21 +139,29 @@ export class UserSshKeyManager {
   private async create(identity: RemoteIdentity): Promise<KeyEntry> {
     await this.cleanupOrphans(identity);
     const key = generateEd25519SshKey();
-    const response = await fetch(`${this.postgrestUrl}/${encodeURIComponent('user-has-public key')}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${identity.token}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
+    const body = await this.request(
+      `${this.postgrestUrl}/${encodeURIComponent('user-has-public key')}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${identity.token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({
+          'user': identity.userId,
+          'title': `${this.titlePrefix}-${Date.now()}-${randomBytes(8).toString('hex')}`,
+          'public key': key.publicKey,
+        }),
       },
-      body: JSON.stringify({
-        'user': identity.userId,
-        'title': `${this.titlePrefix}-${Date.now()}-${randomBytes(8).toString('hex')}`,
-        'public key': key.publicKey,
-      }),
-    });
-    if (!response.ok) throw new Error('Unable to register the temporary SSH key.');
-    const body = (await response.json()) as unknown;
+      async (response) => {
+        if (!response.ok) {
+          await response.arrayBuffer();
+          throw new Error('Unable to register the temporary SSH key.');
+        }
+        return response.json() as Promise<unknown>;
+      },
+    );
     const record = Array.isArray(body) ? body[0] : body;
     const recordId = Number(record && typeof record === 'object' ? (record as Record<string, unknown>).id : undefined);
     if (!Number.isSafeInteger(recordId) || recordId <= 0)
@@ -168,12 +198,17 @@ export class UserSshKeyManager {
       select: 'id,title',
     });
     const authorization = ['Bearer', identity.token].join(' ');
-    const response = await fetch(
+    const records = await this.request(
       `${this.postgrestUrl}/${encodeURIComponent('user-has-public key')}?${query.toString()}`,
       { headers: { Authorization: authorization, Accept: 'application/json' } },
+      async (response) => {
+        if (!response.ok) {
+          await response.arrayBuffer();
+          throw new Error('Unable to inspect previous temporary SSH keys.');
+        }
+        return response.json() as Promise<Array<Record<string, unknown>>>;
+      },
     );
-    if (!response.ok) throw new Error('Unable to inspect previous temporary SSH keys.');
-    const records = (await response.json()) as Array<Record<string, unknown>>;
     const cutoff = Date.now() - Math.max(this.idleTtlMs * 2, 60 * 60 * 1000);
     for (const record of records) {
       const id = Number(record.id);
@@ -181,26 +216,49 @@ export class UserSshKeyManager {
       const createdAt = Number(title.split('-')[4]);
       if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(createdAt) || createdAt > cutoff) continue;
       const deleteQuery = new URLSearchParams({ id: `eq.${id}`, user: `eq.${identity.userId}` });
-      const deletion = await fetch(
+      await this.request(
         `${this.postgrestUrl}/${encodeURIComponent('user-has-public key')}?${deleteQuery.toString()}`,
         {
           method: 'DELETE',
           headers: { Authorization: authorization, Prefer: 'return=minimal' },
         },
+        async (response) => {
+          await response.arrayBuffer();
+          if (!response.ok && response.status !== 404) {
+            throw new Error('Unable to remove a previous temporary SSH key.');
+          }
+        },
       );
-      if (!deletion.ok && deletion.status !== 404) {
-        throw new Error('Unable to remove a previous temporary SSH key.');
-      }
     }
   }
 
   private async deleteRecord(entry: KeyEntry): Promise<void> {
     if (entry.timer) clearTimeout(entry.timer);
     const query = new URLSearchParams({ id: `eq.${entry.recordId}` });
-    const response = await fetch(
+    await this.request(
       `${this.postgrestUrl}/${encodeURIComponent('user-has-public key')}?${query.toString()}`,
       { method: 'DELETE', headers: { Authorization: `Bearer ${entry.token}`, Prefer: 'return=minimal' } },
+      async (response) => {
+        await response.arrayBuffer();
+        if (!response.ok && response.status !== 404) throw new Error('Unable to remove the temporary SSH key.');
+      },
     );
-    if (!response.ok && response.status !== 404) throw new Error('Unable to remove the temporary SSH key.');
+  }
+
+  private async request<T>(url: string, options: RequestInit, consume: (response: Response) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error('Temporary SSH key HTTP operation timed out.');
+        reject(error);
+        controller.abort(error);
+      }, this.connectTimeoutMs);
+    });
+    try {
+      return await Promise.race([fetch(url, { ...options, signal: controller.signal }).then(consume), deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

@@ -49,12 +49,34 @@ export const connectSsh = async (
   deviceUuid: string,
   signal?: AbortSignal,
 ): Promise<SshLease> => {
+  if (signal?.aborted) throw new Error('Remote connection aborted.');
   const releaseQuota = quota.acquire(identity.userId);
+  signal?.addEventListener('abort', releaseQuota, { once: true });
   let keyLease: Awaited<ReturnType<UserSshKeyManager['acquire']>> | undefined;
   let socket: Awaited<ReturnType<typeof openTunnel>> | undefined;
+  let client: Client | undefined;
   try {
-    keyLease = await keys.acquire(identity);
+    keyLease = await new Promise<Awaited<ReturnType<UserSshKeyManager['acquire']>>>((resolve, reject) => {
+      const abort = (): void => reject(new Error('Remote connection aborted.'));
+      signal?.addEventListener('abort', abort, { once: true });
+      void keys.acquire(identity, signal).then(
+        (lease) => {
+          signal?.removeEventListener('abort', abort);
+          if (signal?.aborted) {
+            lease.release();
+            abort();
+          } else resolve(lease);
+        },
+        (error: unknown) => {
+          signal?.removeEventListener('abort', abort);
+          reject(error);
+        },
+      );
+      if (signal?.aborted) abort();
+    });
+    if (signal?.aborted) throw new Error('Remote connection aborted.');
     socket = await openTunnel(config, identity, deviceUuid, signal);
+    if (signal?.aborted) throw new Error('Remote connection aborted.');
     const hasConfiguredHostKey =
       config.hostKeys.has(`${deviceUuid.toLowerCase()}.balena`) ||
       config.hostKeys.has(deviceUuid.toLowerCase()) ||
@@ -62,21 +84,25 @@ export const connectSsh = async (
     if (!hasConfiguredHostKey && !config.allowUnverifiedHostKeys) {
       throw new Error(`No SSH host-key pin is configured for ${deviceUuid}.`);
     }
-    const client = new Client();
+    client = new Client();
+    const connectedClient = client;
     await new Promise<void>((resolve, reject) => {
-      const fail = (error: Error): void => reject(error);
+      const fail = (error: Error): void => {
+        signal?.removeEventListener('abort', abort);
+        reject(error);
+      };
       const abort = (): void => {
-        client.end();
+        connectedClient.end();
         reject(new Error('Remote connection aborted.'));
       };
       signal?.addEventListener('abort', abort, { once: true });
-      client.once('ready', () => {
+      connectedClient.once('ready', () => {
         signal?.removeEventListener('abort', abort);
-        client.off('error', fail);
+        connectedClient.off('error', fail);
         resolve();
       });
-      client.once('error', fail);
-      client.connect({
+      connectedClient.once('error', fail);
+      connectedClient.connect({
         sock: socket,
         username: identity.username,
         privateKey: keyLease!.privateKey,
@@ -86,23 +112,27 @@ export const connectSsh = async (
         hostVerifier: hostKeyVerifier(config, deviceUuid),
       });
     });
+    if (signal?.aborted) throw new Error('Remote connection aborted.');
     let closed = false;
     const close = (): void => {
       if (closed) return;
       closed = true;
-      client.end();
+      connectedClient.end();
       socket?.destroy();
       keyLease?.release();
       releaseQuota();
     };
-    client.on('error', close);
-    client.once('close', close);
-    return { client, close };
+    connectedClient.on('error', close);
+    connectedClient.once('close', close);
+    return { client: connectedClient, close };
   } catch (error) {
+    client?.end();
     socket?.destroy();
     keyLease?.release();
     releaseQuota();
     throw error;
+  } finally {
+    signal?.removeEventListener('abort', releaseQuota);
   }
 };
 

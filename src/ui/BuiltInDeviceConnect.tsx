@@ -3,7 +3,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import TerminalIcon from '@mui/icons-material/Terminal';
-import { Alert, Box, GlobalStyles, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, GlobalStyles, IconButton, LinearProgress, Stack, Tooltip, Typography } from '@mui/material';
 import React from 'react';
 import { useAuthProvider } from 'react-admin';
 import type { OpenBalenaAuthProvider } from '../authProvider/openbalenaAuthProvider';
@@ -120,6 +120,7 @@ export const BuiltInDeviceConnect: React.FC<BuiltInDeviceConnectProps> = ({ reco
       {presentation.error ? (
         <Alert severity='error'>Unable to load terminal targets: {presentation.error.message}</Alert>
       ) : null}
+      {presentation.isPending && <LinearProgress aria-label='Loading terminal targets' />}
       <Stack direction='row' alignItems='center' sx={{ bgcolor: '#182330', px: 0.5 }}>
         <Box role='tablist' aria-label='Terminal sessions' sx={{ display: 'flex', overflowX: 'auto', flex: 1 }}>
           {tabs.map((tab, index) => {

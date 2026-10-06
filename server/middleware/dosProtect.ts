@@ -1,11 +1,14 @@
 import type { RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import slowDown from 'express-slow-down';
+import { authenticatedRequestSucceeded, createAuthenticationRateKey } from './authenticationRateLimit';
 
 const rateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 100,
   skipSuccessfulRequests: true,
+  requestWasSuccessful: authenticatedRequestSucceeded,
+  keyGenerator: createAuthenticationRateKey(),
 });
 
 const speedLimiter = slowDown({
@@ -13,6 +16,8 @@ const speedLimiter = slowDown({
   delayAfter: 25,
   delayMs: (hits: number) => (hits - 25) * 100,
   skipSuccessfulRequests: true,
+  requestWasSuccessful: authenticatedRequestSucceeded,
+  keyGenerator: createAuthenticationRateKey(),
 });
 
 const dosProtect: RequestHandler[] = [rateLimiter, speedLimiter];

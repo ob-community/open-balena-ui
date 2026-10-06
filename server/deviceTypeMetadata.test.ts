@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { Server } from 'node:http';
 import test from 'node:test';
 import express from 'express';
+import { SignJWT } from 'jose';
 import type { GetObjectCommandInput, PutObjectCommandInput } from '@aws-sdk/client-s3';
 import {
   allowedDeviceTypeSlugs,
@@ -398,6 +399,43 @@ test('public GET serves stored data without Authorization and provides no write 
   });
   assert.equal(requests.length, 1);
   assert.equal(gets.length, 1);
+});
+
+test('authenticated metadata successes remain unlimited but 600 authorization denials exhaust the failure quota', async () => {
+  const secret = 'metadata-rate-limit-test-secret';
+  const token = await new SignJWT({ id: 42 })
+    .setProtectedHeader({ alg: 'HS256' })
+    .sign(new TextEncoder().encode(secret));
+  const headers = { Authorization: `Bearer ${token}` };
+  const config = {
+    OPEN_BALENA_JWT_SECRET: secret,
+    CONTRACT_ALLOWLIST: `hw.device-type/${slug}`,
+  };
+  let reads = 0;
+  await withRouter(
+    async () => {
+      reads++;
+      return json;
+    },
+    config,
+    async (base) => {
+      const url = `${base}/balena-os/device-types/${slug}/${encodeURIComponent(version)}/${checksum}/device-type.json`;
+      for (let request = 0; request < 605; request++) {
+        const response = await fetch(url, { headers });
+        assert.equal(response.status, 200);
+        await response.text();
+      }
+      assert.equal(reads, 605);
+      config.CONTRACT_ALLOWLIST = 'hw.device-type/raspberrypi4-64';
+      for (let request = 0; request < 600; request++) {
+        const response = await fetch(url, { headers });
+        assert.equal(response.status, 403);
+        await response.text();
+      }
+      assert.equal((await fetch(url, { headers })).status, 429);
+      assert.equal(reads, 605);
+    },
+  );
 });
 
 test('route validates paths and enforces allowlist before invoking read', async () => {

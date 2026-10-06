@@ -11,16 +11,46 @@ open-balena.
 - [Direct database access](DIRECT_DB_ACCESS.md) explains which resources require protected PostgREST access and why.
 - [Host OS and Supervisor updates](OS_AND_SUPERVISOR_UPDATES.md) covers catalog synchronization, image delivery, update
   behavior, and deployment requirements.
+- [Built-in remote access](REMOTE_ACCESS_ARCHITECTURE.md) documents browser terminals, tunnel and SSH authentication,
+  ephemeral key lifecycle, streaming SFTP transfers, trust boundaries, configuration, and operations.
+
+## Device refresh behavior
+
+Pending changes settle only from device/install requests started strictly after acknowledgment, not responses that
+merely finish later. Supervisor version choices use the release ID resolved by the save endpoint before acknowledgment,
+so completing a version-based update returns polling to its steady-state interval.
+
+Managed dashboard widgets use the refresh owner's current installation snapshot, loading state, and errors rather
+than a second permanently fresh installation query. External container state and release changes therefore update
+service statuses, terminal/file-transfer choices, and log sources without manual invalidation. Standalone widgets keep
+their own adaptive polling when no matching refresh owner is present.
+
+- Device lists (including dashboard device cards) refresh every 30 seconds. Visible rows reporting configuration or
+  deployment activity refresh in batched requests approximately every second, without refetching the entire list or
+  changing its membership, ordering, or pagination. Offscreen rows do not start fast polling.
+- A device's show page refreshes device state and service installation state every 30 seconds when steady. It switches
+  to approximately one-second polling when the device reports an ongoing operation, including on initial page load, or
+  when its effective Host OS, Supervisor, or application target has not yet been reached.
+- Editing those targets or starting, stopping, or restarting a container immediately enables fast polling. An accepted
+  request remains tracked until fresh, post-acknowledgment state shows completion, failure, or a superseding target; an
+  unchanged pre-request snapshot cannot complete it. Failed requests stop being tracked. Queued changes remain pending
+  until the device reports an outcome; polling does not invent a timeout or cancel device operations.
+- The show page shares its device and installation queries across the summary and service widgets instead of running
+  independent timers. Immutable release metadata is cached separately; fleet/latest-release discovery remains on a
+  30-second cadence. Historical installations from unrelated releases do not keep a settled device polling rapidly.
+- Periodic device polling runs only while the browser page is in the foreground. Log polling remains independent at
+  approximately two seconds while sources are selected; device refreshes do not reconnect SSH terminals.
 
 ## Dependencies
 
 This project uses `open-balena-api` for operational data and depends on
 [open-balena-postgrest](https://github.com/ob-community/open-balena-postgrest) for administrator identity and
 authorization resources that the API does not expose with the required global semantics, plus narrowly scoped
-server-only Host OS metadata writes that public OData cannot perform. It also depends on
-[open-balena-remote](https://github.com/ob-community/open-balena-remote), so the easiest way to get this up and running
-would be to install it via the [open-balena-admin](https://github.com/ob-community/open-balena-admin) project. See
-[DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md) for the security and deployment implications of the hybrid provider.
+server-only Host OS metadata writes that public OData cannot perform. Device terminals and file transfers are built in
+when `REACT_APP_OPEN_BALENA_REMOTE_URL` is unset. Configuring that variable retains compatibility with
+[open-balena-remote](https://github.com/ob-community/open-balena-remote). See [DIRECT_DB_ACCESS.md](DIRECT_DB_ACCESS.md)
+for the security and deployment implications of the hybrid provider and
+[REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for the complete remote-access deployment model.
 
 ## Configuration
 
@@ -77,28 +107,28 @@ Services > BalenaOS shows local Host OS coverage and Balena Cloud's public Host 
 start an additive, idempotent synchronization into the required `balena_os` system organization. The server reads the
 public catalog, rewrites Cloud registry locations to the configured Host OS registry hostname, and creates or updates
 the application/release/service/image graph through open-balena-api. A server-only direct-database exception links each
-Host OS application to its updater because public OData does not expose that internal relation. It also materializes Host OS
-image labels from the public release composition so Supervisors distinguish OS payloads from ordinary services. On
-open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph and links Host OS
+Host OS application to its updater because public OData does not expose that internal relation. It also materializes
+Host OS image labels from the public release composition so Supervisors distinguish OS payloads from ordinary services.
+On open-balena-api v43.4.0 and newer it also imports the public `balena_os/balenahup` updater graph and links Host OS
 applications to it so Helios can plan the actual OS transition. It does not delete local records. On API v46.1+, sync
 also stores allowlisted device-type JSON in private S3-compatible storage and writes local release assets pointing to
 the UI's read-only metadata endpoint. It creates and authorizes the release/key records through OData, then persists
 only their WebResource references through internal PostgREST because PineJS rejects ordinary JSON asset writes. It
 verifies all references, triggers the API's host-application metadata-cache hook, and checks API metadata before
-reporting completion. This lets ob-api generate device config without public S3 metadata reads. The
-asset URL contains no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed. An
-internal metadata URL only needs to be reachable by ob-api: it is not sent to devices in normal balenaOS provisioning or
-target-state responses. Provisioning images and device image pulls use their separate helper/registry routes. For
-chart-managed installations, the infrastructure chart owns the automated, idempotent MinIO-to-SeaweedFS migration and
-private bucket/credential setup. Operators do not run manual migration commands in this UI repository; follow the
-installation's infrastructure chart deployment guide. Existing MinIO deployments remain supported. Progress is kept in
-server memory, so the UI polls every five seconds and the UI server must remain running until the job finishes. The
-configured registry endpoint must either serve the public image directly or proxy missing paths to the source registry.
-Synchronization does not copy registry blobs and does not automatically change any fleet or device target release. The
-`balena_os` organization owns the imported catalog records only; Host OS releases are installation-wide and do not need
-to share an organization with a target fleet. Synchronization is disabled until that system organization exists.
-Registry locations are rewritten when records are synchronized; rerun the sync after changing
-`OPEN_BALENA_OS_REGISTRY_HOST` to update existing imported image records.
+reporting completion. This lets ob-api generate device config without public S3 metadata reads. The asset URL contains
+no storage credentials; no ob-api image patch or `WEBRESOURCES_S3_*` configuration is needed. An internal metadata URL
+only needs to be reachable by ob-api: it is not sent to devices in normal balenaOS provisioning or target-state
+responses. Provisioning images and device image pulls use their separate helper/registry routes. For chart-managed
+installations, the infrastructure chart owns the automated, idempotent MinIO-to-SeaweedFS migration and private
+bucket/credential setup. Operators do not run manual migration commands in this UI repository; follow the installation's
+infrastructure chart deployment guide. Existing MinIO deployments remain supported. Progress is kept in server memory,
+so the UI polls every five seconds and the UI server must remain running until the job finishes. The configured registry
+endpoint must either serve the public image directly or proxy missing paths to the source registry. Synchronization does
+not copy registry blobs and does not automatically change any fleet or device target release. The `balena_os`
+organization owns the imported catalog records only; Host OS releases are installation-wide and do not need to share an
+organization with a target fleet. Synchronization is disabled until that system organization exists. Registry locations
+are rewritten when records are synchronized; rerun the sync after changing `OPEN_BALENA_OS_REGISTRY_HOST` to update
+existing imported image records.
 
 See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for the complete deployment, registry, organization,
 security, and update-lifecycle configuration.
@@ -162,8 +192,11 @@ prerequisite revisions for complete config-metadata coverage. The coverage pass 
 local release, including an already-local release newer than those imported. Supervisor-only sync and older APIs are
 unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) for storage setup and cache refresh.
 
-- `REACT_APP_OPEN_BALENA_REMOTE_URL` The URL (accessible to API) of the `open-balena-remote` instance, i.e.
-  `http://remote.openbalena.local:10000`
+- `REACT_APP_OPEN_BALENA_REMOTE_URL` Optional URL of a legacy `open-balena-remote` instance, for example
+  `http://remote.openbalena.local:10000`. When this is non-empty, device Connect windows use the legacy iframe flow.
+  Leave it empty or unset to use the built-in terminal and streaming SFTP implementation.
+  An explicitly empty runtime value overrides a legacy URL embedded at build time; an absent runtime setting retains
+  the build-time default. Legacy mode retains its fullscreen control even when the built-in gateway is also configured.
 
 - `REACT_APP_OPEN_BALENA_API_URL` The URL (accessible to API) of the `open-balena-api` instance, i.e.
   `https://api.openbalena.local`
@@ -176,19 +209,111 @@ unchanged. See [OS_AND_SUPERVISOR_UPDATES.md](./OS_AND_SUPERVISOR_UPDATES.md) fo
 
 - `REACT_APP_BANNER_IMAGE` The URL of a custom banner image to use on the main dashboard.
 
+Built-in remote access uses these server-only variables:
+
+- `OPEN_BALENA_TUNNEL_URL` Required HTTP(S) endpoint for the openBalena CONNECT tunnel. Use HTTPS for external
+  endpoints, or `http://ob-vpn.openbalena.svc.cluster.local:3128` on a trusted private network. Plain HTTP exposes proxy
+  authentication to that network; SSH payloads remain encrypted. The VPN port `443` can require PROXY protocol and is
+  not interchangeable with the direct CONNECT port. The UI server connects here; browsers do not.
+- `OPEN_BALENA_SSH_TARGET_PORT` Device SSH port requested through the tunnel. Defaults to `22222`.
+- `OPEN_BALENA_SSH_KEY_IDLE_TTL_MS` How long the per-user ephemeral SSH key remains registered after that user's last
+  terminal or transfer closes. Defaults to `600000` (10 minutes).
+- `OPEN_BALENA_SSH_HOST_KEYS` Comma-separated SHA-256 SSH host-key pins. Each entry is either a wildcard fingerprint
+  (`SHA256:...`) or `device-uuid=SHA256:...` / `device-uuid.balena=SHA256:...`.
+- `OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS` Compatibility escape hatch for devices without managed host-key pins.
+  Defaults to `false`. An explicitly configured pin still rejects a mismatching key.
+- `OPEN_BALENA_REMOTE_PUBLIC_ORIGIN` Optional explicit browser-facing HTTP(S) origin, for example
+  `https://admin.example.test`. Set this when TLS terminates at a reverse proxy rather than the ob-ui socket.
+  Without it, the effective origin comes from the direct socket's HTTP/HTTPS scheme and Host header. Forwarded headers
+  are not trusted automatically.
+- `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS` Optional comma-separated additional browser origins allowed for terminal and
+  transfer requests. Same-origin checks compare scheme, hostname, and effective port; a different scheme is not
+  implicitly allowed. Additional origins must be configured explicitly.
+- `OPEN_BALENA_REMOTE_TRUSTED_PROXIES` Optional comma-separated trusted proxy IPs/CIDRs, for example
+  `10.0.0.10/32,10.0.0.11/32`. Empty trusts none. HTTP and WebSocket client addresses follow `X-Forwarded-For` only
+  through explicitly trusted hops, stopping at the nearest untrusted address. Configure only actual ingress/proxy
+  addresses; do not trust arbitrary forwarded headers or all client networks. Blanket IPv4/IPv6 `/0` policies are rejected.
+  This address policy does not replace `OPEN_BALENA_REMOTE_PUBLIC_ORIGIN` for TLS-offload origin checks.
+- `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS` Tunnel/SSH connection timeout and deadline for each key-store HTTP operation,
+  including its response body. Defaults to `15000`.
+- `OPEN_BALENA_REMOTE_TICKET_TTL_MS` Lifetime of single-use WebSocket tickets. Defaults to `30000`.
+- `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER` Maximum unconsumed terminal tickets per user. Defaults to `8`.
+- `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS` Maximum unconsumed terminal tickets per server process. Defaults to `1024`.
+  Exceeding either pending-ticket limit returns HTTP `429` with `Retry-After`. Expired tickets are removed automatically,
+  without requiring another request, and consumption releases their slots.
+- `OPEN_BALENA_REMOTE_MAX_OPERATIONS_PER_USER` Maximum concurrent terminal/SFTP operations per user. Defaults to `8`.
+- `OPEN_BALENA_REMOTE_MAX_WEBSOCKETS_PER_IP` Pre-authentication bound on simultaneous terminal WebSockets per resolved
+  client IP. Defaults to `8`. Trusted-proxy configuration prevents all browsers behind an ingress from sharing its IP
+  bucket; clients sharing a real NAT still share a bucket and may require a larger limit. Authenticated SSH/SFTP
+  operation quotas remain separate, per user.
+- `OPEN_BALENA_REMOTE_MAX_CHANNELS_PER_SOCKET` Maximum logical terminals per browser WebSocket. Defaults to `4`.
+- `OPEN_BALENA_REMOTE_MAX_MESSAGE_BYTES` Maximum WebSocket message size. Defaults to `1048576`.
+- `OPEN_BALENA_REMOTE_MAX_UPLOAD_BYTES` Maximum upload size. Defaults to `1073741824` (1 GiB).
+- `OPEN_BALENA_REMOTE_MAX_PATH_BYTES` Maximum UTF-8 byte length of a device file path. Defaults to `4096`.
+
+The built-in gateway also requires `OPEN_BALENA_POSTGREST_URL`, `OPEN_BALENA_JWT_SECRET`, and
+`REACT_APP_OPEN_BALENA_API_URL`, which are shared with the existing authenticated UI server routes. See
+[REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for protocol details, trust boundaries, host-key
+management, deployment, and troubleshooting.
+Missing JWT verification configuration prevents gateway initialization, so the UI reports built-in access as
+unconfigured rather than advertising a gateway whose requests would all fail authentication.
+
 These variables can be supplied through the standard Vite `.env` files (for example `.env`, `.env.local`, or
 `.env.<mode>` when invoking `vite --mode <mode>`). The active mode is already set for the provided `npm run dev` and
 `npm run dev:local` scripts.
 
+## Device logs
+
+The device dashboard polls logs automatically about every two seconds while at least one source is selected. Use the App
+and Supervisor checklist menus to combine sources; Host OS is the first Supervisor-menu entry. The log buttons in
+service tables toggle the same selections. Clearing all selections empties the viewer and stops polling.
+
+Log contents use the terminal's monospace font. ANSI colors are preserved safely, and structured JSON `level`/`severity`
+fields color informational, warning, and error messages. Download exports the currently displayed, filtered entries as
+plain text. Clear removes existing entries and prevents old API history from reappearing on subsequent polls or source
+changes; the cutoff resets when the viewer is reloaded or a different device is opened.
+
+Search is case-insensitive. **Add filter** supports message and timestamp conditions, with **Add alternative** combining
+conditions using OR. Separate filters and the search query combine using AND. Timestamp inputs use local time and are
+stored as timezone-qualified ISO timestamps. The browser retains at most 5,000 captured entries, not unlimited device
+history. See [REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md#device-log-viewer) for details.
+
 ## Exposing Device Connection Endpoints
 
-Each device has a "Connect" button which uses balena image labels to discover available services on that device. To make
-use of this auto-discovery, you will need to add tags to each container within your balena application's
-`docker-compose` file where you would like to expose services. Examples of the three types of services available to
-expose are provided below (http, https and vnc); note that ssh services are enabled by default and do not need labels.
-When a device is running an application that exposes container services using the label constructs below, you will see
-the service appear in the list of available connections for that container when clicking the "Connect" button for that
-device in the admin ui.
+Each device has a "Connect" button. Built-in mode offers Host OS and running application-container SSH targets without
+requiring image labels. Targets are ordered Host OS, App services, then supported Supervisor services; the same service
+colors and ordering are used in the service tables and logs picker. Use `+` to add independent terminal tabs and the
+expand button to fill the browser viewport without reconnecting sessions or hiding the device name. Close a shell using
+its tab's `X`. Idle shells are kept alive on both the browser WebSocket and upstream SSH tunnel. The Upload/Download
+panel has an independent Host OS/container selector with the terminal's ordering and colors. Enter an absolute path
+inside the selected filesystem to upload or download; progress and cancellation are shown. Container transfers use host
+SFTP against the running container's filesystem and require no SFTP server inside the image. Supported browsers stream
+downloads into a chosen local file; other browsers use a clearly indicated browser-memory fallback. See
+[REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for session ownership, authentication, and transfer
+limitations.
+
+Successful downloads display the actual received byte count alongside the source path.
+
+Upload and download retain separate filesystem selections. Container requests explicitly distinguish ordinary
+service-label selection from canonical Supervisor selection, so an App service named `balena_supervisor` remains an App
+target rather than opening Supervisor core. Connected terminal tabs retain the target label used for that session even
+if a later device refresh temporarily removes or renames its picker entry.
+
+**Download save-prompt timing:** Browsers supporting streamed saves show the destination picker before checking the
+remote file. The picker requires transient user activation from the Download click; waiting for remote authorization and
+SSH/SFTP checks first can exhaust that activation and prevent the picker from opening. Consequently, errors such as "No
+such file", permission errors, or connection failures appear after the save prompt, for both Host OS and container
+downloads. Remote validation failures occur before downloaded bytes are written. We intentionally do not pre-check paths
+while typing: that would add debouncing delays and remote requests, and a successful check cannot guarantee the file
+still exists or remains readable when the download begins. Browsers using the browser-memory fallback instead fetch the
+file successfully before triggering the local download.
+
+The HTTP, HTTPS, and VNC label discovery described below is available only through the legacy `open-balena-remote` flow.
+To make use of that legacy auto-discovery, add tags to each container within your application's `docker-compose` file
+where you would like to expose services. Examples of the three types of services available to expose are provided below
+(http, https and vnc); note that ssh services are enabled by default and do not need labels. When a device is running an
+application that exposes container services using the label constructs below, you will see the service appear in the
+list of available connections for that container when clicking the "Connect" button for that device in the admin ui.
 
 HTTP Services:
 
@@ -701,13 +826,44 @@ should be up and running.
 
 ## Development
 
-For local development, the Vite dev server exposes two modes:
+Unauthenticated requests to the production server's SPA HTML fallback and public device-type metadata are limited to 600
+requests per five minutes per client IP, per server process. Successful authenticated responses do not consume
+rate-limit quotas; authenticated failures are counted separately by verified user identity. Invalid/expired bearer
+tokens cannot claim that exemption, and excess requests return HTTP 429 before filesystem access. The existing protected
+API limiter retains its stricter 100-failure quota and slowdown; BalenaOS status uses a 600-failure quota. Static assets
+remain outside these quotas. A normal HTML navigation carries no JWT and is therefore treated as unauthenticated even if
+the UI has a token in local storage; authenticated API requests explicitly send their bearer token. No authentication
+cookie or token-in-URL mechanism is introduced.
+
+Explicit HTML entrypoints, including percent-encoded forms of `index.html`, use the same protected runtime-injected
+response as SPA navigation; they are not served as raw static assets. Remote streaming routes are mounted before
+general JSON parsers so JSON file uploads are neither buffered nor consumed by unrelated API middleware.
+
+Credential verification runs inside each limiter's asynchronous key generator, so the limiter is the first middleware
+on these routes rather than a separate authentication handler preceding it. Only verified JWT claims select an
+authenticated bucket; header presence alone never grants authentication or an exemption. Missing credentials remain
+anonymous on public routes, while supplied invalid credentials are rejected after their request is counted.
+
+For local development, the Vite 7 dev server exposes two modes:
 
 - `npm run dev` launches with the `devprod` mode configuration (mirroring hosted settings).
 - `npm run dev:local` loads the `local` mode configuration for working against local services.
 
 When you need a production-like client build, run `npm run build:client` (or `npm run build` to bundle both client and
 server) followed by `npm run serve` to boot the compiled Express server.
+
+After dependency updates, include the regenerated `package-lock.json` and validate the locked install before opening a
+PR:
+
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm audit
+```
+
+Keep `react-admin` and `ra-core` on the same version, and keep `react-router` and `react-router-dom` aligned.
 
 The opt-in Host OS synchronization regression uses real open-balena-api v49.6.5, PostgreSQL, Redis, and PostgREST
 containers with synthetic data. It requires Docker with Linux containers, verifies all five metadata references,

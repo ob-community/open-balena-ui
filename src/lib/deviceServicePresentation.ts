@@ -1,10 +1,16 @@
 import semver from 'semver';
+import type { ResourceRecord } from '../types/resource';
+import type { RemoteTarget } from './builtInRemoteAccess';
+import { isContainerName } from './remoteTarget';
 
 export const deviceLogServiceEvent = 'open-balena-ui:select-device-log-service';
 
 export interface DeviceLogServiceSelection {
   serviceId: number;
   serviceName: string;
+  logSource?: 'service' | 'supervisor';
+  deviceId?: number | string;
+  serviceGroup?: 'app' | 'supervisor';
 }
 
 export const relationshipId = (value: unknown): number | string | undefined => {
@@ -32,4 +38,115 @@ export const queuedOsUpdateMode = (supervisorVersion: unknown): 'supervisor' | '
 
 export const selectDeviceLogService = (selection: DeviceLogServiceSelection): void => {
   window.dispatchEvent(new CustomEvent<DeviceLogServiceSelection>(deviceLogServiceEvent, { detail: selection }));
+};
+
+export interface PresentedDeviceService extends ResourceRecord {
+  serviceName: string;
+  serviceId?: number | string;
+  serviceGroup?: 'app' | 'supervisor';
+}
+
+export const deviceServiceLogSource = (
+  service: Pick<PresentedDeviceService, 'serviceName' | 'serviceGroup'>,
+): 'service' | 'supervisor' =>
+  service.serviceGroup === 'supervisor' && service.serviceName === 'core' ? 'supervisor' : 'service';
+
+export const matchesDeviceServiceLog = (
+  entry: { serviceId?: number | string | null },
+  selection: Pick<DeviceLogServiceSelection, 'serviceId' | 'logSource'>,
+): boolean => {
+  const isDefaultLog = entry.serviceId == null;
+  if (selection.serviceId === 0) return isDefaultLog;
+  // Canonical Supervisor core logs use the default stream, not its cloud service ID.
+  return (
+    (selection.logSource === 'supervisor' && isDefaultLog) ||
+    (!isDefaultLog && Number(entry.serviceId) === selection.serviceId)
+  );
+};
+
+const compareIds = (left: number | string, right: number | string): number =>
+  String(left).localeCompare(String(right), 'en', { numeric: true });
+
+export const orderDeviceServices = <T extends { serviceName: string; id: number | string }>(services: T[]): T[] =>
+  [...services].sort(
+    (left, right) =>
+      left.serviceName.localeCompare(right.serviceName, 'en', { sensitivity: 'base', numeric: true }) ||
+      left.serviceName.localeCompare(right.serviceName, 'en') ||
+      compareIds(left.id, right.id),
+  );
+
+export const presentDeviceServices = ({
+  installs,
+  images,
+  services,
+  appReleaseId,
+  supervisorReleaseId,
+  showSupervisorServices,
+}: {
+  installs: ResourceRecord[];
+  images: ResourceRecord[];
+  services: ResourceRecord[];
+  appReleaseId?: number | string;
+  supervisorReleaseId?: number | string;
+  showSupervisorServices: boolean;
+}) => {
+  const imageById = new Map(images.map((image) => [String(image.id), image]));
+  const serviceById = new Map(services.map((service) => [String(service.id), service]));
+  const resolved: PresentedDeviceService[] = installs.map((install) => {
+    const imageId = relationshipId(install['installs-image']);
+    const serviceId = relationshipId(imageById.get(String(imageId))?.['is a build of-service']);
+    const name = serviceById.get(String(serviceId))?.['service name'];
+    return {
+      ...install,
+      serviceId,
+      serviceName: typeof name === 'string' && name ? name : 'Unknown service',
+    };
+  });
+  const forRelease = (releaseId: number | string | undefined, serviceGroup: 'app' | 'supervisor') =>
+    releaseId === undefined
+      ? []
+      : orderDeviceServices(
+          resolved
+            .filter((install) => String(relationshipId(install['is provided by-release'])) === String(releaseId))
+            .map((install) => ({ ...install, serviceGroup })),
+        );
+  const appServices = forRelease(appReleaseId, 'app');
+  const supervisorServices = showSupervisorServices ? forRelease(supervisorReleaseId, 'supervisor') : [];
+  return { appServices, supervisorServices, services: [...appServices, ...supervisorServices] };
+};
+
+export const getServiceColors = (name: string) => {
+  let hash = 2166136261;
+  for (const character of name) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+  const hue = name === 'Host OS' ? 210 : hash % 360;
+  const saturation = name === 'Host OS' ? 18 : 58 + ((hash >>> 9) % 27);
+  const lightness = name === 'Host OS' ? 82 : 74 + ((hash >>> 18) % 14);
+  return {
+    backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
+    color: '#15202b',
+    borderColor: `hsl(${hue}, 55%, 48%)`,
+  };
+};
+
+export const deviceServiceTerminalTargets = (services: PresentedDeviceService[]): RemoteTarget[] => {
+  const targetIds = new Set<string>();
+  return [
+    { id: 'host', label: 'Host OS', target: 'host' as const },
+    ...services.flatMap((service) => {
+      const name = service.serviceName;
+      const id = `container:${service.serviceGroup === 'supervisor' ? 'supervisor:' : ''}${name}`;
+      if (
+        service.status !== 'Running' ||
+        service.serviceId === undefined ||
+        !isContainerName(name) ||
+        targetIds.has(id)
+      )
+        return [];
+      targetIds.add(id);
+      const container = service.serviceGroup === 'supervisor' && name === 'core' ? 'balena_supervisor' : name;
+      const containerKind =
+        service.serviceGroup === 'supervisor' && name === 'core' ? ('supervisor' as const) : ('service' as const);
+      return [{ id, label: name, target: 'container' as const, container, containerKind }];
+    }),
+  ];
 };

@@ -21,6 +21,9 @@ import environment from '../lib/reactAppEnv';
 import { getSemver } from './SemVerChip';
 import type { ResourceRecord } from '../types/resource';
 import versions from '../versions';
+import { deviceRefreshFailure, type ResolvedDeviceActionTarget } from '../lib/deviceRefresh';
+import { refreshDeviceStateQueries, useDeviceRefreshActions } from './useDeviceRefreshActions';
+import { useQueryClient } from '@tanstack/react-query';
 
 const applicationClass = versions.optionalField('applicationIsOfClass', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
@@ -45,7 +48,11 @@ interface DeviceFieldEditorProps {
   loadChoices?: (dataProvider: OpenBalenaDataProvider, record: ResourceRecord) => Promise<Choice[]>;
   multiline?: boolean;
   required?: boolean;
-  saveChoice?: (dataProvider: OpenBalenaDataProvider, record: ResourceRecord, choice: Choice) => Promise<void>;
+  saveChoice?: (
+    dataProvider: OpenBalenaDataProvider,
+    record: ResourceRecord,
+    choice: Choice,
+  ) => Promise<void | ResolvedDeviceActionTarget>;
   updateData?: (value: number | string | null, record: ResourceRecord) => Record<string, unknown>;
   onUpdated?: (value: number | string | null) => Promise<void>;
 }
@@ -71,6 +78,8 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
   const dataProvider = useDataProvider<OpenBalenaDataProvider>();
   const notify = useNotify();
   const refresh = useRefresh();
+  const queryClient = useQueryClient();
+  const refreshActions = useDeviceRefreshActions();
   const [open, setOpen] = React.useState(false);
   const [value, setValue] = React.useState<number | string>('');
   const [choices, setChoices] = React.useState<Choice[]>();
@@ -78,7 +87,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open || !record) return;
+    if (!open || !record || saving) return;
     setValue(currentValue ?? '');
     if (!loadChoices) return;
 
@@ -107,7 +116,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
     return () => {
       active = false;
     };
-  }, [currentValue, dataProvider, defaultToFirstChoice, loadChoices, notify, open, record, title]);
+  }, [currentValue, dataProvider, defaultToFirstChoice, loadChoices, notify, open, record, title, saving]);
 
   if (!record) return null;
 
@@ -116,10 +125,37 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
     const nextValue = value === '' ? null : value;
     setSaving(true);
     let fieldUpdated = false;
+    let actionId: string | undefined;
+    const refreshRecord = () => {
+      if (!actionId) {
+        refresh();
+        return;
+      }
+      refreshDeviceStateQueries(queryClient, record.id);
+    };
     try {
       const selectedChoice = choices?.find((choice) => String(choice.id) === String(value));
+      const pin = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
+      const kind =
+        source === 'should be operated by-release'
+          ? 'host-os'
+          : source === 'should be managed by-release'
+            ? 'supervisor'
+            : source === pin
+              ? 'release'
+              : undefined;
+      if (kind)
+        actionId = refreshActions.begin({
+          deviceId: record.id,
+          kind,
+          targetField: source,
+          targetReleaseId: nextValue,
+          targetVersion: selectedChoice?.targetVersion,
+          baselineFailure: deviceRefreshFailure(record),
+        });
+      let resolvedTarget: ResolvedDeviceActionTarget | undefined;
       if (selectedChoice && saveChoice) {
-        await saveChoice(dataProvider, record, selectedChoice);
+        resolvedTarget = (await saveChoice(dataProvider, record, selectedChoice)) ?? undefined;
       } else {
         await dataProvider.update('device', {
           id: record.id,
@@ -128,18 +164,20 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
         });
       }
       fieldUpdated = true;
+      if (actionId) refreshActions.acknowledge(actionId, resolvedTarget);
       await onUpdated?.(nextValue);
       notify(`${title} updated.`, { type: 'success' });
       setOpen(false);
-      refresh();
+      refreshRecord();
     } catch (error) {
       const message = error instanceof Error ? error.message : `Unable to update ${title.toLowerCase()}.`;
       notify(fieldUpdated ? `${title} updated, but related records could not be reconciled: ${message}` : message, {
         type: 'error',
       });
+      if (!fieldUpdated && actionId) refreshActions.cancel(actionId);
       if (fieldUpdated) {
         setOpen(false);
-        refresh();
+        refreshRecord();
       }
     } finally {
       setSaving(false);
@@ -318,12 +356,25 @@ export const saveSupervisorTarget = async (
   dataProvider: OpenBalenaDataProvider,
   record: ResourceRecord,
   choice: Choice,
-): Promise<void> => {
-  if (!choice.targetVersion) throw new Error('The selected Supervisor release has no version.');
-  await dataProvider.setDeviceSupervisorTarget({
-    deviceId: Number(record.id),
+): Promise<ResolvedDeviceActionTarget> => {
+  if (typeof choice.targetVersion !== 'string' || !choice.targetVersion.trim())
+    throw new Error('The selected Supervisor release has no version.');
+  const deviceId = Number(record.id);
+  if (!Number.isSafeInteger(deviceId) || deviceId <= 0) throw new Error('The device ID is invalid.');
+  const result = await dataProvider.setDeviceSupervisorTarget({
+    deviceId,
     version: choice.targetVersion,
   });
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    !Number.isSafeInteger(result.releaseId) ||
+    result.releaseId <= 0 ||
+    typeof result.version !== 'string' ||
+    result.version !== choice.targetVersion
+  )
+    throw new Error('The Supervisor target response is invalid.');
+  return { targetReleaseId: result.releaseId, targetVersion: result.version };
 };
 
 export const UnsupportedDeviceField: React.FC<{ children: React.ReactNode }> = ({ children }) => (

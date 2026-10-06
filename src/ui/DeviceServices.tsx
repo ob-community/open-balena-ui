@@ -3,29 +3,35 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import StopIcon from '@mui/icons-material/Stop';
 import TripOriginIcon from '@mui/icons-material/TripOrigin';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
-import { Box, Button, IconButton, Tooltip, Typography, useTheme } from '@mui/material';
+import SpeakerNotesOffOutlinedIcon from '@mui/icons-material/SpeakerNotesOffOutlined';
+import { Alert, Box, Button, IconButton, Tooltip, Typography, useTheme } from '@mui/material';
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Datagrid,
   FunctionField,
   HttpError,
   ReferenceField,
-  ReferenceManyField,
+  ListContextProvider,
   TextField,
   Toolbar,
   WithRecord,
   useAuthProvider,
-  useGetOne,
+  useList,
   useNotify,
   useRecordContext,
 } from 'react-admin';
-import utf8decode from '../lib/utf8decode';
 import { withPermissionHint } from '../lib/httpErrorMessage';
 import SemVerChip from './SemVerChip';
 import environment from '../lib/reactAppEnv';
 import type { ResourceRecord } from '../types/resource';
 import type { OpenBalenaAuthProvider, OpenBalenaSession } from '../authProvider/openbalenaAuthProvider';
-import { hasSupervisorServiceTable, relationshipId, selectDeviceLogService } from '../lib/deviceServicePresentation';
+import { deviceServiceLogSource, relationshipId, type PresentedDeviceService } from '../lib/deviceServicePresentation';
+import { ServiceBadge } from './ServiceBadge';
+import { useDeviceServicePresentation } from './useDeviceServicePresentation';
+import { useDeviceLogSelection } from './DeviceLogSelection';
+import { refreshDeviceStateQueries, useDeviceRefreshActions } from './useDeviceRefreshActions';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface DeviceServicesProps {
   device: ResourceRecord;
@@ -34,36 +40,35 @@ interface DeviceServicesProps {
 
 type ServiceRecord = ResourceRecord & {
   status?: string;
-  ['installs-image']?: number | string;
 };
 
-const ServiceLogsButton: React.FC<{ imageInstall: ServiceRecord }> = ({ imageInstall }) => {
-  const imageId = imageInstall['installs-image'];
-  const { data: image } = useGetOne<ResourceRecord>(
-    'image',
-    { id: imageId ?? 0 },
-    { enabled: imageId !== undefined && imageId !== null },
-  );
-  const serviceId = relationshipId(image?.['is a build of-service']);
-  const { data: service } = useGetOne<ResourceRecord>(
-    'service',
-    { id: serviceId ?? 0 },
-    { enabled: serviceId !== undefined },
-  );
+const ServiceLogsButton: React.FC<{ imageInstall: PresentedDeviceService }> = ({ imageInstall }) => {
+  const { serviceId, serviceName } = imageInstall;
   const numericServiceId = typeof serviceId === 'number' ? serviceId : Number(serviceId);
-  const serviceName = String(service?.['service name'] ?? 'service');
   const canSelect = Number.isFinite(numericServiceId);
+  const selection = useDeviceLogSelection();
+  const selected = selection.selected.some(({ serviceId }) => serviceId === numericServiceId);
+  const label = `${selected ? 'Disable' : 'Enable'} ${serviceName} logs`;
 
   return (
-    <Tooltip title={`Show only ${serviceName} logs`}>
+    <Tooltip title={label}>
       <span>
         <IconButton
-          aria-label={`Show only ${serviceName} logs`}
+          aria-label={label}
+          aria-pressed={selected}
           disabled={!canSelect}
           size='small'
-          onClick={() => selectDeviceLogService({ serviceId: numericServiceId, serviceName })}
+          onClick={(event) => {
+            event.stopPropagation();
+            selection.toggle({
+              serviceId: numericServiceId,
+              serviceName,
+              logSource: deviceServiceLogSource(imageInstall),
+              serviceGroup: imageInstall.serviceGroup,
+            });
+          }}
         >
-          <ArticleOutlinedIcon fontSize='small' />
+          {selected ? <ArticleOutlinedIcon fontSize='small' /> : <SpeakerNotesOffOutlinedIcon fontSize='small' />}
         </IconButton>
       </span>
     </Tooltip>
@@ -71,21 +76,23 @@ const ServiceLogsButton: React.FC<{ imageInstall: ServiceRecord }> = ({ imageIns
 };
 
 const DeviceServiceTable: React.FC<{
-  releaseId?: number | string;
+  services: PresentedDeviceService[];
+  isPending: boolean;
   showControls: boolean;
   showLogSelection: boolean;
   isExecutingCommand: boolean;
   invokeSupervisor: (imageInstall: ServiceRecord, command: 'start' | 'stop' | 'restart') => Promise<void>;
-}> = ({ releaseId, showControls, showLogSelection, isExecutingCommand, invokeSupervisor }) => {
+}> = ({ services, isPending, showControls, showLogSelection, isExecutingCommand, invokeSupervisor }) => {
   const theme = useTheme();
+  const list = useList({
+    data: services.map((service, presentationOrder) => ({ ...service, presentationOrder })),
+    isPending,
+    perPage: 1000,
+    sort: { field: 'presentationOrder', order: 'ASC' },
+  });
 
   return (
-    <ReferenceManyField
-      source='id'
-      reference='image install'
-      target='device'
-      filter={releaseId !== undefined ? { 'is provided by-release': releaseId } : {}}
-    >
+    <ListContextProvider value={list}>
       <Datagrid bulkActionButtons={false}>
         <WithRecord
           render={(service) => {
@@ -100,19 +107,23 @@ const DeviceServiceTable: React.FC<{
           }}
         />
 
-        <ReferenceField label='Service' source='installs-image' reference='image' link={false}>
-          <ReferenceField
-            source='is a build of-service'
-            reference='service'
-            link={(record, reference) => `/${reference}/${record['is a build of-service']}`}
-          >
-            <TextField source='service name' />
-          </ReferenceField>
-        </ReferenceField>
+        <FunctionField
+          label='Service'
+          sortable={false}
+          render={(service: PresentedDeviceService) =>
+            service.serviceId !== undefined ? (
+              <Box component={Link} to={`/service/${service.serviceId}`} sx={{ textDecoration: 'none' }}>
+                <ServiceBadge name={service.serviceName} />
+              </Box>
+            ) : (
+              <ServiceBadge name={service.serviceName} />
+            )
+          }
+        />
 
-        <TextField label='Status' source='status' />
+        <TextField label='Status' source='status' sortable={false} />
 
-        <ReferenceField label='Release' source='is provided by-release' reference='release'>
+        <ReferenceField label='Release' source='is provided by-release' reference='release' sortable={false}>
           <SemVerChip />
         </ReferenceField>
 
@@ -128,7 +139,10 @@ const DeviceServiceTable: React.FC<{
                 >
                   <Button
                     aria-label='Start service'
-                    onClick={() => invokeSupervisor(serviceRecord, 'start')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void invokeSupervisor(serviceRecord, 'start');
+                    }}
                     disabled={isRunning || isExecutingCommand}
                     variant='text'
                     sx={{ p: '4px', m: '4px', minWidth: 0 }}
@@ -138,7 +152,10 @@ const DeviceServiceTable: React.FC<{
 
                   <Button
                     aria-label='Stop service'
-                    onClick={() => invokeSupervisor(serviceRecord, 'stop')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void invokeSupervisor(serviceRecord, 'stop');
+                    }}
                     disabled={!isRunning || isExecutingCommand}
                     variant='text'
                     sx={{ p: '4px', m: '4px', minWidth: 0 }}
@@ -148,7 +165,10 @@ const DeviceServiceTable: React.FC<{
 
                   <Button
                     aria-label='Restart service'
-                    onClick={() => invokeSupervisor(serviceRecord, 'restart')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void invokeSupervisor(serviceRecord, 'restart');
+                    }}
                     disabled={isExecutingCommand}
                     variant='text'
                     sx={{ p: '4px', m: '4px', minWidth: 0 }}
@@ -164,11 +184,11 @@ const DeviceServiceTable: React.FC<{
         {showLogSelection ? (
           <FunctionField
             label='Logs'
-            render={(serviceRecord: ServiceRecord) => <ServiceLogsButton imageInstall={serviceRecord} />}
+            render={(serviceRecord: PresentedDeviceService) => <ServiceLogsButton imageInstall={serviceRecord} />}
           />
         ) : null}
       </Datagrid>
-    </ReferenceManyField>
+    </ListContextProvider>
   );
 };
 
@@ -176,17 +196,11 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
   const authProvider = useAuthProvider<OpenBalenaAuthProvider>();
   const notify = useNotify();
   const record = useRecordContext<ResourceRecord>();
+  const presentation = useDeviceServicePresentation(device);
+  const refreshActions = useDeviceRefreshActions();
+  const queryClient = useQueryClient();
 
   const [isExecutingCommand, setIsExecutingCommand] = React.useState(false);
-  const supervisorReleaseId = relationshipId(device['should be managed by-release']);
-  const { data: supervisorRelease } = useGetOne<ResourceRecord>(
-    'release',
-    { id: supervisorReleaseId ?? 0 },
-    { enabled: supervisorReleaseId !== undefined },
-  );
-  const supervisorReleaseVersion = supervisorRelease?.['raw version'] ?? supervisorRelease?.raw_version;
-  const showSupervisorServices =
-    supervisorReleaseId !== undefined && hasSupervisorServiceTable(supervisorReleaseVersion);
 
   const invokeSupervisor = React.useCallback(
     async (imageInstall: ServiceRecord, command: 'start' | 'stop' | 'restart') => {
@@ -196,7 +210,7 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
         return;
       }
 
-      const imageId = imageInstall['installs-image'];
+      const imageId = relationshipId(imageInstall['installs-image']);
       if (!imageId) {
         notify('Error: Missing image identifier for service command', { type: 'error' });
         return;
@@ -212,6 +226,12 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
       }
 
       setIsExecutingCommand(true);
+      const actionId = refreshActions.begin({
+        deviceId: device.id,
+        kind: command,
+        imageInstallId: imageInstall.id,
+        imageId,
+      });
 
       try {
         const response = await fetch(
@@ -231,24 +251,17 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
           throw new HttpError(response.statusText, response.status);
         }
 
-        const body = response.body;
-        if (!body) {
-          return;
-        }
-
-        const streamData = await body.getReader().read();
-        if (streamData.value) {
-          const result = utf8decode(streamData.value);
-          if (result === 'OK') {
-            notify(`Successfully executed command ${command} on device ${deviceName}`, {
-              type: 'success',
-            });
-          }
-        }
+        const result = (await response.text()).trim();
+        if (response.status !== 204 && result !== 'OK')
+          throw new Error('The Supervisor returned an unexpected command response.');
+        refreshActions.acknowledge(actionId);
+        refreshDeviceStateQueries(queryClient, device.id);
+        notify(`Successfully executed command ${command} on device ${deviceName}`, { type: 'success' });
       } catch (error) {
+        refreshActions.cancel(actionId);
         notify(
           withPermissionHint(
-            `Error: Could not execute command ${command} on device ${deviceName}`,
+            `Error: Could not execute command ${command} on device ${deviceName}${error instanceof Error ? `: ${error.message}` : ''}`,
             error instanceof HttpError ? error.status : undefined,
           ),
           { type: 'error' },
@@ -257,11 +270,22 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
         setIsExecutingCommand(false);
       }
     },
-    [authProvider, device, notify],
+    [
+      authProvider,
+      device,
+      notify,
+      refreshActions.begin,
+      refreshActions.acknowledge,
+      refreshActions.cancel,
+      queryClient,
+    ],
   );
 
   if (!record) {
     return null;
+  }
+  if (presentation.error) {
+    return <Alert severity='error'>Unable to load device services: {presentation.error.message}</Alert>;
   }
 
   return (
@@ -271,7 +295,8 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
       </Typography>
       {relationshipId(record['is running-release']) !== undefined ? (
         <DeviceServiceTable
-          releaseId={relationshipId(record['is running-release'])}
+          services={presentation.appServices}
+          isPending={presentation.isPending}
           showControls
           showLogSelection={showLogSelection}
           isExecutingCommand={isExecutingCommand}
@@ -281,13 +306,14 @@ export const DeviceServices: React.FC<DeviceServicesProps> = ({ device, showLogS
         <Typography color='text.secondary'>No running application release.</Typography>
       )}
 
-      {showSupervisorServices ? (
+      {presentation.showSupervisorServices ? (
         <Box sx={{ mt: 3 }}>
           <Typography variant='h6' component='h2' sx={{ mb: 1 }}>
             Supervisor
           </Typography>
           <DeviceServiceTable
-            releaseId={supervisorReleaseId}
+            services={presentation.supervisorServices}
+            isPending={presentation.isPending}
             showControls={false}
             showLogSelection={showLogSelection}
             isExecutingCommand={isExecutingCommand}

@@ -3,6 +3,7 @@ import postgrestDataProvider from './postgrestDataProvider';
 import createODataDataProvider, { ODATA_RESOURCES, type HttpClient } from './odataDataProvider';
 import versions from '../versions';
 import { withPermissionHints } from './httpClient';
+import { DeviceSnapshots } from '../lib/deviceSnapshots';
 
 export type BalenaOsSyncMode = 'all' | 'latest-and-in-use' | 'newer-and-in-use' | 'in-use' | 'single';
 
@@ -135,6 +136,7 @@ export const openBalenaDataProvider = (
   httpClient = withPermissionHints(httpClient);
   const apiProvider = createODataDataProvider(apiUrl, httpClient, resolveODataVersion(serverVersion, odataVersion));
   const databaseProvider = postgrestDataProvider('/admin-db', httpClient);
+  const deviceSnapshots = new DeviceSnapshots();
   const pinnedReleaseField = versions.resource('isPinnedOnRelease', serverVersion);
   const route = (resource: string): DataProvider => {
     if (DIRECT_DB_RESOURCES.has(resource)) {
@@ -224,9 +226,28 @@ export const openBalenaDataProvider = (
       const { json } = await httpClient('/admin-db/actions/access-context', { signal });
       return json as AdminAccessContext;
     },
-    getList: async (resource, params) => route(resource).getList(resource, params),
-    getOne: async (resource, params) => route(resource).getOne(resource, params),
-    getMany: async (resource, params) => route(resource).getMany(resource, params),
+    getList: async (resource, params) => {
+      // Projected lists are not authoritative device snapshots.
+      const request = resource === 'device' && !params.filter?.['select@'] ? deviceSnapshots.begin() : undefined;
+      const result = await route(resource).getList(resource, params);
+      return request && !params.signal?.aborted
+        ? { ...result, data: deviceSnapshots.reconcile(result.data, request) }
+        : result;
+    },
+    getOne: async (resource, params) => {
+      const request = resource === 'device' ? deviceSnapshots.begin() : undefined;
+      const result = await route(resource).getOne(resource, params);
+      return request && !params.signal?.aborted
+        ? { ...result, data: deviceSnapshots.reconcile([result.data], request)[0] }
+        : result;
+    },
+    getMany: async (resource, params) => {
+      const request = resource === 'device' ? deviceSnapshots.begin() : undefined;
+      const result = await route(resource).getMany(resource, params);
+      return request && !params.signal?.aborted
+        ? { ...result, data: deviceSnapshots.reconcile(result.data, request) }
+        : result;
+    },
     getManyReference: async (resource, params) => route(resource).getManyReference(resource, params),
     create: async (resource, params) => {
       if (resource === 'user') {

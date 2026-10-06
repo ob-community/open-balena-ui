@@ -5,6 +5,7 @@ import { BalenaOsSyncValidationError, balenaOsSyncManager, type BalenaOsSyncMode
 import authorize, { type AuthorizedLocals } from '../middleware/authorize';
 import dosProtect from '../middleware/dosProtect';
 import { databaseReader } from './adminDatabase';
+import { authenticatedRequestSucceeded, createAuthenticationRateKey } from '../middleware/authenticationRateLimit';
 
 const router = Router();
 router.use(json());
@@ -12,6 +13,9 @@ router.use(json());
 const statusProtect = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 600,
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: authenticatedRequestSucceeded,
+  keyGenerator: createAuthenticationRateKey(),
 });
 
 const requireBalenaOsAccess = async (

@@ -22,6 +22,7 @@ export interface RemoteAccessConfig {
   maxUploadBytes: number;
   maxPathBytes: number;
   allowedOrigins: Set<string>;
+  publicOrigin?: string;
   hostKeys: Map<string, Set<string>>;
   allowUnverifiedHostKeys: boolean;
 }
@@ -67,7 +68,7 @@ export const parseHostKeys = (value: string | undefined): Map<string, Set<string
   for (const rawEntry of value?.split(',') ?? []) {
     const entry = rawEntry.trim();
     if (!entry) continue;
-    const separator = entry.indexOf('=');
+    const separator = entry.startsWith('SHA256:') ? -1 : entry.indexOf('=');
     const host = separator === -1 ? '*' : entry.slice(0, separator).trim().toLowerCase();
     const fingerprint = (separator === -1 ? entry : entry.slice(separator + 1)).trim();
     if (!host || (host !== '*' && !/^[a-z0-9.-]+$/.test(host)) || !/^SHA256:[A-Za-z0-9+/]{43}=?$/.test(fingerprint)) {
@@ -85,6 +86,25 @@ const requiredUrl = (name: string, value: string | undefined): string => {
   const parsed = new URL(value);
   if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error(`${name} must be an HTTP(S) URL.`);
   return value.replace(/\/+$/, '');
+};
+
+export const parsePublicOrigin = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  if (!URL.canParse(value)) {
+    throw new Error('OPEN_BALENA_REMOTE_PUBLIC_ORIGIN must be an HTTP(S) origin without credentials or a path.');
+  }
+  const parsed = new URL(value);
+  if (
+    !['http:', 'https:'].includes(parsed.protocol) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error('OPEN_BALENA_REMOTE_PUBLIC_ORIGIN must be an HTTP(S) origin without credentials or a path.');
+  }
+  return parsed.origin;
 };
 
 export const loadRemoteAccessConfig = (environment: NodeJS.ProcessEnv = process.env): RemoteAccessConfig => {
@@ -114,6 +134,7 @@ export const loadRemoteAccessConfig = (environment: NodeJS.ProcessEnv = process.
     maxUploadBytes: integer(environment.OPEN_BALENA_REMOTE_MAX_UPLOAD_BYTES, 1024 * 1024 * 1024, 1),
     maxPathBytes: integer(environment.OPEN_BALENA_REMOTE_MAX_PATH_BYTES, 4096, 1),
     allowedOrigins,
+    publicOrigin: parsePublicOrigin(environment.OPEN_BALENA_REMOTE_PUBLIC_ORIGIN),
     hostKeys: parseHostKeys(environment.OPEN_BALENA_SSH_HOST_KEYS),
     allowUnverifiedHostKeys: parseBoolean(environment.OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS, false),
   };

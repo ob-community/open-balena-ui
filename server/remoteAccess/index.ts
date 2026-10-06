@@ -14,14 +14,15 @@ import { UserSshKeyManager } from './keys';
 import { decodeChannelData, encodeChannelData, parseControlMessage } from './protocol';
 import { connectSsh, openSftp, openShell, OperationQuota, type SshLease } from './ssh';
 import { resolveTransferPath } from './files';
+import { parseRemoteTarget, type ContainerSelector } from '../../src/lib/remoteTarget';
 import { TicketLimitError, TicketStore, type RemoteTicket } from './tickets';
 import {
   contentDisposition,
+  effectiveRequestOrigin,
   isDeviceUuid,
   originAllowed,
   parseSingleRange,
   validateRemotePath,
-  validateContainerName,
 } from './validation';
 
 interface TerminalChannel {
@@ -71,16 +72,21 @@ const identifyAndAuthorize = async (
   return identity;
 };
 
-const transferParameters = (
+export const transferParameters = (
   req: Request,
   config: RemoteAccessConfig,
-): { deviceUuid: string; remotePath: string; container?: string } => {
+): { deviceUuid: string; remotePath: string; container?: ContainerSelector } => {
   const deviceUuid = req.query.deviceUuid;
   if (!isDeviceUuid(deviceUuid)) throw new Error('A valid device UUID is required.');
+  const selection = parseRemoteTarget(
+    req.query.container === undefined ? 'host' : 'container',
+    req.query.container,
+    req.query.containerKind,
+  );
   return {
     deviceUuid,
     remotePath: validateRemotePath(req.query.path, config.maxPathBytes),
-    container: req.query.container === undefined ? undefined : validateContainerName(req.query.container),
+    container: selection.target === 'container' ? selection : undefined,
   };
 };
 
@@ -91,6 +97,7 @@ export interface RemoteAccessBackend {
 }
 
 export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): RemoteAccessBackend => {
+  if (!process.env.OPEN_BALENA_JWT_SECRET) throw new Error('OPEN_BALENA_JWT_SECRET must be configured.');
   const router = Router();
   const tickets = new TicketStore(config.ticketTtlMs, {
     maxPerUser: config.maxPendingTicketsPerUser,
@@ -114,7 +121,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
     async (req, res) => {
       try {
         const origin = requestOrigin(req);
-        if (!originAllowed(origin, req.get('Host'), config.allowedOrigins)) {
+        if (!originAllowed(origin, effectiveRequestOrigin(req, config.publicOrigin), config.allowedOrigins)) {
           res.status(403).json({ error: 'invalid_origin', message: 'Remote access origin is not allowed.' });
           return;
         }
@@ -144,7 +151,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
     let uploadSftp: Awaited<ReturnType<typeof openSftp>> | undefined;
     try {
       const origin = req.get('Origin');
-      if (origin && !originAllowed(origin, req.get('Host'), config.allowedOrigins)) {
+      if (origin && !originAllowed(origin, effectiveRequestOrigin(req, config.publicOrigin), config.allowedOrigins)) {
         res.status(403).json({ error: 'invalid_origin', message: 'Remote access origin is not allowed.' });
         return;
       }
@@ -215,7 +222,7 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
     let ssh: SshLease | undefined;
     try {
       const origin = req.get('Origin');
-      if (origin && !originAllowed(origin, req.get('Host'), config.allowedOrigins)) {
+      if (origin && !originAllowed(origin, effectiveRequestOrigin(req, config.publicOrigin), config.allowedOrigins)) {
         res.status(403).json({ error: 'invalid_origin', message: 'Remote access origin is not allowed.' });
         return;
       }
@@ -391,7 +398,13 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
             authenticated.deviceUuid,
             controller.signal,
           );
-          const stream = await openShell(ssh.client, message.cols, message.rows, message.container, controller.signal);
+          const stream = await openShell(
+            ssh.client,
+            message.cols,
+            message.rows,
+            message.target === 'container' ? message : undefined,
+            controller.signal,
+          );
           if (pendingChannels.get(message.channel) !== controller || socket.readyState !== WebSocket.OPEN) {
             stream.end();
             ssh.close();
@@ -478,7 +491,13 @@ export const createRemoteAccessBackend = (config = loadRemoteAccessConfig()): Re
       socket.destroy();
       return;
     }
-    if (!originAllowed(request.headers.origin, request.headers.host, config.allowedOrigins)) {
+    if (
+      !originAllowed(
+        request.headers.origin,
+        effectiveRequestOrigin(request, config.publicOrigin),
+        config.allowedOrigins,
+      )
+    ) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;

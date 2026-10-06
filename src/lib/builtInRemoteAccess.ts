@@ -7,7 +7,16 @@ export interface RemoteSession {
 export type RemoteTarget = {
   id: string;
   label: string;
-} & ({ target: 'host'; container?: never } | { target: 'container'; container: string });
+} & RemoteTargetSelection;
+
+export const terminalOpenMessage = (target: RemoteTarget, channel: number, cols: number, rows: number) => ({
+  v: 1 as const,
+  type: 'open' as const,
+  channel,
+  ...parseRemoteTarget(target.target, target.container, target.containerKind),
+  cols,
+  rows,
+});
 
 export interface RemoteControlMessage {
   v: 1;
@@ -46,9 +55,15 @@ export const remoteTransferUrl = (
   deviceUuid: string,
   path: string,
   container?: string,
+  containerKind?: ContainerKind,
 ): string => {
+  const selection = parseRemoteTarget(container === undefined ? 'host' : 'container', container, containerKind);
   const query = new URLSearchParams({ deviceUuid, path });
-  if (container !== undefined) query.set('container', container);
+  if (selection.target === 'container') {
+    query.set('container', selection.container);
+    // Preserve URLs for existing callers; new UI requests always supply an explicit kind.
+    if (containerKind !== undefined) query.set('containerKind', selection.containerKind);
+  }
   return `/remote/sftp/${operation}?${query.toString()}`;
 };
 
@@ -64,3 +79,4 @@ export const responseError = async (response: Response, fallback: string): Promi
   }
   return new Error(message);
 };
+import { parseRemoteTarget, type ContainerKind, type RemoteTargetSelection } from './remoteTarget';

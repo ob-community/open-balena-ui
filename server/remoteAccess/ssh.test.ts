@@ -22,6 +22,19 @@ test('Supervisor selection cannot match an App service named core', () => {
   assert.throws(() => containerShellCommand('core; id'), /container/i);
 });
 
+test('explicit selector kind prevents an App named balena_supervisor from opening Supervisor', () => {
+  const service = { container: 'balena_supervisor', containerKind: 'service' as const };
+  const supervisor = { container: 'balena_supervisor', containerKind: 'supervisor' as const };
+  assert.match(containerSelectionCommand(service), /--filter label=io\.balena\.service-name=balena_supervisor /);
+  assert.doesNotMatch(containerSelectionCommand(service), /--filter 'name=/);
+  assert.ok(containerShellCommand(service).startsWith(containerSelectionCommand(service)));
+  assert.equal(containerSelectionCommand(supervisor), containerSelectionCommand('balena_supervisor'));
+  assert.throws(
+    () => containerSelectionCommand({ container: 'core', containerKind: 'supervisor' }),
+    /Supervisor selector/,
+  );
+});
+
 test('SSH keepalives preserve an idle CONNECT tunnel and retain the key until closure', async (t) => {
   const key = generateEd25519SshKey();
   const sshServer = new Server({ hostKeys: [key.privateKey] });

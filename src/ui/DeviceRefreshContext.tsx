@@ -1,9 +1,16 @@
 import React from 'react';
 import { Alert } from '@mui/material';
-import { useGetList, useGetMany, useGetOne } from 'react-admin';
-import { useQueryClient } from '@tanstack/react-query';
+import { useDataProvider, useGetList, useGetMany, useGetOne } from 'react-admin';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ResourceRecord } from '../types/resource';
-import { getDeviceRefreshInterval, settleDeviceActions, steadyDeviceRefreshMs } from '../lib/deviceRefresh';
+import {
+  fetchDeviceInstallBatch,
+  deviceInstallFreshness,
+  getDeviceRefreshInterval,
+  settleDeviceActions,
+  steadyDeviceRefreshMs,
+} from '../lib/deviceRefresh';
+import { latestDeviceSnapshot } from '../lib/deviceSnapshots';
 import { relationshipId } from '../lib/deviceServicePresentation';
 import { resolveDeviceTargetRelease } from '../lib/targetRelease';
 import environment from '../lib/reactAppEnv';
@@ -23,6 +30,7 @@ export const DeviceRefreshProvider: React.FC<React.PropsWithChildren<{ deviceId:
   children,
 }) => {
   const client = useQueryClient();
+  const provider = useDataProvider();
   const [interval, setInterval] = React.useState(() =>
     getDeviceRefreshInterval(
       client.getQueryData<ResourceRecord>(['device', 'getOne', { id: deviceId, meta: undefined }]),
@@ -35,18 +43,18 @@ export const DeviceRefreshProvider: React.FC<React.PropsWithChildren<{ deviceId:
     {
       refetchInterval: interval,
       refetchIntervalInBackground: false,
+      structuralSharing: false,
     },
   );
-  const device = deviceQuery.data;
-  const installs = useGetList<ResourceRecord>(
-    'image install',
-    {
-      pagination: { page: 1, perPage: 1000 },
-      sort: { field: 'id', order: 'ASC' },
-      filter: { device: device?.id },
-    },
-    { enabled: device != null, refetchInterval: interval, refetchIntervalInBackground: false },
-  );
+  const deviceSnapshot = deviceQuery.data && latestDeviceSnapshot(deviceQuery.data);
+  const device = deviceSnapshot?.record ?? deviceQuery.data;
+  const installs = useQuery({
+    queryKey: ['image install', 'device-refresh', { filter: { device: device?.id } }],
+    queryFn: ({ signal }) => fetchDeviceInstallBatch(provider, [device!.id], false, signal, true),
+    enabled: device != null,
+    refetchInterval: interval,
+    refetchIntervalInBackground: false,
+  });
   const appId = relationshipId(device?.['belongs to-application']);
   const fleet = useGetOne<ResourceRecord>(
     'application',
@@ -93,16 +101,16 @@ export const DeviceRefreshProvider: React.FC<React.PropsWithChildren<{ deviceId:
     appReleaseId: appTarget ?? latest.data?.[0]?.id,
   };
   const pending = actions[deviceId] ?? [];
-  const next = getDeviceRefreshInterval(device, installs.data, pending, targets);
+  const next = getDeviceRefreshInterval(device, installs.data?.records, pending, targets);
   React.useEffect(() => setInterval(next), [next]);
   React.useEffect(() => {
     const remaining = settleDeviceActions(
       pending,
       device,
-      installs.data ?? [],
+      installs.data?.records ?? [],
       {
-        device: deviceQuery.dataUpdatedAt,
-        installs: installs.dataUpdatedAt,
+        device: deviceSnapshot?.requestedAt ?? 0,
+        installs: deviceInstallFreshness(installs.data),
       },
       targets,
     );
@@ -112,6 +120,7 @@ export const DeviceRefreshProvider: React.FC<React.PropsWithChildren<{ deviceId:
     device,
     installs.data,
     deviceQuery.dataUpdatedAt,
+    deviceSnapshot?.requestedAt,
     installs.dataUpdatedAt,
     deviceId,
     settle,
@@ -124,7 +133,7 @@ export const DeviceRefreshProvider: React.FC<React.PropsWithChildren<{ deviceId:
     () => ({
       deviceId,
       interval,
-      installs: installs.data ?? [],
+      installs: installs.data?.records ?? [],
     }),
     [deviceId, interval, installs.data],
   );

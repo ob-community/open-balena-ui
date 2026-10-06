@@ -5,7 +5,7 @@ import type { RemoteIdentity } from './auth';
 import type { RemoteAccessConfig } from './config';
 import type { UserSshKeyManager } from './keys';
 import { openTunnel } from './tunnel';
-import { validateContainerName } from './validation';
+import { normalizeContainerSelector, type ContainerSelector } from '../../src/lib/remoteTarget';
 
 export interface SshLease {
   client: Client;
@@ -113,25 +113,25 @@ export const openSftp = (client: Client): Promise<SFTPWrapper> =>
     );
   });
 
-export const containerSelectionCommand = (container: string): string => {
-  const selector = validateContainerName(container);
+export const containerSelectionCommand = (container: ContainerSelector | string): string => {
+  const selector = normalizeContainerSelector(container);
   return (
     `if [ -x /usr/bin/balena-engine ]; then engine=/usr/bin/balena-engine; else engine=/usr/bin/docker; fi; ` +
-    (selector === 'balena_supervisor'
+    (selector.containerKind === 'supervisor'
       ? `cid=$("$engine" ps -q --filter 'name=^/balena_supervisor$' | head -n 1); `
-      : `cid=$("$engine" ps -q --filter label=io.balena.service-name=${selector} | head -n 1); `) +
+      : `cid=$("$engine" ps -q --filter label=io.balena.service-name=${selector.container} | head -n 1); `) +
     `[ -n "$cid" ] || { echo "Service container is not running." >&2; exit 1; }; `
   );
 };
 
-export const containerShellCommand = (container: string): string =>
+export const containerShellCommand = (container: ContainerSelector | string): string =>
   containerSelectionCommand(container) + `exec "$engine" exec -it "$cid" /bin/sh`;
 
 export const openShell = (
   client: Client,
   columns: number,
   rows: number,
-  container?: string,
+  container?: ContainerSelector | string,
   signal?: AbortSignal,
 ): Promise<ClientChannel> =>
   new Promise((resolve, reject) => {

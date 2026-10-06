@@ -16,6 +16,10 @@ open-balena.
 
 ## Device refresh behavior
 
+Pending changes settle only from device/install requests started strictly after acknowledgment, not responses that
+merely finish later. Supervisor version choices use the release ID resolved by the save endpoint before acknowledgment,
+so completing a version-based update returns polling to its steady-state interval.
+
 - Device lists (including dashboard device cards) refresh every 30 seconds. Visible rows reporting configuration or
   deployment activity refresh in batched requests approximately every second, without refetching the entire list or
   changing its membership, ordering, or pagination. Offscreen rows do not start fast polling.
@@ -213,8 +217,13 @@ Built-in remote access uses these server-only variables:
   (`SHA256:...`) or `device-uuid=SHA256:...` / `device-uuid.balena=SHA256:...`.
 - `OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS` Compatibility escape hatch for devices without managed host-key pins.
   Defaults to `false`. An explicitly configured pin still rejects a mismatching key.
-- `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS` Optional comma-separated additional browser origins allowed to create terminal
-  WebSockets. Same-origin requests are allowed automatically.
+- `OPEN_BALENA_REMOTE_PUBLIC_ORIGIN` Optional explicit browser-facing HTTP(S) origin, for example
+  `https://admin.example.test`. Set this when TLS terminates at a reverse proxy rather than the ob-ui socket.
+  Without it, the effective origin comes from the direct socket's HTTP/HTTPS scheme and Host header. Forwarded headers
+  are not trusted automatically.
+- `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS` Optional comma-separated additional browser origins allowed for terminal and
+  transfer requests. Same-origin checks compare scheme, hostname, and effective port; a different scheme is not
+  implicitly allowed. Additional origins must be configured explicitly.
 - `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS` Tunnel and SSH connection timeout. Defaults to `15000`.
 - `OPEN_BALENA_REMOTE_TICKET_TTL_MS` Lifetime of single-use WebSocket tickets. Defaults to `30000`.
 - `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER` Maximum unconsumed terminal tickets per user. Defaults to `8`.
@@ -232,6 +241,8 @@ The built-in gateway also requires `OPEN_BALENA_POSTGREST_URL`, `OPEN_BALENA_JWT
 `REACT_APP_OPEN_BALENA_API_URL`, which are shared with the existing authenticated UI server routes. See
 [REMOTE_ACCESS_ARCHITECTURE.md](REMOTE_ACCESS_ARCHITECTURE.md) for protocol details, trust boundaries, host-key
 management, deployment, and troubleshooting.
+Missing JWT verification configuration prevents gateway initialization, so the UI reports built-in access as
+unconfigured rather than advertising a gateway whose requests would all fail authentication.
 
 These variables can be supplied through the standard Vite `.env` files (for example `.env`, `.env.local`, or
 `.env.<mode>` when invoking `vite --mode <mode>`). The active mode is already set for the provided `npm run dev` and
@@ -268,6 +279,11 @@ downloads into a chosen local file; other browsers use a clearly indicated brows
 limitations.
 
 Successful downloads display the actual received byte count alongside the source path.
+
+Upload and download retain separate filesystem selections. Container requests explicitly distinguish ordinary
+service-label selection from canonical Supervisor selection, so an App service named `balena_supervisor` remains an App
+target rather than opening Supervisor core. Connected terminal tabs retain the target label used for that session even
+if a later device refresh temporarily removes or renames its picker entry.
 
 **Download save-prompt timing:** Browsers supporting streamed saves show the destination picker before checking the
 remote file. The picker requires transient user activation from the Download click; waiting for remote authorization and

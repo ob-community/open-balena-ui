@@ -1,9 +1,45 @@
 import { relationshipId } from './deviceServicePresentation';
 import { isDeviceUpdating } from './deviceStatus';
 import type { ResourceRecord } from '../types/resource';
+import type { DataProvider } from 'react-admin';
 
 export const steadyDeviceRefreshMs = 30_000;
 export const activeDeviceRefreshMs = 1000;
+
+export type DeviceInstallBatch = { records: ResourceRecord[]; requestedAt: number };
+
+export const deviceInstallFreshness = (snapshot?: DeviceInstallBatch & { complete?: boolean }): number =>
+  snapshot?.complete === false ? 0 : (snapshot?.requestedAt ?? 0);
+
+export const fetchDeviceInstallBatch = async (
+  provider: DataProvider,
+  deviceIds: (number | string)[],
+  activeOnly: boolean,
+  signal: AbortSignal,
+  fullRecords = false,
+): Promise<DeviceInstallBatch> => {
+  const requestedAt = Date.now();
+  const records: ResourceRecord[] = [];
+  for (let page = 1; ; page++) {
+    const result = await provider.getList<ResourceRecord>('image install', {
+      pagination: { page, perPage: 1000 },
+      sort: { field: 'id', order: 'ASC' },
+      filter: {
+        'device@in': `(${deviceIds.join(',')})`,
+        ...(!fullRecords
+          ? { 'select@': 'id,device,status,download progress,is provided by-release,installs-image' }
+          : {}),
+        ...(activeOnly
+          ? { 'status@in': '(Downloading,Downloaded,Installing,Installed,Starting,Stopping,configuring)' }
+          : {}),
+      },
+      ...(provider.supportAbortSignal ? { signal } : {}),
+    });
+    records.push(...result.data);
+    if (result.data.length < 1000 || (result.total != null && records.length >= result.total))
+      return { records, requestedAt };
+  }
+};
 
 const status = (value: unknown) =>
   String(value ?? '')
@@ -97,10 +133,26 @@ export type PendingDeviceAction = DeviceActionRequest & {
   observedTarget?: boolean;
 };
 
+export interface ResolvedDeviceActionTarget {
+  targetReleaseId: number | string | null;
+  targetVersion?: string;
+}
+
+export const acknowledgeDeviceAction = (
+  action: PendingDeviceAction,
+  acknowledgedAt: number,
+  target?: ResolvedDeviceActionTarget,
+): PendingDeviceAction => ({
+  ...action,
+  ...('targetField' in action ? target : undefined),
+  acknowledgedAt,
+});
+
 export const settleDeviceActions = (
   actions: PendingDeviceAction[],
   device: ResourceRecord | undefined,
   installs: ResourceRecord[],
+  // Freshness is the request start, never the response/cache update time.
   freshness: { device: number; installs: number },
   targets: RefreshTargets = {},
 ): PendingDeviceAction[] => {

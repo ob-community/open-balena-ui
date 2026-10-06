@@ -2,12 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activeDeviceRefreshMs,
+  deviceInstallFreshness,
+  fetchDeviceInstallBatch,
   getDeviceRefreshInterval,
   isDeviceRefreshActive,
   settleDeviceActions,
   steadyDeviceRefreshMs,
   type PendingDeviceAction,
 } from './deviceRefresh';
+import { openBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
+import { latestDeviceSnapshot } from './deviceSnapshots';
 
 const device = { 'id': 25, 'status': 'idle', 'overall status': 'operational', 'is running-release': 100 };
 const install = { 'id': 7, 'status': 'Running', 'is provided by-release': 100, 'installs-image': 11 };
@@ -57,10 +61,64 @@ test('unreached OS, Supervisor and app targets remain rapid until convergence, b
 test('command polling persists through request acknowledgment and requires a fresh post-ack install snapshot', () => {
   assert.equal(settleDeviceActions([{ ...action, acknowledgedAt: undefined }], device, [install], fresh).length, 1);
   assert.equal(settleDeviceActions([action], device, [install], { device: 3000, installs: 1999 }).length, 1);
+  assert.equal(settleDeviceActions([action], device, [install], { device: 3000, installs: 2000 }).length, 1);
   assert.equal(settleDeviceActions([action], device, [{ ...install, status: 'Starting' }], fresh).length, 1);
   assert.deepEqual(settleDeviceActions([action], device, [install], fresh), []);
   assert.deepEqual(settleDeviceActions([action], device, [{ ...install, status: 'Error' }], fresh), []);
   assert.deepEqual(settleDeviceActions([action], device, [{ ...install, id: 8 }], fresh), []);
+});
+
+for (const requestedAt of [1500, 2000]) {
+  test(`single-device pre-ack installs started at ${requestedAt} cannot settle a restart acknowledged at 2000`, async (context) => {
+    let now = requestedAt;
+    context.mock.method(Date, 'now', () => now);
+    let respond!: (records: (typeof install)[]) => void;
+    const provider = openBalenaDataProvider('https://api.example.test', async (url) => {
+      const json = url.includes('/$count')
+        ? 1
+        : { value: await new Promise<(typeof install)[]>((resolve) => (respond = resolve)) };
+      return { status: 200, headers: new Headers(), body: JSON.stringify(json), json };
+    });
+    const delayed = fetchDeviceInstallBatch(provider, [25], false, new AbortController().signal, true);
+    now = 3000;
+    respond([install]);
+    const stale = await delayed;
+    assert.equal(stale.requestedAt, requestedAt);
+    const waiting = settleDeviceActions([action], device, stale.records, {
+      device: now,
+      installs: deviceInstallFreshness(stale),
+    });
+    assert.equal(waiting.length, 1);
+    assert.equal(getDeviceRefreshInterval(device, stale.records, waiting), 1000);
+    now = 3100;
+    const request = fetchDeviceInstallBatch(provider, [25], false, new AbortController().signal, true);
+    now = 4000;
+    respond([install]);
+    const fresh = await request;
+    assert.equal(fresh.requestedAt, 3100);
+    const remaining = settleDeviceActions(waiting, device, fresh.records, {
+      device: now,
+      installs: deviceInstallFreshness(fresh),
+    });
+    assert.deepEqual(remaining, []);
+    assert.equal(getDeviceRefreshInterval(device, fresh.records, remaining), 30000);
+  });
+}
+
+test('single-device snapshot freshness is the request start, not its delayed response time', async (context) => {
+  let now = 1500;
+  context.mock.method(Date, 'now', () => now);
+  let respond!: (record: typeof device) => void;
+  const provider = openBalenaDataProvider('https://api.example.test', async () => {
+    const record = await new Promise<typeof device>((resolve) => (respond = resolve));
+    const json = { value: [record] };
+    return { status: 200, headers: new Headers(), body: JSON.stringify(json), json };
+  });
+  const delayed = provider.getOne('device', { id: 25 });
+  now = 3000;
+  respond(device);
+  const result = await delayed;
+  assert.equal(latestDeviceSnapshot(result.data)?.requestedAt, 1500);
 });
 
 test('stop completion recognizes stopped/exited/removed installs and does not accept still-running state', () => {

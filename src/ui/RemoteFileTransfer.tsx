@@ -76,7 +76,7 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets
           const xhr = new XMLHttpRequest();
           const abort = () => xhr.abort();
           controller.signal.addEventListener('abort', abort, { once: true });
-          xhr.open('PUT', remoteTransferUrl('upload', deviceUuid, path, selected.container));
+          xhr.open('PUT', remoteTransferUrl('upload', deviceUuid, path, selected.container, selected.containerKind));
           xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           xhr.upload.onprogress = (event) => {
             if (!current()) return;
@@ -108,10 +108,13 @@ export const RemoteFileTransfer: React.FC<Props> = ({ token, deviceUuid, targets
       } else {
         const handle = handlePromise ? await handlePromise : undefined;
         if (!current()) return;
-        const response = await fetch(remoteTransferUrl('download', deviceUuid, path, selected.container), {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          remoteTransferUrl('download', deviceUuid, path, selected.container, selected.containerKind),
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          },
+        );
         if (!response.ok) throw await responseError(response, 'Download failed.');
         if (!response.body) throw new Error('The download did not contain a stream.');
         const total = Number(response.headers.get('Content-Length'));

@@ -5,6 +5,7 @@ import { createApiRouter } from './routes/api';
 import { createClientRouter } from './routes/clientHtml';
 import { bootstrapGlobalAdminFromEnvironment } from './bootstrapGlobalAdmin';
 import { createRemoteAccessBackend, type RemoteAccessBackend } from './remoteAccess';
+import { attachUnavailableRemoteUpgrade } from './remoteAccess/unavailable';
 
 dotenv.config();
 
@@ -25,15 +26,7 @@ if (process.env.OPEN_BALENA_TUNNEL_URL) {
   }
 }
 if (!remoteAccess) {
-  server.on('upgrade', (request, socket) => {
-    if (new URL(request.url ?? '', 'http://localhost').pathname === '/remote/ws') {
-      socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
-      socket.destroy();
-    } else {
-      socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
-      socket.destroy();
-    }
-  });
+  attachUnavailableRemoteUpgrade(server);
 }
 app.use(createApiRouter(remoteAccess?.router));
 app.use(createClientRouter({ clientDir: CLIENT_DIR, remoteAccessEnabled: Boolean(remoteAccess) }));

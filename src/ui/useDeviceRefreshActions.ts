@@ -1,7 +1,12 @@
 import React from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { v4 as uuid } from 'uuid';
-import type { DeviceActionRequest, PendingDeviceAction } from '../lib/deviceRefresh';
+import {
+  acknowledgeDeviceAction,
+  type DeviceActionRequest,
+  type PendingDeviceAction,
+  type ResolvedDeviceActionTarget,
+} from '../lib/deviceRefresh';
 
 type Actions = Record<string, PendingDeviceAction[]>;
 const key = ['device-refresh-actions'];
@@ -46,12 +51,12 @@ export const useDeviceRefreshActions = () => {
     [client],
   );
   const change = React.useCallback(
-    (id: string, acknowledge: boolean) => {
+    (id: string, acknowledge: boolean, target?: ResolvedDeviceActionTarget) => {
       client.setQueryData<Actions>(key, (current = {}) => {
         const next: Actions = {};
         for (const [device, entries] of Object.entries(current)) {
           const changed = acknowledge
-            ? entries.map((action) => (action.id === id ? { ...action, acknowledgedAt: Date.now() } : action))
+            ? entries.map((action) => (action.id === id ? acknowledgeDeviceAction(action, Date.now(), target) : action))
             : entries.filter((action) => action.id !== id);
           if (changed.length) next[device] = changed;
         }
@@ -60,7 +65,10 @@ export const useDeviceRefreshActions = () => {
     },
     [client],
   );
-  const acknowledge = React.useCallback((id: string) => change(id, true), [change]);
+  const acknowledge = React.useCallback(
+    (id: string, target?: ResolvedDeviceActionTarget) => change(id, true, target),
+    [change],
+  );
   const cancel = React.useCallback((id: string) => change(id, false), [change]);
   const settle = React.useCallback(
     (deviceId: number | string, remaining: PendingDeviceAction[]) => {

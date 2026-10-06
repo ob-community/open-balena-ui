@@ -21,7 +21,7 @@ import environment from '../lib/reactAppEnv';
 import { getSemver } from './SemVerChip';
 import type { ResourceRecord } from '../types/resource';
 import versions from '../versions';
-import { deviceRefreshFailure } from '../lib/deviceRefresh';
+import { deviceRefreshFailure, type ResolvedDeviceActionTarget } from '../lib/deviceRefresh';
 import { refreshDeviceStateQueries, useDeviceRefreshActions } from './useDeviceRefreshActions';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -48,7 +48,11 @@ interface DeviceFieldEditorProps {
   loadChoices?: (dataProvider: OpenBalenaDataProvider, record: ResourceRecord) => Promise<Choice[]>;
   multiline?: boolean;
   required?: boolean;
-  saveChoice?: (dataProvider: OpenBalenaDataProvider, record: ResourceRecord, choice: Choice) => Promise<void>;
+  saveChoice?: (
+    dataProvider: OpenBalenaDataProvider,
+    record: ResourceRecord,
+    choice: Choice,
+  ) => Promise<void | ResolvedDeviceActionTarget>;
   updateData?: (value: number | string | null, record: ResourceRecord) => Record<string, unknown>;
   onUpdated?: (value: number | string | null) => Promise<void>;
 }
@@ -149,8 +153,9 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
           targetVersion: selectedChoice?.targetVersion,
           baselineFailure: deviceRefreshFailure(record),
         });
+      let resolvedTarget: ResolvedDeviceActionTarget | undefined;
       if (selectedChoice && saveChoice) {
-        await saveChoice(dataProvider, record, selectedChoice);
+        resolvedTarget = (await saveChoice(dataProvider, record, selectedChoice)) ?? undefined;
       } else {
         await dataProvider.update('device', {
           id: record.id,
@@ -159,7 +164,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
         });
       }
       fieldUpdated = true;
-      if (actionId) refreshActions.acknowledge(actionId);
+      if (actionId) refreshActions.acknowledge(actionId, resolvedTarget);
       await onUpdated?.(nextValue);
       notify(`${title} updated.`, { type: 'success' });
       setOpen(false);
@@ -351,12 +356,25 @@ export const saveSupervisorTarget = async (
   dataProvider: OpenBalenaDataProvider,
   record: ResourceRecord,
   choice: Choice,
-): Promise<void> => {
-  if (!choice.targetVersion) throw new Error('The selected Supervisor release has no version.');
-  await dataProvider.setDeviceSupervisorTarget({
-    deviceId: Number(record.id),
+): Promise<ResolvedDeviceActionTarget> => {
+  if (typeof choice.targetVersion !== 'string' || !choice.targetVersion.trim())
+    throw new Error('The selected Supervisor release has no version.');
+  const deviceId = Number(record.id);
+  if (!Number.isSafeInteger(deviceId) || deviceId <= 0) throw new Error('The device ID is invalid.');
+  const result = await dataProvider.setDeviceSupervisorTarget({
+    deviceId,
     version: choice.targetVersion,
   });
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    !Number.isSafeInteger(result.releaseId) ||
+    result.releaseId <= 0 ||
+    typeof result.version !== 'string' ||
+    result.version !== choice.targetVersion
+  )
+    throw new Error('The Supervisor target response is invalid.');
+  return { targetReleaseId: result.releaseId, targetVersion: result.version };
 };
 
 export const UnsupportedDeviceField: React.FC<{ children: React.ReactNode }> = ({ children }) => (

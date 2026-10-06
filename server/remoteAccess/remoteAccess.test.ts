@@ -91,12 +91,12 @@ test('remote identifiers, paths, origins, and download headers are validated', (
   assert.throws(() => validateRemotePath('relative'));
   assert.equal(validateContainerName('service_1.release-2'), 'service_1.release-2');
   assert.throws(() => validateContainerName('service;rm -rf'));
-  assert.equal(originAllowed('https://ui.example.test', 'ui.example.test', new Set()), true);
+  assert.equal(originAllowed('https://ui.example.test', 'https://ui.example.test', new Set()), true);
   assert.equal(
-    originAllowed('https://admin.example.test', 'ui.example.test', new Set(['https://admin.example.test'])),
+    originAllowed('https://admin.example.test', 'https://ui.example.test', new Set(['https://admin.example.test'])),
     true,
   );
-  assert.equal(originAllowed('https://evil.example.test', 'ui.example.test', new Set()), false);
+  assert.equal(originAllowed('https://evil.example.test', 'https://ui.example.test', new Set()), false);
   assert.match(contentDisposition('/var/data/report "one".txt'), /^attachment;/);
 });
 

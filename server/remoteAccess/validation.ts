@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { IncomingMessage } from 'node:http';
 
 export const isDeviceUuid = (value: unknown): value is string =>
   typeof value === 'string' &&
@@ -53,11 +54,35 @@ export const parseSingleRange = (header: string | undefined, size: number): Byte
   return { start, end };
 };
 
-export const originAllowed = (origin: string | undefined, host: string | undefined, allowed: Set<string>): boolean => {
-  if (!origin || !host) return false;
+export const effectiveRequestOrigin = (
+  request: Pick<IncomingMessage, 'headers' | 'socket'>,
+  publicOrigin?: string,
+): string | undefined => {
+  if (publicOrigin) return publicOrigin;
+  const host = request.headers.host;
+  if (!host) return undefined;
+  const encrypted = 'encrypted' in request.socket && request.socket.encrypted === true;
+  try {
+    const parsed = new URL(`${encrypted ? 'https' : 'http'}://${host}`);
+    if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return undefined;
+    return parsed.origin;
+  } catch {
+    return undefined;
+  }
+};
+
+export const originAllowed = (
+  origin: string | undefined,
+  expectedOrigin: string | undefined,
+  allowed: Set<string>,
+): boolean => {
+  if (!origin) return false;
   try {
     const parsed = new URL(origin);
-    return allowed.has(parsed.origin) || parsed.host.toLowerCase() === host.toLowerCase();
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    return (
+      allowed.has(parsed.origin) || (expectedOrigin !== undefined && parsed.origin === new URL(expectedOrigin).origin)
+    );
   } catch {
     return false;
   }

@@ -5,6 +5,7 @@ import {
   encodeTerminalInput,
   remoteTransferUrl,
   remoteWebSocketUrl,
+  terminalOpenMessage,
 } from './builtInRemoteAccess';
 
 test('built-in remote access uses the current origin and secure WebSockets', () => {
@@ -16,6 +17,44 @@ test('built-in remote access uses the current origin and secure WebSockets', () 
     remoteWebSocketUrl({ protocol: 'http:', host: 'localhost:3000' } as Location),
     'ws://localhost:3000/remote/ws',
   );
+});
+
+test('new terminal and transfer requests explicitly distinguish a reserved App name from Supervisor', () => {
+  for (const containerKind of ['service', 'supervisor'] as const) {
+    const target = {
+      id: containerKind,
+      label: containerKind,
+      target: 'container' as const,
+      container: 'balena_supervisor',
+      containerKind,
+    };
+    assert.deepEqual(terminalOpenMessage(target, 1, 80, 24), {
+      v: 1,
+      type: 'open',
+      channel: 1,
+      target: 'container',
+      container: 'balena_supervisor',
+      containerKind,
+      cols: 80,
+      rows: 24,
+    });
+    for (const operation of ['upload', 'download'] as const) {
+      const query = new URL(
+        remoteTransferUrl(operation, 'a'.repeat(32), '/data/file', target.container, target.containerKind),
+        'http://localhost',
+      ).searchParams;
+      assert.equal(query.get('containerKind'), containerKind);
+      assert.equal(query.get('container'), 'balena_supervisor');
+    }
+  }
+  assert.deepEqual(terminalOpenMessage({ id: 'host', label: 'Host OS', target: 'host' }, 1, 80, 24), {
+    v: 1,
+    type: 'open',
+    channel: 1,
+    target: 'host',
+    cols: 80,
+    rows: 24,
+  });
 });
 
 test('terminal binary frames reserve four bytes for the channel identifier', async () => {

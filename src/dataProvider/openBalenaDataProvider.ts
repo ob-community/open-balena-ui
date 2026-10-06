@@ -234,7 +234,13 @@ export const openBalenaDataProvider = (
         ? { ...result, data: deviceSnapshots.reconcile(result.data, request) }
         : result;
     },
-    getOne: async (resource, params) => route(resource).getOne(resource, params),
+    getOne: async (resource, params) => {
+      const request = resource === 'device' ? deviceSnapshots.begin() : undefined;
+      const result = await route(resource).getOne(resource, params);
+      return request && !params.signal?.aborted
+        ? { ...result, data: deviceSnapshots.reconcile([result.data], request)[0] }
+        : result;
+    },
     getMany: async (resource, params) => {
       const request = resource === 'device' ? deviceSnapshots.begin() : undefined;
       const result = await route(resource).getMany(resource, params);

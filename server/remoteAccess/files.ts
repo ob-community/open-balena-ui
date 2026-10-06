@@ -2,10 +2,11 @@ import path from 'node:path';
 import type { Client, ClientChannel, SFTPWrapper } from 'ssh2';
 import { containerSelectionCommand } from './ssh';
 import { validateRemotePath } from './validation';
+import type { ContainerSelector } from '../../src/lib/remoteTarget';
 
 export const containerRoot = (
   client: Client,
-  container: string,
+  container: ContainerSelector | string,
   signal?: AbortSignal,
   timeoutMs = 30_000,
 ): Promise<string> => {
@@ -118,7 +119,7 @@ export const resolveTransferPath = async (
   client: Client,
   sftp: SFTPWrapper,
   remotePath: string,
-  container?: string,
+  container?: ContainerSelector | string,
   signal?: AbortSignal,
   timeoutMs?: number,
 ): Promise<string> => {

@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { QueryClient } from '@tanstack/react-query';
 import { acceptDeviceInstallBatch, applyDeviceRowRefresh, mergeDeviceRows } from '../ui/DeviceListRefresh';
-import { isDeviceRefreshActive } from '../lib/deviceRefresh';
+import {
+  deviceInstallFreshness,
+  getDeviceRefreshInterval,
+  isDeviceRefreshActive,
+  settleDeviceActions,
+  type PendingDeviceAction,
+} from '../lib/deviceRefresh';
 import { openBalenaDataProvider } from '../dataProvider/openBalenaDataProvider';
 import type { ResourceRecord } from '../types/resource';
 
@@ -301,6 +307,44 @@ test('a slow activity-only response cannot overwrite a newer complete install sn
   );
   assert.equal(newer['18'].records.length, 0);
 });
+
+for (const requestedAt of [1500, 2000]) {
+  test(`list restart acknowledged at 2000 rejects delayed installs started at ${requestedAt}`, () => {
+    const action: PendingDeviceAction = {
+      id: 'restart',
+      deviceId: 18,
+      kind: 'restart',
+      imageInstallId: 1,
+      startedAt: 1000,
+      acknowledgedAt: 2000,
+    };
+    const device = { id: 18, status: 'Operational' };
+    const records = [{ id: 1, device: 18, status: 'Running' }];
+    const stale = acceptDeviceInstallBatch({}, [18], { records, requestedAt }, 3000, true);
+    assert.equal(deviceInstallFreshness(stale['18']), requestedAt);
+    const waiting = settleDeviceActions([action], device, records, {
+      device: 3100,
+      installs: deviceInstallFreshness(stale['18']),
+    });
+    assert.equal(waiting.length, 1);
+    assert.equal(getDeviceRefreshInterval(device, records, waiting), 1000);
+    const activityOnly = acceptDeviceInstallBatch(stale, [18], { records: [], requestedAt: 3200 }, 3300, false);
+    assert.equal(deviceInstallFreshness(activityOnly['18']), 0);
+    const stopped: PendingDeviceAction = { ...action, kind: 'stop' };
+    assert.equal(
+      settleDeviceActions([stopped], device, [], { device: 3300, installs: deviceInstallFreshness(activityOnly['18']) })
+        .length,
+      1,
+    );
+    const fresh = acceptDeviceInstallBatch(stale, [18], { records, requestedAt: 3200 }, 3300, true);
+    const remaining = settleDeviceActions(waiting, device, records, {
+      device: 3300,
+      installs: deviceInstallFreshness(fresh['18']),
+    });
+    assert.deepEqual(remaining, []);
+    assert.equal(getDeviceRefreshInterval(device, records, remaining), 30000);
+  });
+}
 
 test('a steady full device response removes cached transient overall status and leaves no busy row', () => {
   const client = new QueryClient();

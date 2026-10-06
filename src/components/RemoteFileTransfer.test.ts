@@ -42,8 +42,8 @@ const loadComponent = (filename: string, modules: Record<string, unknown>, globa
 
 const targets: builtInRemoteAccess.RemoteTarget[] = [
   { id: 'host', label: 'Host OS', target: 'host' },
-  { id: 'app', label: 'app', target: 'container', container: 'app' },
-  { id: 'worker', label: 'worker', target: 'container', container: 'worker' },
+  { id: 'app', label: 'app', target: 'container', container: 'balena_supervisor', containerKind: 'service' },
+  { id: 'worker', label: 'worker', target: 'container', container: 'balena_supervisor', containerKind: 'supervisor' },
 ];
 
 const transferHarness = (globals = {}) => {
@@ -178,7 +178,10 @@ test('transfers route to their own selected containers and disable controls whil
   view.tabs.onChange(null, 'upload');
   view = render();
   view.action.onClick();
-  assert.equal(uploads[0].url, builtInRemoteAccess.remoteTransferUrl('upload', 'device-uuid', '/upload.bin', 'app'));
+  assert.equal(
+    uploads[0].url,
+    builtInRemoteAccess.remoteTransferUrl('upload', 'device-uuid', '/upload.bin', 'balena_supervisor', 'service'),
+  );
   assert.equal(uploads[0].file, file);
   view = render();
   assert.equal(view.select.disabled, true);
@@ -193,7 +196,13 @@ test('transfers route to their own selected containers and disable controls whil
   render().action.onClick();
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(downloads, [
-    builtInRemoteAccess.remoteTransferUrl('download', 'device-uuid', '/download.bin', 'worker'),
+    builtInRemoteAccess.remoteTransferUrl(
+      'download',
+      'device-uuid',
+      '/download.bin',
+      'balena_supervisor',
+      'supervisor',
+    ),
   ]);
   assert.equal(render().action.disabled, false);
 });

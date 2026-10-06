@@ -7,6 +7,7 @@ import {
   encodeTerminalInput,
   remoteWebSocketUrl,
   responseError,
+  terminalOpenMessage,
   type RemoteControlMessage,
   type RemoteSession,
   type RemoteTarget as TerminalTarget,
@@ -37,6 +38,7 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
   const ready = React.useRef(false);
   const [status, setStatus] = React.useState<TerminalStatus>('disconnected');
   const [targetId, setTargetId] = React.useState('host');
+  const [sessionLabel, setSessionLabel] = React.useState<string>();
   const [error, setError] = React.useState('');
   const selected = targets.find((target) => target.id === targetId) ?? targets[0];
 
@@ -45,6 +47,7 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
     pending.current?.abort();
     pending.current = undefined;
     ready.current = false;
+    setSessionLabel(undefined);
     const current = socket.current;
     socket.current = undefined;
     if (current) {
@@ -98,7 +101,8 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
     setStatus('disconnected');
     return stop;
   }, [deviceUuid, token, stop]);
-  React.useEffect(() => onStatus(status, selected?.label ?? 'Host OS'), [status, selected?.label, onStatus]);
+  const label = sessionLabel ?? selected?.label ?? 'Host OS';
+  React.useEffect(() => onStatus(status, label), [status, label, onStatus]);
   React.useEffect(() => {
     if (!active) return;
     const frame = requestAnimationFrame(() => {
@@ -116,6 +120,7 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
     pending.current = controller;
     const currentAttempt = () => generation.current === attempt && !controller.signal.aborted;
     setError('');
+    setSessionLabel(selected.label);
     setStatus('connecting');
     terminal.current?.reset();
     try {
@@ -153,15 +158,9 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
           if (message.type === 'ready') {
             if (element.current?.clientWidth && element.current.clientHeight) fit.current?.fit();
             ws.send(
-              JSON.stringify({
-                v: 1,
-                type: 'open',
-                channel: 1,
-                target: selected.target,
-                ...(selected.container ? { container: selected.container } : {}),
-                cols: terminal.current?.cols ?? 80,
-                rows: terminal.current?.rows ?? 24,
-              }),
+              JSON.stringify(
+                terminalOpenMessage(selected, 1, terminal.current?.cols ?? 80, terminal.current?.rows ?? 24),
+              ),
             );
           } else if (message.type === 'opened') {
             ready.current = true;
@@ -239,7 +238,7 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
             <Button size='small' variant='contained' onClick={action} disabled={!token || !deviceUuid}>
               {status === 'connecting' ? 'Cancel connection' : 'Start terminal'}
             </Button>
-            {status === 'connecting' && <Typography variant='caption'>Connecting to {selected?.label}…</Typography>}
+            {status === 'connecting' && <Typography variant='caption'>Connecting to {label}…</Typography>}
           </Stack>
         )}
       </Box>

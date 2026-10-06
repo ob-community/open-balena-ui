@@ -247,6 +247,12 @@ authenticated HTTPS request. ob-ui returns a cryptographically random, single-us
 
 The user JWT is never placed in the WebSocket URL.
 
+Origin checks compare the complete effective origin: HTTP/HTTPS scheme, hostname, and effective port. Direct requests
+derive their origin from the socket's TLS state and Host header; forwarded scheme/host headers are not trusted.
+For TLS-terminating proxies, configure `OPEN_BALENA_REMOTE_PUBLIC_ORIGIN` to the browser-facing origin, for example
+`https://admin.example.test`. Explicit additional origins use `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS`.
+An HTTP page cannot use an HTTPS origin's gateway merely because its hostname matches.
+
 Pending tickets have independent per-user and per-process limits, defaulting to 8 and 1024 respectively. These bound
 ticket memory even though successful authenticated requests do not consume the general failure-rate quota. Issuance
 over either cap returns HTTP `429` with `Retry-After`. A cleanup timer removes expired tickets without further traffic;
@@ -406,6 +412,10 @@ OS is listed first in the target picker, followed by App services and then suppo
 order as the dashboard tables. Service-name-based colored badges are shared by those tables, terminal targets, terminal
 tabs, and the logs container picker.
 
+The tab label is captured from the target used to connect, not recomputed from subsequent picker snapshots. A temporary
+target-list omission or service rename therefore cannot relabel an active container shell as Host OS. Disconnecting
+releases that session label; a new connection captures its current target label.
+
 The terminal's measurement and rendering elements use the same monospace font stack. A scoped override isolates xterm
 from the application's universal proportional-font rule; otherwise xterm's fixed-width cell layout produces uneven
 spacing even though the terminal options specify a monospace font.
@@ -435,6 +445,14 @@ Control messages are JSON with `v: 1`:
 | `closed`    | server to browser | Confirm logical channel closure                  |
 | `error`     | server to browser | Non-secret failure, optionally scoped to channel |
 | `heartbeat` | both              | Optional application heartbeat and nonce echo    |
+
+New container `open` messages carry `containerKind: "service"` or `"supervisor"` alongside `container`. Service selectors
+use the service-name label, including an App service literally named `balena_supervisor`; Supervisor selectors require
+the canonical `balena_supervisor` name. Host targets cannot carry a container kind. Invalid kinds and incompatible
+combinations are rejected rather than silently selecting another container.
+
+For older clients only, omitting `containerKind` preserves the legacy reserved-name mapping of `balena_supervisor` to
+Supervisor core. The current UI always sends an explicit kind for container targets, eliminating that name ambiguity.
 
 Terminal input/output are binary WebSocket messages: a four-byte unsigned big-endian channel ID followed by the raw
 terminal bytes. Channel-scoped control messages include `channel`; connection-level messages do not. The browser uses an
@@ -480,8 +498,8 @@ Container names are validated against a narrow character and length policy. They
 arbitrary shell command. The server invokes only the fixed, documented balena container-entry operation with the
 validated name. Arbitrary command selection is outside the browser protocol.
 
-The Supervisor-group `core` target uses the reserved `balena_supervisor` selector, while an App service named `core`
-continues to use its normal service-name selector. The Supervisor target resolves only the exact canonical container
+The Supervisor-group `core` target uses `containerKind: "supervisor"` with `container: "balena_supervisor"`, while App
+services use `containerKind: "service"` with their service name. The Supervisor target resolves only the exact canonical container
 name `balena_supervisor`, independently of application service labels. An App service labelled `core` therefore cannot
 capture Supervisor terminals or transfers, including when the Supervisor itself has no service-name label.
 The logs picker likewise distinguishes
@@ -578,7 +596,9 @@ container stops, another target must be selected explicitly: transfers never sil
 
 ### Container filesystem targeting
 
-Both HTTP transfer routes accept an optional validated `container` query parameter. Omitting it retains Host OS paths.
+Both HTTP transfer routes accept optional validated `container` and `containerKind` query parameters. Omitting both
+retains Host OS paths. Container kinds have the same explicit service/Supervisor semantics and older-client fallback
+as terminal `open` messages.
 Authorization, human-user SSH authentication, quotas, host verification, key reuse, and the SFTP streaming pipeline are
 unchanged. For container transfers, ob-ui resolves the same service label/explicit Supervisor selector used by
 terminals, then asks the host engine for the running container's process ID over an SSH exec channel. Invalid/zero PIDs,
@@ -795,6 +815,7 @@ code.
 | `OPEN_BALENA_SSH_HOST_KEYS`                  |                none | Device/wildcard SHA-256 host-key pins                                        |
 | `OPEN_BALENA_SSH_ALLOW_UNVERIFIED_HOST_KEYS` |             `false` | Compatibility escape hatch for old/unmanaged device host keys                |
 | `OPEN_BALENA_REMOTE_ALLOWED_ORIGINS`         | ob-ui origin policy | Explicit additional browser origins for WSS                                  |
+| `OPEN_BALENA_REMOTE_PUBLIC_ORIGIN`           |                none | Browser-facing origin for TLS-terminating proxies; otherwise use direct socket origin |
 | `OPEN_BALENA_REMOTE_CONNECT_TIMEOUT_MS`      |             `15000` | Tunnel and SSH connection timeout                                            |
 | `OPEN_BALENA_REMOTE_TICKET_TTL_MS`           |             `30000` | Single-use WebSocket ticket lifetime                                         |
 | `OPEN_BALENA_REMOTE_MAX_PENDING_TICKETS_PER_USER` |                `8` | Maximum unconsumed terminal tickets per user                                 |

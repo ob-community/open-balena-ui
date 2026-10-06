@@ -97,12 +97,13 @@ test('shared presentation groups App before Supervisor, resolves expanded relati
 test('terminal targets keep Host OS first, then App and Supervisor running service names without duplicate or invalid exec names', () => {
   assert.deepEqual(deviceServiceTerminalTargets(presentDeviceServices(serviceFixture).services), [
     { id: 'host', label: 'Host OS', target: 'host' },
-    { id: 'container:web', label: 'web', target: 'container', container: 'web' },
+    { id: 'container:web', label: 'web', target: 'container', container: 'web', containerKind: 'service' },
     {
       id: 'container:supervisor:balena-supervisor',
       label: 'balena-supervisor',
       target: 'container',
       container: 'balena-supervisor',
+      containerKind: 'service',
     },
   ]);
   assert.deepEqual(deviceServiceTerminalTargets([]), [{ id: 'host', label: 'Host OS', target: 'host' }]);
@@ -124,9 +125,31 @@ test('Supervisor core uses the explicit supervisor selector while App core keeps
   });
   assert.deepEqual(deviceServiceTerminalTargets(presentation.services), [
     { id: 'host', label: 'Host OS', target: 'host' },
-    { id: 'container:core', label: 'core', target: 'container', container: 'core' },
-    { id: 'container:supervisor:core', label: 'core', target: 'container', container: 'balena_supervisor' },
+    { id: 'container:core', label: 'core', target: 'container', container: 'core', containerKind: 'service' },
+    {
+      id: 'container:supervisor:core',
+      label: 'core',
+      target: 'container',
+      container: 'balena_supervisor',
+      containerKind: 'supervisor',
+    },
   ]);
+});
+
+test('an App named balena_supervisor remains a service-name selector distinct from Supervisor core', () => {
+  const services = [
+    { id: 1, serviceId: 1, serviceName: 'balena_supervisor', serviceGroup: 'app' as const, status: 'Running' },
+    { id: 2, serviceId: 2, serviceName: 'core', serviceGroup: 'supervisor' as const, status: 'Running' },
+  ];
+  const targets = deviceServiceTerminalTargets(services);
+  assert.deepEqual(
+    targets.slice(1).map(({ container, containerKind }) => ({ container, containerKind })),
+    [
+      { container: 'balena_supervisor', containerKind: 'service' },
+      { container: 'balena_supervisor', containerKind: 'supervisor' },
+    ],
+  );
+  assert.notEqual(targets[1].id, targets[2].id);
 });
 
 test('only Supervisor-group core uses default logs, preserving its service ID and excluding other app/system logs', () => {

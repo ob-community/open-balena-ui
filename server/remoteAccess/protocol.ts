@@ -1,16 +1,14 @@
-import { validateContainerName } from './validation';
+import { parseRemoteTarget, type RemoteTargetSelection } from '../../src/lib/remoteTarget';
 
 export type ClientControl =
   | { v: 1; type: 'auth'; ticket: string }
-  | {
+  | ({
       v: 1;
       type: 'open';
       channel: number;
-      target: 'host' | 'container';
-      container?: string;
       cols: number;
       rows: number;
-    }
+    } & RemoteTargetSelection)
   | { v: 1; type: 'resize'; channel: number; cols: number; rows: number }
   | { v: 1; type: 'close'; channel: number }
   | { v: 1; type: 'heartbeat'; nonce?: string };
@@ -45,13 +43,12 @@ export const parseControlMessage = (data: string): ClientControl => {
     dimensions(value.rows) &&
     (value.target === 'host' || value.target === 'container')
   ) {
-    const containerName = value.target === 'container' ? validateContainerName(value.container) : undefined;
+    const selection = parseRemoteTarget(value.target, value.container, value.containerKind);
     return {
       v: 1,
       type: 'open',
       channel: value.channel,
-      target: value.target,
-      ...(containerName ? { container: containerName } : {}),
+      ...selection,
       cols: value.cols,
       rows: value.rows,
     };

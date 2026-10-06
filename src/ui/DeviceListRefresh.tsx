@@ -12,6 +12,8 @@ import {
 } from 'react-admin';
 import {
   activeDeviceRefreshMs,
+  deviceInstallFreshness,
+  fetchDeviceInstallBatch,
   isDeviceRefreshActive,
   settleDeviceActions,
   steadyDeviceRefreshMs,
@@ -149,8 +151,6 @@ export const applyDeviceRowRefresh = (
   );
 };
 
-const activityStatuses = '(Downloading,Downloaded,Installing,Installed,Starting,Stopping,configuring)';
-
 const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
   const { data = [], page, perPage, sort, filterValues } = useListContext<ResourceRecord>();
   const provider = useDataProvider();
@@ -191,35 +191,16 @@ const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
     },
   );
 
-  const fetchInstalls = async (deviceIds: Identifier[], activeOnly: boolean, signal: AbortSignal) => {
-    const requestedAt = Date.now();
-    const records: ResourceRecord[] = [];
-    for (let page = 1; ; page++) {
-      const result = await provider.getList<ResourceRecord>('image install', {
-        pagination: { page, perPage: 1000 },
-        sort: { field: 'id', order: 'ASC' },
-        filter: {
-          'device@in': `(${deviceIds.join(',')})`,
-          'select@': 'id,device,status,download progress,is provided by-release,installs-image',
-          ...(activeOnly ? { 'status@in': activityStatuses } : {}),
-        },
-        ...(provider.supportAbortSignal ? { signal } : {}),
-      });
-      records.push(...result.data);
-      if (result.data.length < 1000 || (result.total != null && records.length >= result.total))
-        return { records, requestedAt };
-    }
-  };
   const fallback = useQuery({
     queryKey: ['device-list-activity', { ids, activeOnly: true }],
-    queryFn: ({ signal }) => fetchInstalls(ids, true, signal),
+    queryFn: ({ signal }) => fetchDeviceInstallBatch(provider, ids, true, signal),
     enabled: ids.length > 0,
     refetchInterval: steadyDeviceRefreshMs,
     refetchIntervalInBackground: false,
   });
   const activeInstalls = useQuery({
     queryKey: ['device-list-activity', { ids: busyIds, activeOnly: false }],
-    queryFn: ({ signal }) => fetchInstalls(busyIds, false, signal),
+    queryFn: ({ signal }) => fetchDeviceInstallBatch(provider, busyIds, false, signal),
     enabled: busyIds.length > 0,
     refetchInterval: activeDeviceRefreshMs,
     refetchIntervalInBackground: false,
@@ -297,7 +278,7 @@ const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
           {
             device: latest?.requestedAt ?? deviceSnapshot?.updatedAt ?? 0,
             // A status-filtered fallback cannot prove that a stopped install was removed.
-            installs: snapshot?.complete ? snapshot.updatedAt : 0,
+            installs: deviceInstallFreshness(snapshot),
           },
           { appReleaseId: relationshipId(device['should be running-release']) },
         ),

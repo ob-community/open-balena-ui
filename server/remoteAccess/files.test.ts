@@ -118,6 +118,11 @@ test('container inspection uses the shared selector and rejects stopped, invalid
   assert.equal(await containerRoot(client, 'core'), root);
   assert.match(commands[2], /label=io\.balena\.service-name=core /);
   assert.doesNotMatch(commands[2], /balena_supervisor/);
+  assert.equal(await containerRoot(client, { container: 'balena_supervisor', containerKind: 'service' }), root);
+  assert.match(commands[3], /label=io.balena.service-name=balena_supervisor /);
+  assert.doesNotMatch(commands[3], /--filter 'name=/);
+  assert.equal(await containerRoot(client, { container: 'balena_supervisor', containerKind: 'supervisor' }), root);
+  assert.match(commands[4], /name=\^\/balena_supervisor\$/);
   assert.throws(() => containerRoot(client, 'bad;id'), /Invalid container/);
   for (const value of ['0\n', 'not-a-pid', '42\n99', '9007199254740992']) {
     output = value;

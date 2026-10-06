@@ -1,5 +1,7 @@
 import semver from 'semver';
 import type { ResourceRecord } from '../types/resource';
+import type { RemoteTarget } from './builtInRemoteAccess';
+import { isContainerName } from './remoteTarget';
 
 export const deviceLogServiceEvent = 'open-balena-ui:select-device-log-service';
 
@@ -126,7 +128,7 @@ export const getServiceColors = (name: string) => {
   };
 };
 
-export const deviceServiceTerminalTargets = (services: PresentedDeviceService[]) => {
+export const deviceServiceTerminalTargets = (services: PresentedDeviceService[]): RemoteTarget[] => {
   const targetIds = new Set<string>();
   return [
     { id: 'host', label: 'Host OS', target: 'host' as const },
@@ -136,13 +138,15 @@ export const deviceServiceTerminalTargets = (services: PresentedDeviceService[])
       if (
         service.status !== 'Running' ||
         service.serviceId === undefined ||
-        !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(name) ||
+        !isContainerName(name) ||
         targetIds.has(id)
       )
         return [];
       targetIds.add(id);
       const container = service.serviceGroup === 'supervisor' && name === 'core' ? 'balena_supervisor' : name;
-      return [{ id, label: name, target: 'container' as const, container }];
+      const containerKind =
+        service.serviceGroup === 'supervisor' && name === 'core' ? ('supervisor' as const) : ('service' as const);
+      return [{ id, label: name, target: 'container' as const, container, containerKind }];
     }),
   ];
 };

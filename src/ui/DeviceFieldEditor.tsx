@@ -82,41 +82,55 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
   const refreshActions = useDeviceRefreshActions();
   const [open, setOpen] = React.useState(false);
   const [value, setValue] = React.useState<number | string>('');
+  const [initialValue, setInitialValue] = React.useState<number | string>('');
   const [choices, setChoices] = React.useState<Choice[]>();
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const choiceRequest = React.useRef(0);
 
   React.useEffect(() => {
-    if (!open || !record || saving) return;
-    setValue(currentValue ?? '');
+    return () => {
+      choiceRequest.current++;
+    };
+  }, []);
+
+  const closeDialog = () => {
+    choiceRequest.current++;
+    setOpen(false);
+  };
+
+  const openDialog = () => {
+    if (!record) return;
+    const request = ++choiceRequest.current;
+    const startingValue = currentValue ?? '';
+    setInitialValue(startingValue);
+    setValue(startingValue);
+    setChoices(undefined);
+    setLoading(Boolean(loadChoices));
+    setOpen(true);
     if (!loadChoices) return;
 
-    let active = true;
-    setLoading(true);
     loadChoices(dataProvider, record)
       .then((loadedChoices) => {
-        if (active) {
+        if (choiceRequest.current === request) {
           setChoices(loadedChoices);
-          if (defaultToFirstChoice && (currentValue == null || currentValue === '') && loadedChoices[0]) {
+          if (defaultToFirstChoice && startingValue === '' && loadedChoices[0]) {
             setValue(loadedChoices[0].id);
           }
         }
       })
       .catch((error: unknown) => {
-        if (active) {
+        if (choiceRequest.current === request) {
           notify(error instanceof Error ? error.message : `Unable to load ${title.toLowerCase()} choices.`, {
             type: 'error',
           });
-          setOpen(false);
+          closeDialog();
         }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (choiceRequest.current === request) setLoading(false);
       });
-    return () => {
-      active = false;
-    };
-  }, [currentValue, dataProvider, defaultToFirstChoice, loadChoices, notify, open, record, title, saving]);
+  };
 
   if (!record) return null;
 
@@ -167,7 +181,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
       if (actionId) refreshActions.acknowledge(actionId, resolvedTarget);
       await onUpdated?.(nextValue);
       notify(`${title} updated.`, { type: 'success' });
-      setOpen(false);
+      closeDialog();
       refreshRecord();
     } catch (error) {
       const message = error instanceof Error ? error.message : `Unable to update ${title.toLowerCase()}.`;
@@ -176,7 +190,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
       });
       if (!fieldUpdated && actionId) refreshActions.cancel(actionId);
       if (fieldUpdated) {
-        setOpen(false);
+        closeDialog();
         refreshRecord();
       }
     } finally {
@@ -192,7 +206,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
           variant='text'
           color='inherit'
           size='small'
-          onClick={() => setOpen(true)}
+          onClick={openDialog}
           sx={{
             'minWidth': 0,
             'ml': 0.25,
@@ -209,7 +223,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
           variant='text'
           color='inherit'
           size='small'
-          onClick={() => setOpen(true)}
+          onClick={openDialog}
           endIcon={<EditOutlinedIcon fontSize='inherit' />}
           sx={{
             'minWidth': 0,
@@ -223,7 +237,7 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
           {children}
         </Button>
       )}
-      <Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth='sm'>
+      <Dialog open={open} onClose={() => !saving && closeDialog()} fullWidth maxWidth='sm'>
         <DialogTitle>{title}</DialogTitle>
         <DialogContent>
           {notice}
@@ -293,13 +307,13 @@ export const DeviceFieldEditor: React.FC<DeviceFieldEditorProps> = ({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)} disabled={saving}>
+          <Button onClick={closeDialog} disabled={saving}>
             Cancel
           </Button>
           <Button
             variant='contained'
             onClick={save}
-            disabled={saving || loading || (required && value === '') || value === (currentValue ?? '')}
+            disabled={saving || loading || (required && value === '') || value === initialValue}
           >
             {saving ? 'Saving...' : 'Save'}
           </Button>

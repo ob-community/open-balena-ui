@@ -40,6 +40,9 @@ their own adaptive polling when no matching refresh owner is present.
   30-second cadence. Historical installations from unrelated releases do not keep a settled device polling rapidly.
 - Periodic device polling runs only while the browser page is in the foreground. Log polling remains independent at
   approximately two seconds while sources are selected; device refreshes do not reconnect SSH terminals.
+- Device field editors initialize their draft and load choices once per opening. Background refreshes continue without
+  resetting edits or reloading choices, and failed saves preserve the draft for retry. Reopening an editor uses the
+  latest device state.
 
 ## Dependencies
 

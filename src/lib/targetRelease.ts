@@ -5,7 +5,7 @@ export interface TargetReleaseInfo {
   origin: TargetReleaseOrigin;
 }
 
-const fleetPinField = 'should be running-release';
+export const fleetPinField = 'should be running-release';
 
 export const getTargetOriginLabel = (origin: TargetReleaseOrigin): string => {
   switch (origin) {
@@ -94,11 +94,6 @@ export const resolveFleetTargetRelease = ({
   }
 
   const isTrackingLatest = Boolean(getFieldValue(record, 'should track latest release'));
-
-  const pinnedTarget = getPinnedValue(record, pinField);
-  if (pinnedTarget !== undefined) {
-    return { origin: 'fleet', targetReleaseId: pinnedTarget };
-  }
 
   const fallbackTarget = getTargetValue(record, pinField);
   if (fallbackTarget !== undefined) {

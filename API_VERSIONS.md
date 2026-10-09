@@ -14,6 +14,11 @@ PostgREST resources that are present at the v0.139.0 support floor.
 Balena Cloud's device "Support access" control is not part of the open-balena-api model at any supported version. The
 device summary marks it unavailable instead of attempting an unsupported or direct-database write.
 
+Fleet target-release reads and writes use `application.should_be_running__release` at every supported API version. The
+v25.2.8 migration to `is_pinned_on__release` applies only to devices. With Track Latest Release disabled, saving the
+fleet's selected target updates this application relationship; with tracking enabled, the target is labeled as tracking
+latest rather than as a fleet pin.
+
 The Services > BalenaOS synchronizer follows these same boundaries. On v0.149.0 and newer it writes semantic release
 metadata through the computed `semver` field. On v0.139.0-v0.148.x it writes the legacy final `release_type` and a
 `version` release tag instead; catalog statistics also read that tag because `raw_version` is unavailable. The
@@ -50,8 +55,8 @@ and uses the API's host-application cache hook before checking device-type metad
 recovery of an already-stuck upstream cache fill.
 
 - open-balena-api
-  [`ddb7ac84`](https://github.com/balena-io/open-balena-api/commit/ddb7ac84be12d83ffc0aea7aadc941e2fb94f036)
-  removed `/device-types/v1/:deviceType/images` in favor of Host OS application releases.
+  [`ddb7ac84`](https://github.com/balena-io/open-balena-api/commit/ddb7ac84be12d83ffc0aea7aadc941e2fb94f036) removed
+  `/device-types/v1/:deviceType/images` in favor of Host OS application releases.
 - The BalenaOS page and synchronizer therefore discover successful, finalized, non-invalidated releases from the
   standard public `balena_os/:deviceType` Host OS application. They do not call the removed endpoint.
 - ESR applications and ESR-looking semantic versions with a major version of 2000 or newer are excluded. This matches
@@ -61,8 +66,8 @@ recovery of an already-stuck upstream cache fill.
 ## v43.4.0 through v45.x: Helios Host OS updater graph
 
 - open-balena-api
-  [`445ab421`](https://github.com/balena-io/open-balena-api/commit/445ab421f3570d369435110a58266cd8ae12061f)
-  added the Host OS updater relationship used to emit `io.balena.private.updater` in device target state.
+  [`445ab421`](https://github.com/balena-io/open-balena-api/commit/445ab421f3570d369435110a58266cd8ae12061f) added the
+  Host OS updater relationship used to emit `io.balena.private.updater` in device target state.
 - Host OS synchronization imports the latest successful public `balena_os/balenahup` application release, sets that
   local application's `should_be_running__release`, and links each imported Host OS application through
   `is_updated_by__application`. The application/release/image graph and running-release pin use OData; the internal
@@ -86,9 +91,8 @@ recovery of an already-stuck upstream cache fill.
   catalog. Public release IDs are discovery inputs only: the synchronizer imports the complete host application,
   release, service, image, and relationship graph before assigning a local release to
   `device.should_be_operated_by__release`.
-- The BalenaOS synchronizer intersects those public releases with
-  `/device-types/v1/:deviceType/images`, preserving the API's image-storage availability and ESR filtering through the
-  final release that exposes that endpoint.
+- The BalenaOS synchronizer intersects those public releases with `/device-types/v1/:deviceType/images`, preserving the
+  API's image-storage availability and ESR filtering through the final release that exposes that endpoint.
 - If the configured API software version is stale and the endpoint nevertheless returns `404`, the synchronizer detects
   that capability mismatch and uses the v46+ non-ESR Host OS release behavior instead of failing the catalog page.
 - Supervisor choices combine compatible local release records with Balena Cloud's public v7 release catalog by CPU

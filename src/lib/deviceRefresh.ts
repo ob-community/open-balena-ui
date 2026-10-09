@@ -2,6 +2,7 @@ import { relationshipId } from './deviceServicePresentation';
 import { isDeviceUpdating } from './deviceStatus';
 import type { ResourceRecord } from '../types/resource';
 import type { DataProvider } from 'react-admin';
+import { getDeviceOsUpdateProgress } from './deviceUpdateProgress';
 
 export const steadyDeviceRefreshMs = 30_000;
 export const activeDeviceRefreshMs = 1000;
@@ -50,7 +51,12 @@ const failures = new Set(['error', 'failed', 'update failed', 'aborted', 'reject
 const transitions = new Set(['configuring', 'updating', 'restarting', 'rebooting', 'creating', 'deleting']);
 
 export const deviceRefreshFailure = (device?: Record<string, unknown>): string =>
-  [device?.['overall status'], device?.['update status'], device?.status]
+  [
+    device?.['overall status'],
+    device?.['update status'],
+    device?.status,
+    getDeviceOsUpdateProgress(device)?.status === 'failed' ? 'failed' : undefined,
+  ]
     .map(status)
     .filter((value) => failures.has(value))
     .join('|');
@@ -81,7 +87,7 @@ export const isDeviceRefreshActive = (
     transitions.has(status(device.status)) ||
     transitions.has(status(device['update status'])) ||
     status(device['provisioning state']) === 'post provisioning' ||
-    device['provisioning progress'] != null ||
+    (!getDeviceOsUpdateProgress(device) && device['provisioning progress'] != null) ||
     relevant.some((install) => transitions.has(status(install.status)))
   );
 };

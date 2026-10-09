@@ -1,5 +1,6 @@
 import environment from './reactAppEnv';
 import versions from '../versions';
+import { getDeviceOsUpdateProgress } from './deviceUpdateProgress';
 
 type DeviceStatusRecord = Record<string, unknown> | null | undefined;
 
@@ -72,6 +73,8 @@ export const isDeviceUpdating = (device: DeviceStatusRecord, imageInstalls: Devi
     return false;
   }
 
+  if (getDeviceOsUpdateProgress(device)?.status === 'active') return true;
+
   if (activeUpdateStatuses.has(normalizeStatus(device['update status']))) {
     return true;
   }
@@ -117,10 +120,11 @@ export const getDeviceOverallState = (device: DeviceStatusRecord, imageInstalls:
   const heartbeatState = normalizeStatus(device['api heartbeat state']);
   const updateStatus = normalizeStatus(device['update status']);
   const provisioningState = normalizeStatus(device['provisioning state']);
+  const osUpdate = getDeviceOsUpdateProgress(device);
   const hasLastConnectivityEvent = Boolean(device['last connectivity event']);
   const online = isDeviceOnline(device);
 
-  if (provisioningState === 'post-provisioning' || device['provisioning progress'] != null) {
+  if (!osUpdate && (provisioningState === 'post-provisioning' || device['provisioning progress'] != null)) {
     return 'Configuring';
   }
 
@@ -135,6 +139,8 @@ export const getDeviceOverallState = (device: DeviceStatusRecord, imageInstalls:
   if (failedUpdateStatuses.has(updateStatus)) {
     return 'Update failed';
   }
+
+  if (osUpdate?.status === 'failed') return 'OS update failed';
 
   if (isDeviceUpdating(device, imageInstalls)) {
     return 'Updating';

@@ -31,6 +31,7 @@ import {
 import { queuedOsUpdateMode } from '../../lib/deviceServicePresentation';
 import ConnectionLastConnected from '../../ui/ConnectionLastConnected';
 import { DeviceRefreshContext } from '../../ui/DeviceRefreshContext';
+import { DeviceOsUpdateProgress } from '../../ui/DeviceOsUpdateProgress';
 
 const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
 
@@ -251,6 +252,7 @@ const SummaryWidget: React.FC = () => {
                   Changelog
                 </Link>
                 )
+                <DeviceOsUpdateProgress device={record} />
               </td>
 
               <td>

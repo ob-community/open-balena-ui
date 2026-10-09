@@ -46,6 +46,41 @@ test('historical install transitions do not keep a settled device polling rapidl
   );
 });
 
+test('OS updater stages keep polling rapidly without trapping terminal progress at 100%', () => {
+  const osDevice = { ...device, 'os version': '6.1.0', 'should be operated by-release': 201 };
+  const targets = { hostVersion: '6.2.0' };
+  for (const stage of [
+    'Preparing OS update',
+    'Running OS update',
+    'Patching supervisor update',
+    'Running supervisor update',
+  ]) {
+    assert.equal(getDeviceRefreshInterval({ ...osDevice, 'provisioning state': stage }, []), activeDeviceRefreshMs);
+  }
+  const successful = {
+    ...osDevice,
+    'provisioning state': 'Update successful, rebooting',
+    'provisioning progress': 100,
+  };
+  assert.equal(getDeviceRefreshInterval(successful, [], [], targets), activeDeviceRefreshMs);
+  assert.equal(
+    getDeviceRefreshInterval({ ...successful, 'os version': '6.2.0' }, [], [], targets),
+    steadyDeviceRefreshMs,
+  );
+  const failed = { ...osDevice, 'provisioning state': 'OS update failed', 'provisioning progress': 100 };
+  assert.equal(getDeviceRefreshInterval(failed, [], [], targets), steadyDeviceRefreshMs);
+  const osAction: PendingDeviceAction = {
+    id: 'os',
+    deviceId: device.id,
+    kind: 'host-os',
+    targetField: 'should be operated by-release',
+    targetReleaseId: 201,
+    targetVersion: '6.2.0',
+    startedAt: 1000,
+    acknowledgedAt: 2000,
+  };
+  assert.deepEqual(settleDeviceActions([osAction], failed, [], fresh, targets), []);
+});
 test('unreached OS, Supervisor and app targets remain rapid until convergence, but failures return steady', () => {
   const record = { ...device, 'os version': 'balenaOS 6.1.0', 'supervisor version': '20.1.0' };
   assert.equal(getDeviceRefreshInterval(record, [], [], { hostVersion: '6.2.0' }), 1000);

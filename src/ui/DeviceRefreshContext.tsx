@@ -23,6 +23,7 @@ interface DeviceRefreshState {
   installs: ResourceRecord[] | undefined;
   installsIsPending: boolean;
   installsError: Error | null;
+  targetAppReleaseId?: number | string;
 }
 export const DeviceRefreshContext = React.createContext<DeviceRefreshState | undefined>(undefined);
 const pinField = versions.resource('isPinnedOnRelease', environment.REACT_APP_OPEN_BALENA_API_VERSION);
@@ -138,8 +139,9 @@ export const DeviceRefreshProvider: React.FC<React.PropsWithChildren<{ deviceId:
       installs: installs.data?.records,
       installsIsPending: installs.isPending,
       installsError: installs.error,
+      targetAppReleaseId: targets.appReleaseId,
     }),
-    [deviceId, interval, installs.data, installs.isPending, installs.error],
+    [deviceId, interval, installs.data, installs.isPending, installs.error, targets.appReleaseId],
   );
   return (
     <DeviceRefreshContext.Provider value={value}>

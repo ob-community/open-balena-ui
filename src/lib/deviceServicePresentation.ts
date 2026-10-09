@@ -44,7 +44,14 @@ export interface PresentedDeviceService extends ResourceRecord {
   serviceName: string;
   serviceId?: number | string;
   serviceGroup?: 'app' | 'supervisor';
+  targetInstall?: PresentedDeviceService;
 }
+
+export const getServiceDownloadProgress = (install: ResourceRecord): number | undefined => {
+  const value = install['download progress'];
+  const progress = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(progress) && progress >= 0 && progress <= 100 ? progress : undefined;
+};
 
 export const deviceServiceLogSource = (
   service: Pick<PresentedDeviceService, 'serviceName' | 'serviceGroup'>,
@@ -80,6 +87,7 @@ export const presentDeviceServices = ({
   images,
   services,
   appReleaseId,
+  targetAppReleaseId,
   supervisorReleaseId,
   showSupervisorServices,
 }: {
@@ -87,6 +95,7 @@ export const presentDeviceServices = ({
   images: ResourceRecord[];
   services: ResourceRecord[];
   appReleaseId?: number | string;
+  targetAppReleaseId?: number | string;
   supervisorReleaseId?: number | string;
   showSupervisorServices: boolean;
 }) => {
@@ -102,7 +111,10 @@ export const presentDeviceServices = ({
       serviceName: typeof name === 'string' && name ? name : 'Unknown service',
     };
   });
-  const forRelease = (releaseId: number | string | undefined, serviceGroup: 'app' | 'supervisor') =>
+  const forRelease = (
+    releaseId: number | string | undefined,
+    serviceGroup: 'app' | 'supervisor',
+  ): PresentedDeviceService[] =>
     releaseId === undefined
       ? []
       : orderDeviceServices(
@@ -110,7 +122,26 @@ export const presentDeviceServices = ({
             .filter((install) => String(relationshipId(install['is provided by-release'])) === String(releaseId))
             .map((install) => ({ ...install, serviceGroup })),
         );
-  const appServices = forRelease(appReleaseId, 'app');
+  const currentServices = forRelease(appReleaseId, 'app');
+  const incomingServices =
+    targetAppReleaseId !== undefined && String(targetAppReleaseId) !== String(appReleaseId)
+      ? forRelease(targetAppReleaseId, 'app')
+      : [];
+  const paired = new Set<PresentedDeviceService>();
+  const appServices: PresentedDeviceService[] = orderDeviceServices([
+    ...currentServices.map((current) => {
+      const incoming = incomingServices.find(
+        (candidate) =>
+          current.serviceId !== undefined &&
+          candidate.serviceId !== undefined &&
+          String(candidate.serviceId) === String(current.serviceId),
+      );
+      if (!incoming) return current;
+      paired.add(incoming);
+      return { ...current, targetInstall: incoming };
+    }),
+    ...incomingServices.filter((incoming) => !paired.has(incoming)),
+  ]);
   const supervisorServices = showSupervisorServices ? forRelease(supervisorReleaseId, 'supervisor') : [];
   return { appServices, supervisorServices, services: [...appServices, ...supervisorServices] };
 };

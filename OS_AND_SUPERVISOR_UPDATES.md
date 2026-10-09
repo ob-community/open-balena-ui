@@ -312,6 +312,14 @@ Admin displays their image-install state in a separate **Supervisor** table belo
 the same status, release, and log-selection information as application services, but intentionally has no
 start/stop/restart controls.
 
+During updates, the UI resolves the current Supervisor release using the device-reported `supervisor version` and
+release metadata belonging to the same application as the target release. It pairs current and incoming installs by
+service ID and displays both states and releases, including the incoming image's `download progress` percentage.
+Target-only containers remain visible; historical releases and application services with the same name are excluded.
+The current container remains the terminal/log target until the reported Supervisor version changes. If current-release
+metadata is unavailable, the UI shows the target installs without inventing a current state. Metadata request failures
+are surfaced explicitly.
+
 Supervisor 19 uses the `core`, `core-next`, and `service-relay` services while its implementation is migrated
 incrementally. Their presence is expected and is not evidence that the synchronized release is malformed. See
 [Supervisor improvements: laying the foundation](https://blog.balena.io/supervisor-improvements-laying-the-foundation/)
@@ -323,6 +331,25 @@ new system services repeatedly restart, investigate delivery ordering. In partic
 system-service container that uses the target image as proof that the host Supervisor itself already runs that image.
 
 ## Queued Host OS updates
+
+### Reported update progress
+
+The device summary displays Host OS updater reports from `device.provisioning state` and
+`device.provisioning progress`. These fields are shared with initial device provisioning, so only recognized OS updater
+stages are presented as OS progress. A queued target alone does not imply a download percentage.
+
+The [balenahup updater](https://github.com/balena-os/balenahup/blob/master/upgrade-2.x.sh) reports stages such as
+25% **Preparing OS update**, 50% **Running OS update**, 90% **Patching supervisor update**, and
+95% **Running supervisor update**. These are stage-based milestones, not byte-level download percentages; downloading
+and installing can remain at 50% for some time. Actual reports depend on the device's updater version.
+
+Missing or invalid percentages use indeterminate progress while an update stage is active. **OS update failed** is
+shown as an error even when its reported percentage is 100%. **Update successful, rebooting** and **Update successful
+pending reboot** preserve the reported stage text: successful installation does not mean the device has already booted
+the new OS. The version transition remains until `os version` converges with the target. Terminal OS reports do not
+keep polling rapidly just because `provisioning progress` remains at 100%.
+
+### Queuing and delivery
 
 A Host OS target is persistent desired state, so it may be selected while a device is offline. Only one target is queued
 at a time; selecting another replaces the previous target.

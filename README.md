@@ -44,6 +44,11 @@ their own adaptive polling when no matching refresh owner is present.
   Controls continue to address the current install. New target-only services are also visible, including during initial
   deployment; unrelated historical installs are excluded. Missing progress is shown as an indeterminate download rather
   than an invented percentage, and completed updates return to a single state/release.
+- Supervisor services (18.2+) also show current and incoming container states, releases, and image download progress.
+  The current release is resolved from the reported Supervisor version within the target release's application.
+  Host OS updates show the updater's reported stage and `provisioning progress` below Host OS Version; this is coarse
+  stage-based progress rather than an image download percentage. Initial provisioning is not shown as an OS update,
+  and a reported failure at 100% is displayed as an error. See [OS_AND_SUPERVISOR_UPDATES.md](OS_AND_SUPERVISOR_UPDATES.md).
 - Periodic device polling runs only while the browser page is in the foreground. Log polling remains independent at
   approximately two seconds while sources are selected; device refreshes do not reconnect SSH terminals.
 - Device field editors initialize their draft and load choices once per opening. Background refreshes continue without

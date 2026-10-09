@@ -2,6 +2,7 @@ import semver from 'semver';
 import type { ResourceRecord } from '../types/resource';
 import type { RemoteTarget } from './builtInRemoteAccess';
 import { isContainerName } from './remoteTarget';
+import { getProgressPercentage } from './deviceUpdateProgress';
 
 export const deviceLogServiceEvent = 'open-balena-ui:select-device-log-service';
 
@@ -47,11 +48,8 @@ export interface PresentedDeviceService extends ResourceRecord {
   targetInstall?: PresentedDeviceService;
 }
 
-export const getServiceDownloadProgress = (install: ResourceRecord): number | undefined => {
-  const value = install['download progress'];
-  const progress = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
-  return Number.isFinite(progress) && progress >= 0 && progress <= 100 ? progress : undefined;
-};
+export const getServiceDownloadProgress = (install: ResourceRecord): number | undefined =>
+  getProgressPercentage(install['download progress']);
 
 export const deviceServiceLogSource = (
   service: Pick<PresentedDeviceService, 'serviceName' | 'serviceGroup'>,
@@ -82,6 +80,32 @@ export const orderDeviceServices = <T extends { serviceName: string; id: number 
       compareIds(left.id, right.id),
   );
 
+const pairServiceInstalls = (
+  currentServices: PresentedDeviceService[],
+  incomingServices: PresentedDeviceService[],
+): PresentedDeviceService[] => {
+  const paired = new Set<PresentedDeviceService>();
+  return orderDeviceServices([
+    ...currentServices.map((current) => {
+      const incoming = incomingServices.find(
+        (candidate) =>
+          current.serviceId !== undefined &&
+          candidate.serviceId !== undefined &&
+          String(candidate.serviceId) === String(current.serviceId),
+      );
+      if (!incoming) return current;
+      paired.add(incoming);
+      return { ...current, targetInstall: incoming };
+    }),
+    ...incomingServices.filter((incoming) => !paired.has(incoming)),
+  ]);
+};
+
+const normalizedVersion = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  return semver.parse(value)?.version ?? semver.coerce(value)?.version;
+};
+
 export const presentDeviceServices = ({
   installs,
   images,
@@ -89,6 +113,8 @@ export const presentDeviceServices = ({
   appReleaseId,
   targetAppReleaseId,
   supervisorReleaseId,
+  supervisorVersion,
+  releases = [],
   showSupervisorServices,
 }: {
   installs: ResourceRecord[];
@@ -97,6 +123,8 @@ export const presentDeviceServices = ({
   appReleaseId?: number | string;
   targetAppReleaseId?: number | string;
   supervisorReleaseId?: number | string;
+  supervisorVersion?: unknown;
+  releases?: ResourceRecord[];
   showSupervisorServices: boolean;
 }) => {
   const imageById = new Map(images.map((image) => [String(image.id), image]));
@@ -127,22 +155,27 @@ export const presentDeviceServices = ({
     targetAppReleaseId !== undefined && String(targetAppReleaseId) !== String(appReleaseId)
       ? forRelease(targetAppReleaseId, 'app')
       : [];
-  const paired = new Set<PresentedDeviceService>();
-  const appServices: PresentedDeviceService[] = orderDeviceServices([
-    ...currentServices.map((current) => {
-      const incoming = incomingServices.find(
-        (candidate) =>
-          current.serviceId !== undefined &&
-          candidate.serviceId !== undefined &&
-          String(candidate.serviceId) === String(current.serviceId),
-      );
-      if (!incoming) return current;
-      paired.add(incoming);
-      return { ...current, targetInstall: incoming };
-    }),
-    ...incomingServices.filter((incoming) => !paired.has(incoming)),
-  ]);
-  const supervisorServices = showSupervisorServices ? forRelease(supervisorReleaseId, 'supervisor') : [];
+  const appServices = pairServiceInstalls(currentServices, incomingServices);
+  const targetSupervisor = releases.find((release) => String(release.id) === String(supervisorReleaseId));
+  const supervisorAppId = relationshipId(targetSupervisor?.['belongs to-application']);
+  const reportedVersion = normalizedVersion(supervisorVersion);
+  const currentSupervisor = reportedVersion
+    ? releases.find(
+        (release) =>
+          supervisorAppId !== undefined &&
+          String(relationshipId(release['belongs to-application'])) === String(supervisorAppId) &&
+          normalizedVersion(release['raw version'] ?? release.raw_version) === reportedVersion,
+      )
+    : undefined;
+  const currentSupervisorReleaseId = currentSupervisor?.id;
+  const supervisorServices = !showSupervisorServices
+    ? []
+    : currentSupervisorReleaseId === undefined || String(currentSupervisorReleaseId) === String(supervisorReleaseId)
+      ? forRelease(supervisorReleaseId, 'supervisor')
+      : pairServiceInstalls(
+          forRelease(currentSupervisorReleaseId, 'supervisor'),
+          forRelease(supervisorReleaseId, 'supervisor'),
+        );
   return { appServices, supervisorServices, services: [...appServices, ...supervisorServices] };
 };
 

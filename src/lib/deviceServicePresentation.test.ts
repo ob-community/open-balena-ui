@@ -200,6 +200,81 @@ test('incoming-only services appear during initial deployment and unrelated hist
   assert.ok(missingMetadata.appServices.every(({ targetInstall }) => targetInstall === undefined));
 });
 
+test('Supervisor updates pair reported and target releases within the same application and preserve running exec targets', () => {
+  const fixture = {
+    ...serviceFixture,
+    supervisorReleaseId: 201,
+    supervisorVersion: 'v20.0.0',
+    releases: [
+      { 'id': 201, 'raw version': '21.0.0', 'belongs to-application': [{ __id: 40 }] },
+      { 'id': 200, 'raw version': '20.0.0', 'belongs to-application': 40 },
+      { 'id': 199, 'raw version': '19.0.0', 'belongs to-application': 40 },
+      { 'id': 299, 'raw version': '20.0.0', 'belongs to-application': 41 },
+    ],
+    images: [
+      ...serviceFixture.images,
+      { 'id': 16, 'is a build of-service': 21 },
+      { 'id': 17, 'is a build of-service': 26 },
+    ],
+    services: [
+      ...serviceFixture.services.map((service) =>
+        service.id === 21 ? { ...service, 'service name': 'core' } : service,
+      ),
+      { 'id': 26, 'service name': 'core-next' },
+    ],
+  };
+  for (const [current, incoming] of [
+    ['Running', 'Downloading'],
+    ['Stopping', 'Downloaded'],
+    ['Downloaded', 'Downloaded'],
+  ]) {
+    const presentation = presentDeviceServices({
+      ...fixture,
+      installs: [
+        ...fixture.installs.map((install) => (install.id === 1 ? { ...install, status: current } : install)),
+        { 'id': 7, 'installs-image': 16, 'is provided by-release': 201, 'status': incoming, 'download progress': 31 },
+        { 'id': 8, 'installs-image': 17, 'is provided by-release': 201, 'status': 'Downloading' },
+        { 'id': 9, 'installs-image': 11, 'is provided by-release': 199, 'status': 'Downloaded' },
+        { 'id': 10, 'installs-image': 11, 'is provided by-release': 299, 'status': 'Running' },
+      ],
+    });
+    assert.deepEqual(
+      presentation.supervisorServices.map(({ serviceName }) => serviceName),
+      ['core', 'core-next'],
+    );
+    const core = presentation.supervisorServices[0];
+    assert.equal(core.id, 1);
+    assert.equal(core.status, current);
+    assert.equal(core.targetInstall?.id, 7);
+    assert.equal(core.targetInstall?.status, incoming);
+    assert.equal(core.targetInstall?.['download progress'], 31);
+    assert.equal(deviceServiceLogSource(core), 'supervisor');
+    assert.equal(
+      deviceServiceTerminalTargets(presentation.services).some(({ id }) => id === 'container:supervisor:core'),
+      current === 'Running',
+    );
+    assert.ok(presentation.appServices.every(({ targetInstall }) => targetInstall === undefined));
+    const completed = presentDeviceServices({
+      ...fixture,
+      supervisorVersion: '21.0.0',
+      installs: presentation.supervisorServices.map(({ targetInstall, ...service }) =>
+        targetInstall ? { ...targetInstall, status: 'Running' } : { ...service, status: 'Running' },
+      ),
+    });
+    assert.deepEqual(
+      completed.supervisorServices.map(({ id }) => id),
+      [7, 8],
+    );
+    assert.ok(completed.supervisorServices.every(({ targetInstall }) => targetInstall === undefined));
+  }
+  const unavailable = presentDeviceServices({
+    ...fixture,
+    releases: [],
+    installs: [{ 'id': 7, 'installs-image': 16, 'is provided by-release': 201, 'status': 'Downloading' }],
+  });
+  assert.equal(unavailable.supervisorServices[0].id, 7);
+  assert.equal(unavailable.supervisorServices[0].targetInstall, undefined);
+});
 test('Supervisor core uses the explicit supervisor selector while App core keeps ordinary exec targeting and unique picker IDs', () => {
   const presentation = presentDeviceServices({
     ...serviceFixture,

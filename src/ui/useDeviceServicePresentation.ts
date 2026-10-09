@@ -44,6 +44,16 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
     },
   );
   const targetAppReleaseId = managed ? refresh.targetAppReleaseId : (appTarget ?? latest.data?.[0]?.id);
+  const supervisorReleaseId = relationshipId(device?.['should be managed by-release']);
+  const release = useGetOne<ResourceRecord>(
+    'release',
+    { id: supervisorReleaseId ?? 0 },
+    { enabled: supervisorReleaseId !== undefined },
+  );
+  const targetSupervisorVersion = release.data?.['raw version'] ?? release.data?.raw_version;
+  const showSupervisorServices =
+    supervisorReleaseId !== undefined &&
+    (hasSupervisorServiceTable(targetSupervisorVersion) || hasSupervisorServiceTable(device?.['supervisor version']));
   const installs = useGetList<ResourceRecord>(
     'image install',
     {
@@ -58,6 +68,7 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
         : (query) =>
             getDeviceRefreshInterval(device, query.state.data?.data, actions[String(device?.id)] ?? [], {
               appReleaseId: targetAppReleaseId,
+              supervisorVersion: typeof targetSupervisorVersion === 'string' ? targetSupervisorVersion : undefined,
             }),
       refetchIntervalInBackground: false,
       staleTime: 30_000,
@@ -71,23 +82,27 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
   const images = useGetMany<ResourceRecord>('image', { ids: imageIds }, { enabled: imageIds.length > 0 });
   const serviceIds = relationshipIds(images.data ?? [], 'is a build of-service');
   const services = useGetMany<ResourceRecord>('service', { ids: serviceIds }, { enabled: serviceIds.length > 0 });
-  const supervisorReleaseId = relationshipId(device?.['should be managed by-release']);
-  const release = useGetOne<ResourceRecord>(
-    'release',
-    { id: supervisorReleaseId ?? 0 },
-    { enabled: supervisorReleaseId !== undefined },
+  const appReleaseId = relationshipId(device?.['is running-release']);
+  const supervisorCandidateIds = relationshipIds(installRecords, 'is provided by-release').filter(
+    (id) =>
+      ![appReleaseId, targetAppReleaseId, supervisorReleaseId].some((excluded) => String(excluded) === String(id)),
   );
-  const showSupervisorServices =
-    supervisorReleaseId !== undefined &&
-    hasSupervisorServiceTable(release.data?.['raw version'] ?? release.data?.raw_version);
+  const supervisorReleases = useGetMany<ResourceRecord>(
+    'release',
+    { ids: supervisorCandidateIds },
+    { enabled: showSupervisorServices && supervisorCandidateIds.length > 0, staleTime: Infinity },
+  );
+  const needsSupervisorReleases = showSupervisorServices && supervisorCandidateIds.length > 0;
   return {
     ...presentDeviceServices({
       installs: installRecords,
       images: images.data ?? [],
       services: services.data ?? [],
-      appReleaseId: relationshipId(device?.['is running-release']),
+      appReleaseId,
       targetAppReleaseId,
       supervisorReleaseId,
+      supervisorVersion: device?.['supervisor version'],
+      releases: [...(release.data ? [release.data] : []), ...(supervisorReleases.data ?? [])],
       showSupervisorServices,
     }),
     showSupervisorServices,
@@ -96,7 +111,8 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
       (imageIds.length > 0 && images.isPending) ||
       (serviceIds.length > 0 && services.isPending) ||
       (!managed && appId !== undefined && (fleet.isPending || (appTarget === undefined && latest.isPending))) ||
-      (supervisorReleaseId !== undefined && release.isPending),
+      (supervisorReleaseId !== undefined && release.isPending) ||
+      (needsSupervisorReleases && supervisorReleases.isPending),
     error:
       installsError ??
       (imageIds.length > 0 ? images.error : undefined) ??
@@ -105,6 +121,7 @@ export const useDeviceServicePresentation = (device?: ResourceRecord) => {
         ? (fleet.error ?? (appTarget === undefined ? latest.error : undefined))
         : undefined) ??
       (supervisorReleaseId !== undefined ? release.error : undefined) ??
+      (needsSupervisorReleases ? supervisorReleases.error : undefined) ??
       null,
   };
 };

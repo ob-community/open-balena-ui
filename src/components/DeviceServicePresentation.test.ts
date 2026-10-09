@@ -28,6 +28,7 @@ const device = {
   'id': 716116,
   'is running-release': 100,
   'should be managed by-release': 200,
+  'supervisor version': '20.0.0',
 };
 const install = (id: number, imageId: number, releaseId = 100, status = 'Running'): ResourceRecord => ({
   'id': id,
@@ -474,4 +475,92 @@ test('standalone services resolve device, fleet and latest targets and show init
   const failure = new Error('Target discovery failed');
   query(latestKey).setState({ status: 'error', error: failure });
   assert.equal(render(undefined, record).presentation.error, failure);
+});
+
+test('Supervisor snapshots show current and incoming containers, percentages and releases without mixing app core', (context) => {
+  const { client, render, renderService, query, manyKey } = harness(context);
+  for (const [id, version] of [
+    [199, '19.0.0'],
+    [200, '20.0.0'],
+  ] as const) {
+    client.setQueryData(['release', 'getOne', { id: String(id), meta: undefined }], {
+      'id': id,
+      'raw version': version,
+      'semver major': Number(version.split('.')[0]),
+      'belongs to-application': 40,
+    });
+  }
+  client.setQueryData(['image', 'getOne', { id: '15', meta: undefined }], {
+    'id': 15,
+    'is a build of-service': 23,
+  });
+  const record = { ...device, 'supervisor version': '19.0.0' };
+  for (const [current, incoming, progress] of [
+    ['Running', 'Downloading', 0],
+    ['Running', 'Downloading', 31],
+    ['Stopping', 'Downloaded', 100],
+  ] as const) {
+    const state = refreshState([
+      install(2, 12),
+      install(6, 15, 199, current),
+      { ...install(3, 13, 200, incoming), 'download progress': progress },
+    ]);
+    const presentation = render(state, record).presentation;
+    assert.equal(presentation.isPending, false);
+    assert.equal(presentation.appServices[0].serviceId, 22);
+    assert.equal(presentation.appServices[0].targetInstall, undefined);
+    const core = presentation.supervisorServices[0];
+    assert.equal(core.id, 6);
+    assert.equal(core.serviceId, 23);
+    assert.equal(core.targetInstall?.id, 3);
+    assert.equal(core.targetInstall?.['download progress'], progress);
+    const html = renderService(core).replace(/<!-- -->/g, '');
+    assert.ok(html.includes(`${current} status`));
+    assert.ok(html.includes(`${incoming} status`));
+    assert.match(html, /19\.0\.0/);
+    assert.match(html, /20\.0\.0/);
+    assert.match(html, /href="\/release\/199\/show"/);
+    assert.match(html, /href="\/release\/200\/show"/);
+    if (incoming === 'Downloading') {
+      assert.ok(html.includes(`Downloading ${progress}%`));
+      assert.ok(html.includes(`aria-valuenow="${progress}"`));
+    } else assert.doesNotMatch(html, /role="progressbar"/);
+  }
+  const completed = render(refreshState([install(6, 15, 199), install(3, 13, 200)]), device).presentation;
+  assert.equal(completed.supervisorServices[0].id, 3);
+  assert.equal(completed.supervisorServices[0].targetInstall, undefined);
+  assert.doesNotMatch(renderService(completed.supervisorServices[0]), /19\.0\.0|Incoming release/);
+
+  client.removeQueries({ queryKey: ['release', 'getOne', { id: '199', meta: undefined }], exact: true });
+  client.removeQueries({ queryKey: manyKey('release', [199]), exact: true });
+  const state = refreshState([install(6, 15, 199), install(3, 13, 200, 'Downloading')]);
+  assert.equal(render(state, record).presentation.isPending, true);
+  const releaseKey = manyKey('release', [199]);
+  assert.equal(query(releaseKey).options.enabled, true);
+  assert.equal(query(releaseKey).options.staleTime, Infinity);
+  const failure = new Error('Supervisor release metadata failed');
+  client.setQueryData(releaseKey, []);
+  query(releaseKey).setState({ status: 'error', error: failure });
+  assert.equal(render(state, record).presentation.error, failure);
+});
+
+test('standalone Supervisor updates poll rapidly even before the incoming container reports a transition', (context) => {
+  const { client, render, query } = harness(context);
+  client.setQueryData(listKey, { data: initialInstalls, total: initialInstalls.length });
+  render(undefined, { ...device, 'supervisor version': '19.0.0' });
+  const list = query(listKey);
+  assert.ok(typeof list.options.refetchInterval === 'function');
+  assert.equal(list.options.refetchInterval(list), 1000);
+  render(undefined, device);
+  assert.ok(typeof list.options.refetchInterval === 'function');
+  assert.equal(list.options.refetchInterval(list), 30_000);
+  client.setQueryData(['release', 'getOne', { id: '200', meta: undefined }], {
+    'id': 200,
+    'raw version': '18.1.0',
+  });
+  assert.equal(
+    render(refreshState(), { ...device, 'supervisor version': '18.1.0' }).presentation.showSupervisorServices,
+    false,
+  );
+  assert.equal(render(refreshState(), device).presentation.showSupervisorServices, true);
 });

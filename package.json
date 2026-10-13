@@ -25,7 +25,7 @@
     "decode-uri-component": "file:vendor/decode-uri-component",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "express-rate-limit": "^8.1.0",
+    "express-rate-limit": "^8.7.1",
     "express-slow-down": "^3.0.0",
     "final-form": "^5.0.0",
     "jose": "^6.1.0",

@@ -26,6 +26,7 @@ interface SessionTab {
 const Session: React.FC<{
   tab: SessionTab;
   active: boolean;
+  expanded: boolean;
   token: string;
   deviceUuid: string;
   targets: TerminalTarget[];
@@ -211,6 +212,7 @@ export const BuiltInDeviceConnect: React.FC<BuiltInDeviceConnectProps> = ({ reco
             <Session
               tab={tab}
               active={active === tab.id}
+              expanded={expanded}
               token={token}
               deviceUuid={deviceUuid}
               targets={targets}

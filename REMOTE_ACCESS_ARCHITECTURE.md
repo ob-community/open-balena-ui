@@ -418,6 +418,9 @@ flowchart LR
 Switching tabs hides, but does not unmount, the inactive terminal. Closing a tab tears down only its connection.
 Expanding the workspace changes the existing subtree to a fixed, full-browser-viewport layout; it does not open a second
 dialog, request native browser fullscreen, or reconnect terminals. Collapse and Escape restore the dashboard layout.
+Expanding or collapsing refits and focuses the active connected console so typing does not reactivate the toggle.
+Terminal spacing is reserved outside xterm's measured host, including a one-em bottom buffer above file transfers,
+so fitting cannot count padding as usable rows and clip the last console line.
 Only visible terminals are fitted to their current dimensions. The title bar retains the device name when expanded. Host
 OS is listed first in the target picker, followed by App services and then supported Supervisor services, in the same
 order as the dashboard tables. Service-name-based colored badges are shared by those tables, terminal targets, terminal

@@ -1,4 +1,4 @@
-import { relationshipId } from './deviceServicePresentation';
+import { isSupervisorTargetRunning, relationshipId } from './deviceServicePresentation';
 import { isDeviceUpdating } from './deviceStatus';
 import type { ResourceRecord } from '../types/resource';
 import type { DataProvider } from 'react-admin';
@@ -106,12 +106,18 @@ const version = (value: unknown): string =>
     : '';
 const sameId = (a: unknown, b: unknown): boolean => String(relationshipId(a) ?? '') === String(relationshipId(b) ?? '');
 
-export const hasUnreachedDeviceTarget = (device: ResourceRecord | undefined, targets: RefreshTargets = {}): boolean =>
+export const hasUnreachedDeviceTarget = (
+  device: ResourceRecord | undefined,
+  targets: RefreshTargets = {},
+  installs: ResourceRecord[] = [],
+): boolean =>
   Boolean(
     device &&
     !deviceRefreshFailure(device) &&
     ((targets.hostVersion && version(targets.hostVersion) !== version(device['os version'])) ||
-      (targets.supervisorVersion && version(targets.supervisorVersion) !== version(device['supervisor version'])) ||
+      (targets.supervisorVersion &&
+        version(targets.supervisorVersion) !== version(device['supervisor version']) &&
+        !isSupervisorTargetRunning(relationshipId(device['should be managed by-release']), installs)) ||
       (targets.appReleaseId != null && !sameId(device['is running-release'], targets.appReleaseId))),
   );
 
@@ -202,7 +208,12 @@ export const settleDeviceActions = (
             const reported = device[action.kind === 'host-os' ? 'os version' : 'supervisor version'];
             const target =
               action.targetVersion ?? (action.kind === 'host-os' ? targets.hostVersion : targets.supervisorVersion);
-            complete = action.targetReleaseId == null || Boolean(target && version(reported) === version(target));
+            complete =
+              action.targetReleaseId == null ||
+              Boolean(target && version(reported) === version(target)) ||
+              (action.kind === 'supervisor' &&
+                freshness.installs > action.acknowledgedAt &&
+                isSupervisorTargetRunning(action.targetReleaseId, installs));
           }
         } else if (sameId(device[action.targetField], action.targetReleaseId)) observedTarget = true;
       }
@@ -227,6 +238,6 @@ export const getDeviceRefreshInterval = (
 ): number =>
   actions.length ||
   isDeviceRefreshActive(device, installs, targets.appReleaseId) ||
-  hasUnreachedDeviceTarget(device, targets)
+  hasUnreachedDeviceTarget(device, targets, installs)
     ? activeDeviceRefreshMs
     : steadyDeviceRefreshMs;

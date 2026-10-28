@@ -28,7 +28,7 @@ import {
   saveSupervisorTarget,
   UnsupportedDeviceField,
 } from '../../ui/DeviceFieldEditor';
-import { queuedOsUpdateMode } from '../../lib/deviceServicePresentation';
+import { isSupervisorTargetRunning, queuedOsUpdateMode } from '../../lib/deviceServicePresentation';
 import ConnectionLastConnected from '../../ui/ConnectionLastConnected';
 import { DeviceRefreshContext } from '../../ui/DeviceRefreshContext';
 import { DeviceOsUpdateProgress } from '../../ui/DeviceOsUpdateProgress';
@@ -87,6 +87,7 @@ const DeviceVersionTransition: React.FC<{ reportedField: string; targetField: st
   targetField,
 }) => {
   const record = useRecordContext<ResourceRecord>();
+  const refresh = React.useContext(DeviceRefreshContext);
   const currentRecord = record;
   const targetValue = currentRecord?.[targetField];
   const targetRecord = expandedRelease(targetValue);
@@ -97,8 +98,14 @@ const DeviceVersionTransition: React.FC<{ reportedField: string; targetField: st
     { enabled: targetReleaseId != null && releaseVersion(targetRecord) == null },
   );
   if (!currentRecord) return null;
-  const reportedVersion = normalizedDeviceVersion(currentRecord[reportedField]);
   const targetVersion = normalizedDeviceVersion(releaseVersion(targetRecord) ?? releaseVersion(fetchedTarget));
+  const targetRunning =
+    reportedField === 'supervisor version' &&
+    !refresh?.installsIsPending &&
+    !refresh?.installsError &&
+    isSupervisorTargetRunning(targetReleaseId, refresh?.installs ?? []);
+  const reportedVersion =
+    targetRunning && targetVersion ? targetVersion : normalizedDeviceVersion(currentRecord[reportedField]);
   return (
     <>
       {reportedVersion}

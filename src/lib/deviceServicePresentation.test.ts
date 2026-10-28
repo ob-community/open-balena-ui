@@ -6,6 +6,7 @@ import {
   getServiceColors,
   getServiceDownloadProgress,
   hasSupervisorServiceTable,
+  isSupervisorTargetRunning,
   orderDeviceServices,
   matchesDeviceServiceLog,
   presentDeviceServices,
@@ -293,6 +294,58 @@ test('Supervisor core uses the explicit supervisor selector while App core keeps
       containerKind: 'supervisor',
     },
   ]);
+});
+
+test('completed Supervisor installs supersede stale reported versions and deleted history', () => {
+  const installs = [
+    { 'id': 3062, 'installs-image': 16983, 'is provided by-release': { __id: 9674 }, 'status': 'deleted' },
+    { 'id': 3063, 'installs-image': 16982, 'is provided by-release': { __id: 9674 }, 'status': 'deleted' },
+    { 'id': 3064, 'installs-image': 16981, 'is provided by-release': { __id: 9674 }, 'status': 'deleted' },
+    { 'id': 3521, 'installs-image': 18447, 'is provided by-release': { __id: 10431 }, 'status': 'Running' },
+    { 'id': 3522, 'installs-image': 18448, 'is provided by-release': { __id: 10431 }, 'status': 'Running' },
+    { 'id': 3523, 'installs-image': 18449, 'is provided by-release': { __id: 10431 }, 'status': 'Running' },
+  ];
+  const presentation = presentDeviceServices({
+    installs,
+    images: [
+      { 'id': 16983, 'is a build of-service': 1 },
+      { 'id': 16982, 'is a build of-service': 2 },
+      { 'id': 16981, 'is a build of-service': 3 },
+      { 'id': 18447, 'is a build of-service': 1 },
+      { 'id': 18448, 'is a build of-service': 2 },
+      { 'id': 18449, 'is a build of-service': 3 },
+    ],
+    services: [
+      { 'id': 1, 'service name': 'core' },
+      { 'id': 2, 'service name': 'core-next' },
+      { 'id': 3, 'service name': 'service-relay' },
+    ],
+    supervisorReleaseId: 10431,
+    supervisorVersion: '19.2.1',
+    releases: [
+      { 'id': 9674, 'raw version': '19.2.1', 'belongs to-application': 40 },
+      { 'id': 10431, 'raw version': '20.0.3', 'belongs to-application': 40 },
+    ],
+    showSupervisorServices: true,
+  });
+  assert.equal(isSupervisorTargetRunning(10431, installs), true);
+  assert.deepEqual(
+    presentation.supervisorServices.map(({ id }) => id),
+    [3521, 3522, 3523],
+  );
+  assert.ok(presentation.supervisorServices.every((entry) => entry.status === 'Running' && !entry.targetInstall));
+  assert.equal(deviceServiceTerminalTargets(presentation.services).length, 4);
+  assert.equal(isSupervisorTargetRunning(undefined, installs), false);
+  assert.equal(isSupervisorTargetRunning(10431, []), false);
+  for (const status of ['Downloading', 'Downloaded', 'Starting', 'Stopped', 'Error', 'deleted', undefined]) {
+    assert.equal(
+      isSupervisorTargetRunning(
+        10431,
+        installs.map((entry) => (entry.id === 3523 ? { ...entry, status } : entry)),
+      ),
+      false,
+    );
+  }
 });
 
 test('an App named balena_supervisor remains a service-name selector distinct from Supervisor core', () => {

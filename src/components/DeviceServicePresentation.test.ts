@@ -544,13 +544,26 @@ test('Supervisor snapshots show current and incoming containers, percentages and
   assert.equal(render(state, record).presentation.error, failure);
 });
 
-test('standalone Supervisor updates poll rapidly even before the incoming container reports a transition', (context) => {
+test('standalone Supervisor updates poll rapidly until target installs run, even with stale version reporting', (context) => {
   const { client, render, query } = harness(context);
-  client.setQueryData(listKey, { data: initialInstalls, total: initialInstalls.length });
-  render(undefined, { ...device, 'supervisor version': '19.0.0' });
+  const appInstalls = initialInstalls.slice(0, 2);
+  const staleRecord = { ...device, 'supervisor version': '19.0.0' };
+  client.setQueryData(listKey, { data: appInstalls, total: appInstalls.length });
+  render(undefined, staleRecord);
   const list = query(listKey);
   assert.ok(typeof list.options.refetchInterval === 'function');
   assert.equal(list.options.refetchInterval(list), 1000);
+  for (const status of ['Downloading', 'Downloaded', 'Starting', 'Error', 'deleted']) {
+    const installs = [...appInstalls, install(3, 13, 200, status)];
+    client.setQueryData(listKey, { data: installs, total: installs.length });
+    render(undefined, staleRecord);
+    assert.ok(typeof list.options.refetchInterval === 'function');
+    assert.equal(list.options.refetchInterval(list), 1000, status);
+  }
+  client.setQueryData(listKey, { data: initialInstalls, total: initialInstalls.length });
+  render(undefined, staleRecord);
+  assert.ok(typeof list.options.refetchInterval === 'function');
+  assert.equal(list.options.refetchInterval(list), 30_000);
   render(undefined, device);
   assert.ok(typeof list.options.refetchInterval === 'function');
   assert.equal(list.options.refetchInterval(list), 30_000);

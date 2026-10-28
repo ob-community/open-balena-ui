@@ -39,6 +39,10 @@ const terminalHarness = () => {
   const effects: (() => void)[] = [];
   let cursor = 0;
   let dirty = false;
+  let focusCount = 0;
+  let fitCount = 0;
+  let nextFrame = 0;
+  const frames = new Map<number, () => void>();
   const react = {
     useState: (initial: unknown) => {
       const index = cursor++;
@@ -89,7 +93,9 @@ const terminalHarness = () => {
     reset() {}
     write() {}
     writeln() {}
-    focus() {}
+    focus() {
+      focusCount++;
+    }
     dispose() {}
   }
   const sockets: Socket[] = [];
@@ -124,7 +130,9 @@ const terminalHarness = () => {
     '@xterm/xterm': { Terminal },
     '@xterm/addon-fit': {
       FitAddon: class {
-        fit() {}
+        fit() {
+          fitCount++;
+        }
       },
     },
     '@xterm/xterm/css/xterm.css': {},
@@ -141,6 +149,12 @@ const terminalHarness = () => {
       return modules[name];
     },
     AbortController,
+    requestAnimationFrame: (callback: () => void) => {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame: (id: number) => frames.delete(id),
     WebSocket: Socket,
     ResizeObserver: class {
       observe() {}
@@ -155,13 +169,20 @@ const terminalHarness = () => {
   const onStatus = (status: string, label: string) => {
     statuses.push({ status, label });
   };
-  const render = (available = targets, token = 'test-token') => {
+  const render = (available = targets, token = 'test-token', active = false, expanded = false) => {
     let tree: Element[] = [];
     do {
       dirty = false;
       cursor = 0;
       tree = elements(
-        exports.RemoteTerminalTab({ active: false, token, deviceUuid: 'a'.repeat(32), targets: available, onStatus }),
+        exports.RemoteTerminalTab({
+          active,
+          expanded,
+          token,
+          deviceUuid: 'a'.repeat(32),
+          targets: available,
+          onStatus,
+        }),
       );
       while (effects.length) effects.shift()!();
     } while (dirty);
@@ -184,6 +205,14 @@ const terminalHarness = () => {
     sockets,
     statuses,
     lastStatus: () => statuses[statuses.length - 1],
+    focusCount: () => focusCount,
+    fitCount: () => fitCount,
+    flushFrames: () => {
+      for (const [id, callback] of frames) {
+        frames.delete(id);
+        callback();
+      }
+    },
     restore: () => {
       globalThis.window = originalWindow;
     },
@@ -214,4 +243,43 @@ test('connected shell label survives picker removal, restoration and label chang
   assert.equal(next.messages.find(({ type }) => type === 'open')?.containerKind, 'supervisor');
   harness.render(targets, 'changed-token');
   assert.deepEqual(harness.lastStatus(), { status: 'disconnected', label: 'Supervisor core' });
+});
+
+test('expanding and collapsing refits and focuses only the active connected console without reconnecting', async (t) => {
+  const harness = terminalHarness();
+  t.after(harness.restore);
+  await harness.start();
+  harness.render(targets, 'test-token', true);
+  harness.flushFrames();
+  const initialFocus = harness.focusCount();
+  const initialFit = harness.fitCount();
+  assert.equal(initialFocus, 1);
+  for (const [index, expanded] of [true, false].entries()) {
+    harness.render(targets, 'test-token', true, expanded);
+    assert.equal(harness.focusCount(), initialFocus + index, 'focus waits for the updated layout');
+    harness.flushFrames();
+    assert.equal(harness.focusCount(), initialFocus + index + 1);
+    assert.equal(harness.fitCount(), initialFit + index + 1);
+    assert.equal(harness.sockets.length, 1);
+  }
+  harness.render(targets, 'test-token', false, true);
+  harness.flushFrames();
+  assert.equal(harness.focusCount(), initialFocus + 2, 'hidden consoles must not steal focus');
+  harness.render(targets, 'test-token', true, true);
+  harness.sockets[0].receive('exit');
+  harness.render(targets, 'test-token', true, true);
+  harness.flushFrames();
+  assert.equal(harness.focusCount(), initialFocus + 2, 'disconnected consoles must not steal focus');
+});
+
+test('terminal host reserves outer spacing and a bottom buffer rather than padding counted by FitAddon', (t) => {
+  const harness = terminalHarness();
+  t.after(harness.restore);
+  const host = harness.render().tree.find(({ props }) => props.ref)?.props;
+  assert.ok(host);
+  assert.equal(host.sx.inset, '12px');
+  assert.equal(host.sx.bottom, 'calc(12px + 1em)');
+  assert.equal(host.sx.fontSize, 13);
+  assert.equal(host.sx.p, undefined);
+  assert.equal(host.sx.padding, undefined);
 });

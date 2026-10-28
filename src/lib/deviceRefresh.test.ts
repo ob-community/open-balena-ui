@@ -103,6 +103,50 @@ test('command polling persists through request acknowledgment and requires a fre
   assert.deepEqual(settleDeviceActions([action], device, [{ ...install, id: 8 }], fresh), []);
 });
 
+test('fresh running Supervisor target installs settle updates despite a stale supervisor version', () => {
+  const record = {
+    ...device,
+    'supervisor version': '19.2.1',
+    'should be managed by-release': { __id: 10431 },
+    'update status': 'done',
+  };
+  const supervisor: PendingDeviceAction = {
+    id: 'supervisor',
+    deviceId: device.id,
+    kind: 'supervisor',
+    targetField: 'should be managed by-release',
+    targetReleaseId: 10431,
+    targetVersion: '20.0.3',
+    startedAt: 1000,
+    acknowledgedAt: 2000,
+  };
+  const targets = { supervisorVersion: '20.0.3' };
+  const installs = [
+    { ...install, 'id': 3062, 'is provided by-release': 9674, 'status': 'deleted' },
+    ...[3521, 3522, 3523].map((id) => ({ ...install, 'id': id, 'is provided by-release': 10431 })),
+  ];
+  assert.equal(getDeviceRefreshInterval(record, installs, [], targets), steadyDeviceRefreshMs);
+  assert.deepEqual(settleDeviceActions([supervisor], record, installs, fresh, targets), []);
+  for (const freshness of [
+    { device: 2000, installs: 3000 },
+    { device: 3000, installs: 2000 },
+  ]) {
+    assert.equal(settleDeviceActions([supervisor], record, installs, freshness, targets).length, 1);
+  }
+  for (const incomplete of [
+    [],
+    installs.map((entry) => (entry.id === 3523 ? { ...entry, status: 'Downloading' } : entry)),
+    installs.map((entry) => (entry.id === 3523 ? { ...entry, status: 'Error' } : entry)),
+  ]) {
+    assert.equal(getDeviceRefreshInterval(record, incomplete, [], targets), activeDeviceRefreshMs);
+    assert.equal(settleDeviceActions([supervisor], record, incomplete, fresh, targets).length, 1);
+  }
+  assert.equal(
+    getDeviceRefreshInterval(record, installs, [], { ...targets, hostVersion: '8.0.14' }),
+    activeDeviceRefreshMs,
+  );
+});
+
 for (const requestedAt of [1500, 2000]) {
   test(`single-device pre-ack installs started at ${requestedAt} cannot settle a restart acknowledged at 2000`, async (context) => {
     let now = requestedAt;

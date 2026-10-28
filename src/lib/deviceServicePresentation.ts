@@ -24,6 +24,20 @@ export const relationshipId = (value: unknown): number | string | undefined => {
   return typeof id === 'number' || typeof id === 'string' ? id : undefined;
 };
 
+export const isSupervisorTargetRunning = (
+  releaseId: number | string | undefined,
+  installs: Record<string, unknown>[],
+): boolean => {
+  if (releaseId === undefined) return false;
+  const targetInstalls = installs.filter(
+    (install) => String(relationshipId(install['is provided by-release'])) === String(releaseId),
+  );
+  return (
+    targetInstalls.length > 0 &&
+    targetInstalls.every((install) => String(install.status).trim().toLowerCase() === 'running')
+  );
+};
+
 export const hasSupervisorServiceTable = (version: unknown): boolean => {
   if (typeof version !== 'string') return false;
   const parsed = semver.parse(version) ?? semver.coerce(version);
@@ -170,7 +184,9 @@ export const presentDeviceServices = ({
   const currentSupervisorReleaseId = currentSupervisor?.id;
   const supervisorServices = !showSupervisorServices
     ? []
-    : currentSupervisorReleaseId === undefined || String(currentSupervisorReleaseId) === String(supervisorReleaseId)
+    : isSupervisorTargetRunning(supervisorReleaseId, installs) ||
+        currentSupervisorReleaseId === undefined ||
+        String(currentSupervisorReleaseId) === String(supervisorReleaseId)
       ? forRelease(supervisorReleaseId, 'supervisor')
       : pairServiceInstalls(
           forRelease(currentSupervisorReleaseId, 'supervisor'),

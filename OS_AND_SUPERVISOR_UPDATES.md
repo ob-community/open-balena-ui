@@ -316,9 +316,12 @@ During updates, the UI resolves the current Supervisor release using the device-
 release metadata belonging to the same application as the target release. It pairs current and incoming installs by
 service ID and displays both states and releases, including the incoming image's `download progress` percentage.
 Target-only containers remain visible; historical releases and application services with the same name are excluded.
-The current container remains the terminal/log target until the reported Supervisor version changes. If current-release
-metadata is unavailable, the UI shows the target installs without inventing a current state. Metadata request failures
-are surfaced explicitly.
+Once the target release has image installs and all of them report `Running`, the UI shows those installs as current,
+including terminal/log targets, even if the device's `supervisor_version` still reports the old version. The summary
+then shows the target version without a pending arrow, and fresh install evidence settles the Supervisor update action.
+Neither `update_status: done` nor `overall_status: operational` alone establishes Supervisor update completion. If
+current-release metadata is unavailable, the UI shows the target installs without inventing a current state. Metadata
+request failures are surfaced explicitly.
 
 Supervisor 19 uses the `core`, `core-next`, and `service-relay` services while its implementation is migrated
 incrementally. Their presence is expected and is not evidence that the synchronized release is malformed. See

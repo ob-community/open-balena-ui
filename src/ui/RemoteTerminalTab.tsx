@@ -22,13 +22,21 @@ const terminalFontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consola
 
 interface Props {
   active: boolean;
+  expanded?: boolean;
   token: string;
   deviceUuid: string;
   targets: TerminalTarget[];
   onStatus: (status: TerminalStatus, label: string) => void;
 }
 
-export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, targets, onStatus }) => {
+export const RemoteTerminalTab: React.FC<Props> = ({
+  active,
+  expanded = false,
+  token,
+  deviceUuid,
+  targets,
+  onStatus,
+}) => {
   const element = React.useRef<HTMLDivElement>(null);
   const terminal = React.useRef<Terminal | undefined>(undefined);
   const fit = React.useRef<FitAddon | undefined>(undefined);
@@ -110,7 +118,7 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
       if (ready.current) terminal.current?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [active, status]);
+  }, [active, status, expanded]);
 
   const connect = async () => {
     if (!token || !deviceUuid || !selected || pending.current || socket.current) return;
@@ -210,8 +218,10 @@ export const RemoteTerminalTab: React.FC<Props> = ({ active, token, deviceUuid, 
           ref={element}
           sx={{
             'position': 'absolute',
-            'inset': 0,
-            'p': 1.5,
+            // FitAddon measures this box's full height, so reserve spacing outside it rather than with padding.
+            'inset': '12px',
+            'bottom': 'calc(12px + 1em)',
+            'fontSize': 13,
             'overflow': 'hidden',
             // The app baseline forces a proportional font on every element, including xterm's measurement spans.
             '& .xterm, & .xterm *': { fontFamily: `${terminalFontFamily} !important` },

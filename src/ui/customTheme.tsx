@@ -665,7 +665,7 @@ const createCustomTheme = (mode: PaletteMode) => {
             '&:not(.custom)': {
               '.MuiButton-root': {
                 '&.MuiButton-containedPrimary': {
-                  color: isDark ? theme.palette.text.primary : '#ffffff',
+                  color: theme.palette.primary.contrastText,
                 },
 
                 '&:first-of-type': {

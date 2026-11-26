@@ -39,7 +39,7 @@ const DeviceServiceVarDatagrid: React.FC<{ embedded?: boolean }> = ({ embedded =
       '& .MuiTableCell-root': { px: embedded ? 1 : 2 },
       '& .column-name': { overflowWrap: 'anywhere' },
       '& .column-value': { width: embedded ? '34%' : '30%' },
-      '& .MuiTableCell-root:last-child': { width: 92 },
+      '& .MuiTableCell-root:last-child': { width: embedded ? 116 : 132 },
     }}
   >
     {!embedded && (

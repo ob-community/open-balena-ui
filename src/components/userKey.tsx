@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Alert, Stack, TextField as MuiTextField } from '@mui/material';
+import { Alert, TextField as MuiTextField } from '@mui/material';
 import {
   Create,
   Datagrid,
@@ -15,6 +15,7 @@ import {
   SimpleForm,
   TextField,
   TextInput,
+  Toolbar,
   useGetIdentity,
   useRecordContext,
   required,
@@ -37,10 +38,10 @@ const UserKeyActions: React.FC = () => {
   }
 
   return (
-    <Stack direction='row' spacing={1}>
+    <Toolbar>
       <EditButton label='' variant='outlined' size='small' />
       <DeleteButton mutationMode='pessimistic' label='' variant='outlined' size='small' />
-    </Stack>
+    </Toolbar>
   );
 };
 

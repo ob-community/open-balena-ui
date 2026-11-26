@@ -1,5 +1,4 @@
 import { useTheme } from '@mui/material';
-import type { Theme } from '@mui/material/styles';
 import * as React from 'react';
 import {
   Create,
@@ -93,22 +92,15 @@ export const VpnLastConnectedField: React.FC<Omit<FunctionFieldProps<any>, 'rend
   />
 );
 
-export const ReleaseField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => {
-  const theme = useTheme();
-
-  return (
-    <FunctionField
-      {...props}
-      render={(record, source) => <ReleaseFieldContent record={record} source={source} theme={theme} />}
-    />
-  );
-};
+export const ReleaseField: React.FC<Omit<FunctionFieldProps<any>, 'render'>> = (props) => (
+  <FunctionField {...props} render={(record, source) => <ReleaseFieldContent record={record} source={source} />} />
+);
 
 const ReleaseFieldContent: React.FC<{
   record: Record<string, any> | null;
   source?: string;
-  theme: Theme;
-}> = ({ record, source, theme }) => {
+}> = ({ record, source }) => {
+  const theme = useTheme();
   const listImageInstalls = useDeviceListImageInstalls(record?.id);
   const deviceRefresh = React.useContext(DeviceRefreshContext);
   const updatingImageInstalls =
@@ -155,53 +147,48 @@ const ReleaseFieldContent: React.FC<{
   const isUpToDate = hasTarget ? isTargetMatch : isTrackingLatest;
   const isUpdating = deviceUpdateReported || isDeviceUpdating(record, updatingImageInstalls);
   const updateStatus = isUpToDate ? undefined : isUpdating ? 'updating' : 'outdated';
-  const chipIcon = isUpToDate && hasTarget ? <TargetReleaseIcon origin={origin} fontSize='small' /> : undefined;
-  const isOnline = isDeviceOnline(record);
-  const updateStatusColor =
+  const chipIcon = updateStatus ? (
+    <DeviceUpdateStatusIcon status={updateStatus} fontSize='small' />
+  ) : hasTarget ? (
+    <TargetReleaseIcon origin={origin} fontSize='small' />
+  ) : undefined;
+  // Highlight online devices that are not on their target release; offline devices cannot update anyway.
+  // The theme pins every chip's background and label colour, so the highlight has to override both.
+  const highlight =
     updateStatus === 'updating'
-      ? theme.palette.info.main
-      : updateStatus === 'outdated'
-        ? isOnline
-          ? theme.palette.warning.main
-          : theme.palette.common.white
-        : theme.palette.text.primary;
+      ? theme.palette.info
+      : updateStatus === 'outdated' && isDeviceOnline(record)
+        ? theme.palette.warning
+        : undefined;
+  const chipSx = highlight && {
+    'background': highlight.main,
+    '.MuiChip-label, .MuiChip-icon': { color: `${highlight.contrastText} !important` },
+  };
+
+  // The tooltip reads the target release from the record context, the chip shows the running release of the device.
+  const chip = (
+    <span>
+      <RecordContextProvider value={augmentedRecord}>
+        <ReferenceField label='Current Release' source='is running-release' reference='release'>
+          <SemVerChip icon={chipIcon} sx={chipSx} withTooltip={false} />
+        </ReferenceField>
+      </RecordContextProvider>
+    </span>
+  );
 
   return (
     <RecordContextProvider value={augmentedRecord}>
-      <ReferenceField label='Current Release' source='is running-release' reference='release'>
-        <SemVerChip icon={chipIcon} sx={{ position: 'relative', top: '-5px' }} withTooltip={false} />
-      </ReferenceField>
-
-      {record[source] &&
-        (targetReleaseId !== undefined && targetReleaseId !== null ? (
-          <ReferenceField reference='release' source={targetField} link={false}>
-            <TargetReleaseTooltip origin={origin} status={updateStatus}>
-              <span
-                style={{
-                  position: 'relative',
-                  top: '3px',
-                  left: '3px',
-                  color: updateStatusColor,
-                }}
-              >
-                {updateStatus && <DeviceUpdateStatusIcon status={updateStatus} />}
-              </span>
-            </TargetReleaseTooltip>
-          </ReferenceField>
-        ) : (
-          <TargetReleaseTooltip origin={origin} status={updateStatus} fallbackDetail='Tracking latest release'>
-            <span
-              style={{
-                position: 'relative',
-                top: '3px',
-                left: '3px',
-                color: updateStatusColor,
-              }}
-            >
-              {updateStatus && <DeviceUpdateStatusIcon status={updateStatus} />}
-            </span>
+      {hasTarget ? (
+        <ReferenceField reference='release' source={targetField} link={false}>
+          <TargetReleaseTooltip origin={origin} status={updateStatus}>
+            {chip}
           </TargetReleaseTooltip>
-        ))}
+        </ReferenceField>
+      ) : (
+        <TargetReleaseTooltip origin={origin} status={updateStatus} fallbackDetail='Tracking latest release'>
+          {chip}
+        </TargetReleaseTooltip>
+      )}
     </RecordContextProvider>
   );
 };

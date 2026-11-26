@@ -10,6 +10,7 @@ import {
   FunctionField,
   List,
   ReferenceField,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -25,6 +26,8 @@ import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
 import VarNameInput from '../ui/VarNameInput';
 import SelectDevice from '../ui/SelectDevice';
 import SelectDeviceService from '../ui/SelectDeviceService';
+
+const searchFilters = [<SearchInput key='search' source='#name,value,service install/device/device name,service install/installs-service/service name@ilike' alwaysOn />];
 
 const DeviceServiceVarDatagrid: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => (
   <Datagrid
@@ -83,7 +86,7 @@ const DeviceServiceVarDatagrid: React.FC<{ embedded?: boolean }> = ({ embedded =
 );
 
 export const DeviceServiceVarList: React.FC = () => (
-  <List title='Device Service Vars' actions={<ReturnListActions />}>
+  <List title='Device Service Vars' filters={searchFilters} actions={<ReturnListActions />}>
     <DeviceServiceVarDatagrid />
   </List>
 );
@@ -107,6 +110,7 @@ export const DeviceServiceVarListForDevice: React.FC<{ deviceId: string | number
     <List
       resource='device service environment variable'
       title='Device Service Vars'
+      filters={searchFilters}
       filter={{ 'service install@in': serviceInstallIds }}
       sx={{ width: '100%', minWidth: 0 }}
       actions={<ReturnListActions record={{ device: deviceId }} />}

@@ -10,6 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -21,6 +22,8 @@ import type { ListProps } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
+
+const searchFilters = [<SearchInput key='search' source='#tag key,value,device/device name@ilike' alwaysOn />];
 
 export const DeviceTagList = () => {
   let listProps: Partial<ListProps> = {
@@ -40,7 +43,7 @@ export const DeviceTagList = () => {
   } catch (error) {}
 
   return (
-    <List actions={<ReturnListActions />} {...listProps}>
+    <List filters={searchFilters} actions={<ReturnListActions />} {...listProps}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />

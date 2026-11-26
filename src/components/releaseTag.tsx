@@ -10,6 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -21,9 +22,11 @@ import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 import SemVerChip, { getSemver } from '../ui/SemVerChip';
 
+const searchFilters = [<SearchInput key='search' source='#tag key,value@ilike' alwaysOn />];
+
 export const ReleaseTagList: React.FC = () => {
   return (
-    <List title='Release Tags'>
+    <List filters={searchFilters} title='Release Tags'>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Fleet' source='release' reference='release' link={false}>
           <ReferenceField

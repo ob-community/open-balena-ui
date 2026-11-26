@@ -6,6 +6,7 @@ import {
   Edit,
   EditButton,
   List,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -13,9 +14,11 @@ import {
   required,
 } from 'react-admin';
 
+const searchFilters = [<SearchInput key='search' source='name@ilike' alwaysOn />];
+
 export const PermissionList: React.FC = () => {
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid size='medium' rowClick={false}>
         <TextField source='name' />
 

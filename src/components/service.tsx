@@ -1,9 +1,11 @@
 import * as React from 'react';
-import { Datagrid, List, ReferenceField, TextField } from 'react-admin';
+import { Datagrid, List, ReferenceField, SearchInput, TextField } from 'react-admin';
+
+const searchFilters = [<SearchInput key='search' source='service name@ilike' alwaysOn />];
 
 export const ServiceList: React.FC = () => {
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid size='medium' bulkActionButtons={false} rowClick={false}>
         <TextField source='id' />
         <TextField label='Name' source='service name' />

@@ -8,6 +8,7 @@ import {
   FunctionField,
   List,
   ReferenceField,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -19,9 +20,11 @@ import ReleaseImageInput from '../ui/ReleaseImageInput';
 import Row from '../ui/Row';
 import SemVerChip from '../ui/SemVerChip';
 
+const searchFilters = [<SearchInput key='search' source='#label name,value@ilike' alwaysOn />];
+
 export const ImageLabelList: React.FC = () => {
   return (
-    <List title='Image Labels'>
+    <List filters={searchFilters} title='Image Labels'>
       <Datagrid size='medium' rowClick={false}>
         <TextField label='Release Image' source='release image' />
 

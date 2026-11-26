@@ -131,6 +131,16 @@ const legacyArrayValue = (value: unknown): unknown[] | undefined => {
     });
 };
 
+// A search field may point into a related record: 'device/device name' => device/any(x0:contains(tolower(x0/device_name),...))
+const searchComparison = (field: string, operator: string, value: unknown, prefix = '', depth = 0): string => {
+  const [head, ...rest] = field.split('/');
+  if (!rest.length) {
+    return comparison(prefix + head, operator, value);
+  }
+  const alias = `x${depth}`;
+  return `${toApiField(prefix + head)}/any(${alias}:${searchComparison(rest.join('/'), operator, value, `${alias}/`, depth + 1)})`;
+};
+
 const fullTextFilter = (key: string, value: unknown): string | undefined => {
   if (!key.startsWith('#')) {
     return undefined;
@@ -155,7 +165,7 @@ const fullTextFilter = (key: string, value: unknown): string | undefined => {
   return group(
     words.map((word) =>
       group(
-        fields.map((field) => comparison(field, operator, word)),
+        fields.map((field) => searchComparison(field, operator, word)),
         'or',
       ),
     ),

@@ -10,6 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -23,9 +24,11 @@ import Row from '../ui/Row';
 
 const uniqueIssueMessage = 'This Tag is already present for this Fleet';
 
+const searchFilters = [<SearchInput key='search' source='#tag key,value,application/app name@ilike' alwaysOn />];
+
 export const FleetTagList: React.FC = () => {
   return (
-    <List title='Fleet Tags'>
+    <List filters={searchFilters} title='Fleet Tags'>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Fleet' source='application' reference='application'>
           <TextField source='app name' />

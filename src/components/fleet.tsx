@@ -12,6 +12,7 @@ import {
   ReferenceField,
   ReferenceInput,
   SaveButton,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -80,13 +81,15 @@ const CustomBulkActionButtons: React.FC = (props) => (
   </React.Fragment>
 );
 
+const searchFilters = [<SearchInput key='search' source='#app name,slug@ilike' alwaysOn />];
+
 export const FleetList: React.FC = () => {
   const { context } = useAdminAccessContext();
   const canEditOrganizations =
     context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
 
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid
         bulkActionButtons={<CustomBulkActionButtons />}
         rowClick={false}

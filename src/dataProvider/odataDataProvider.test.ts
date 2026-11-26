@@ -368,3 +368,14 @@ test('bulk deletion still surfaces non-not-found failures', async () => {
 
   await assert.rejects(provider.deleteMany('device', { ids: [7] }), /Forbidden/);
 });
+
+test('buildODataFilter searches related records through any lambdas', () => {
+  assert.equal(
+    buildODataFilter({ '#name,device/device name@ilike': 'Abc' }),
+    "(contains(tolower(name),'abc') or device/any(x0:contains(tolower(x0/device_name),'abc')))",
+  );
+  assert.equal(
+    buildODataFilter({ '#service install/device/device name@ilike': 'abc' }),
+    "service_install/any(x0:x0/device/any(x1:contains(tolower(x1/device_name),'abc')))",
+  );
+});

@@ -10,6 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -21,6 +22,8 @@ import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
 import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
 import VarNameInput from '../ui/VarNameInput';
+
+const searchFilters = [<SearchInput key='search' source='#name,value,device/device name@ilike' alwaysOn />];
 
 export const DeviceEnvVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
@@ -37,7 +40,7 @@ export const DeviceEnvVarList: React.FC = () => {
   } catch (e) {}
 
   return (
-    <List actions={<ReturnListActions />} {...listProps}>
+    <List filters={searchFilters} actions={<ReturnListActions />} {...listProps}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />

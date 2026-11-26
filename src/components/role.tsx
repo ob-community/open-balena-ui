@@ -6,6 +6,7 @@ import {
   Edit,
   EditButton,
   List,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -15,9 +16,11 @@ import {
 import { useModifyRole } from '../lib/role';
 import ManagePermissions from '../ui/ManagePermissions';
 
+const searchFilters = [<SearchInput key='search' source='name@ilike' alwaysOn />];
+
 export const RoleList: React.FC = () => {
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid size='medium' rowClick={false}>
         <TextField source='name' />
         <Toolbar>

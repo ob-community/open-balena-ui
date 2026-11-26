@@ -7,6 +7,7 @@ import {
   EditButton,
   FunctionField,
   List,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -15,9 +16,11 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
+const searchFilters = [<SearchInput key='search' source='key@ilike' alwaysOn />];
+
 export const ConfigList: React.FC = () => {
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid size='medium' rowClick={false}>
         <TextField label='Key' source='key' />
 

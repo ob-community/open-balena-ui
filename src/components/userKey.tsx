@@ -10,6 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -43,13 +44,15 @@ const UserKeyActions: React.FC = () => {
   );
 };
 
+const searchFilters = [<SearchInput key='search' source='title@ilike' alwaysOn />];
+
 export const UserKeysList: React.FC = () => {
   const { context } = useAdminAccessContext();
   const canEditUsers =
     context != null && (!context.enforcementEnabled || context.globalAdmin || context.organizationAdmin);
 
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='User' source='user' reference='user' link={canEditUsers ? undefined : false}>
           <TextField source='username' />

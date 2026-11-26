@@ -20,6 +20,7 @@ import {
 import type { ListProps } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
+import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
 
 export const DeviceTagList = () => {
   let listProps: Partial<ListProps> = {
@@ -38,7 +39,7 @@ export const DeviceTagList = () => {
   } catch (error) {}
 
   return (
-    <List {...listProps}>
+    <List {...listProps} actions={<ReturnListActions />}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />
@@ -57,8 +58,8 @@ export const DeviceTagList = () => {
         />
 
         <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          <EditButton label='' size='small' variant='outlined' state={useReturnState()} />
+          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' redirect={false} />
         </Toolbar>
       </Datagrid>
     </List>
@@ -66,7 +67,7 @@ export const DeviceTagList = () => {
 };
 
 export const DeviceTagCreate: React.FC = () => (
-  <Create title='Create Device Tag' redirect='list'>
+  <Create title='Create Device Tag' redirect={useReturnTo()}>
     <SimpleForm>
       <ReferenceInput
         source='device'
@@ -87,7 +88,7 @@ export const DeviceTagCreate: React.FC = () => (
 );
 
 export const DeviceTagEdit: React.FC = () => (
-  <Edit title='Edit Device Tag'>
+  <Edit redirect={useReturnTo()} title='Edit Device Tag'>
     <SimpleForm>
       <ReferenceInput
         source='device'

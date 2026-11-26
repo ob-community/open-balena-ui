@@ -19,6 +19,7 @@ import {
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
+import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
 import VarNameInput from '../ui/VarNameInput';
 
 export const DeviceConfigVarList: React.FC = () => {
@@ -35,7 +36,7 @@ export const DeviceConfigVarList: React.FC = () => {
   } catch (e) {}
 
   return (
-    <List {...listProps}>
+    <List {...listProps} actions={<ReturnListActions />}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />
@@ -54,8 +55,8 @@ export const DeviceConfigVarList: React.FC = () => {
         />
 
         <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          <EditButton label='' size='small' variant='outlined' state={useReturnState()} />
+          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' redirect={false} />
         </Toolbar>
       </Datagrid>
     </List>
@@ -63,7 +64,7 @@ export const DeviceConfigVarList: React.FC = () => {
 };
 
 export const DeviceConfigVarCreate: React.FC = () => (
-  <Create title='Create Device Config Var' redirect='list'>
+  <Create title='Create Device Config Var' redirect={useReturnTo()}>
     <SimpleForm>
       <ReferenceInput
         source='device'
@@ -82,7 +83,7 @@ export const DeviceConfigVarCreate: React.FC = () => (
 );
 
 export const DeviceConfigVarEdit: React.FC = () => (
-  <Edit title='Edit Device Config Var'>
+  <Edit redirect={useReturnTo()} title='Edit Device Config Var'>
     <SimpleForm>
       <ReferenceInput
         source='device'

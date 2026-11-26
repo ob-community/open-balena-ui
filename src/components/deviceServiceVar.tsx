@@ -109,7 +109,7 @@ export const DeviceServiceVarListForDevice: React.FC<{ deviceId: string | number
       title='Device Service Vars'
       filter={{ 'service install@in': serviceInstallIds }}
       sx={{ width: '100%', minWidth: 0 }}
-      actions={<ReturnListActions />}
+      actions={<ReturnListActions record={{ device: deviceId }} />}
     >
       <DeviceServiceVarDatagrid embedded />
     </List>

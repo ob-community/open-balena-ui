@@ -11,9 +11,10 @@ export const useReturnTo = () => {
   return returnTo ? () => returnTo : ('list' as const);
 };
 
-export const ReturnListActions: React.FC = () => (
+// `record` prefills the create form, e.g. { device: 3 } when the list is embedded in a device page.
+export const ReturnListActions: React.FC<{ record?: object }> = ({ record }) => (
   <TopToolbar>
-    <CreateButton state={useReturnState()} />
+    <CreateButton state={{ ...useReturnState(), record }} />
     <ExportButton />
   </TopToolbar>
 );

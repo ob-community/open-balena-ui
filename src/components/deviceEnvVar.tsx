@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  AutocompleteInput,
   Create,
   Datagrid,
   DeleteButton,
@@ -9,7 +10,6 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
-  SelectInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -32,11 +32,12 @@ export const DeviceEnvVarList: React.FC = () => {
     listProps = {
       resource: 'device environment variable',
       filter: { device: showContext.record.id },
+      actions: <ReturnListActions record={{ device: showContext.record.id }} />,
     };
   } catch (e) {}
 
   return (
-    <List {...listProps} actions={<ReturnListActions />}>
+    <List actions={<ReturnListActions />} {...listProps}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />
@@ -73,7 +74,13 @@ export const DeviceEnvVarCreate: React.FC = () => (
         perPage={1000}
         sort={{ field: 'device name', order: 'ASC' }}
       >
-        <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
+        <AutocompleteInput
+          optionText='device name'
+          optionValue='id'
+          validate={required()}
+          fullWidth={true}
+          filterToQuery={(searchText) => ({ 'device name@ilike': searchText })}
+        />
       </ReferenceInput>
       <VarNameInput resource='device environment variable' validate={required()} />
       <JsonValueInput label='Value' source='value' validate={required()} />
@@ -91,7 +98,13 @@ export const DeviceEnvVarEdit: React.FC = () => (
         perPage={1000}
         sort={{ field: 'device name', order: 'ASC' }}
       >
-        <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
+        <AutocompleteInput
+          optionText='device name'
+          optionValue='id'
+          validate={required()}
+          fullWidth={true}
+          filterToQuery={(searchText) => ({ 'device name@ilike': searchText })}
+        />
       </ReferenceInput>
 
       <VarNameInput resource='device environment variable' validate={required()} />

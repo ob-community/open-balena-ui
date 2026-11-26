@@ -179,7 +179,7 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
   const MenuItem = (resource) => (
     <MenuItemLink
       key={resource.name}
-      to={`/${encodeURIComponent(resource.name)}`}
+      to={`/${resource.name}`}
       primaryText={getPrimaryTextForResource(resource)}
       leftIcon={resource.icon ? <resource.icon /> : <DefaultIcon />}
       onClick={onMenuClick}

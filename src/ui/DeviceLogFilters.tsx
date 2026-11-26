@@ -117,12 +117,12 @@ export const DeviceLogFilters: React.FC<DeviceLogFiltersProps> = ({
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, px: 1.5, pb: 1.5 }}>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-end' }}>
         <TextField
           size='small'
-          label='Search logs'
           placeholder='Search messages'
+          inputProps={{ 'aria-label': 'Search logs' }}
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           sx={{ ...smallFieldSx, flex: '1 1 200px', minWidth: 160 }}

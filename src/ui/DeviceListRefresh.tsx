@@ -188,6 +188,9 @@ const DeviceListRefresh: React.FC<React.PropsWithChildren> = ({ children }) => {
       // Keep provider snapshot identities; structural sharing can otherwise
       // manufacture records without their request provenance.
       structuralSharing: false,
+      // Without structural sharing, useGetMany's default placeholder is a new array on every render,
+      // which re-renders this component in a loop and starves filter navigation. It is unused here anyway.
+      placeholderData: undefined,
     },
   );
 

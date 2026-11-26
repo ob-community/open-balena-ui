@@ -121,7 +121,8 @@ export const ActiveFilterChips: React.FC<ActiveFilterChipsProps> = ({
     filters.deviceTypeId !== null ||
     filters.fleetId !== null ||
     nonNullReleaseIds.length > 0 ||
-    filters.osVersion !== '';
+    filters.osVersion !== '' ||
+    filters.tagKey !== '';
 
   if (!hasActiveFilters) {
     return null;
@@ -213,6 +214,18 @@ export const ActiveFilterChips: React.FC<ActiveFilterChipsProps> = ({
         <Chip
           label={`OS: ${filters.osVersion}`}
           onDelete={() => onRemoveFilter('osVersion')}
+          size='small'
+          color='primary'
+          variant='outlined'
+          sx={{ maxWidth: '180px' }}
+        />
+      )}
+
+      {/* Tag Chip */}
+      {filters.tagKey !== '' && (
+        <Chip
+          label={`Tag: ${filters.tagKey}${filters.tagValue !== '' ? `=${filters.tagValue}` : ''}`}
+          onDelete={() => onRemoveFilter('tagKey')}
           size='small'
           color='primary'
           variant='outlined'

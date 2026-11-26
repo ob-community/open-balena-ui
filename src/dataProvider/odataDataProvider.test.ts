@@ -41,6 +41,14 @@ test('buildODataFilter accepts numeric multi-field equality filters', () => {
   );
 });
 
+test('buildODataFilter translates any filters into relation lambdas', () => {
+  assert.equal(buildODataFilter({ 'device tag@any': { 'tag key@eq': 'site' } }), "device_tag/any(x:x/tag_key eq 'site')");
+  assert.equal(
+    buildODataFilter({ 'device tag@any': { 'tag key@eq': 'site', 'value@ilike': 'Ber' } }),
+    "device_tag/any(x:(x/tag_key eq 'site' and contains(tolower(x/value),'ber')))",
+  );
+});
+
 test('extractCollection supports modern and legacy OData response envelopes', () => {
   assert.deepEqual(extractCollection({ 'value': [{ id: 1 }], '@odata.count': 12 }), {
     items: [{ id: 1 }],

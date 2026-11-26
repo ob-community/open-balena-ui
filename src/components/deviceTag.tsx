@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  AutocompleteInput,
   Create,
   Datagrid,
   DeleteButton,
@@ -9,7 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
-  SelectInput,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -20,6 +21,9 @@ import {
 import type { ListProps } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
+import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
+
+const searchFilters = [<SearchInput key='search' source='#tag key,value,device/device name@ilike' alwaysOn />];
 
 export const DeviceTagList = () => {
   let listProps: Partial<ListProps> = {
@@ -33,12 +37,13 @@ export const DeviceTagList = () => {
         ...listProps,
         resource: 'device tag',
         filter: { device: showContext.record.id },
+        actions: <ReturnListActions record={{ device: showContext.record.id }} />,
       };
     }
   } catch (error) {}
 
   return (
-    <List {...listProps}>
+    <List filters={searchFilters} actions={<ReturnListActions />} {...listProps}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />
@@ -57,8 +62,8 @@ export const DeviceTagList = () => {
         />
 
         <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          <EditButton label='' size='small' variant='outlined' state={useReturnState()} />
+          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' redirect={false} />
         </Toolbar>
       </Datagrid>
     </List>
@@ -66,7 +71,7 @@ export const DeviceTagList = () => {
 };
 
 export const DeviceTagCreate: React.FC = () => (
-  <Create title='Create Device Tag' redirect='list'>
+  <Create title='Create Device Tag' redirect={useReturnTo()}>
     <SimpleForm>
       <ReferenceInput
         source='device'
@@ -75,7 +80,13 @@ export const DeviceTagCreate: React.FC = () => (
         perPage={1000}
         sort={{ field: 'device name', order: 'ASC' }}
       >
-        <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
+        <AutocompleteInput
+          optionText='device name'
+          optionValue='id'
+          validate={required()}
+          fullWidth={true}
+          filterToQuery={(searchText) => ({ 'device name@ilike': searchText })}
+        />
       </ReferenceInput>
 
       <Row>
@@ -87,7 +98,7 @@ export const DeviceTagCreate: React.FC = () => (
 );
 
 export const DeviceTagEdit: React.FC = () => (
-  <Edit title='Edit Device Tag'>
+  <Edit redirect={useReturnTo()} title='Edit Device Tag'>
     <SimpleForm>
       <ReferenceInput
         source='device'
@@ -96,7 +107,13 @@ export const DeviceTagEdit: React.FC = () => (
         perPage={1000}
         sort={{ field: 'device name', order: 'ASC' }}
       >
-        <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
+        <AutocompleteInput
+          optionText='device name'
+          optionValue='id'
+          validate={required()}
+          fullWidth={true}
+          filterToQuery={(searchText) => ({ 'device name@ilike': searchText })}
+        />
       </ReferenceInput>
 
       <Row>

@@ -7,6 +7,7 @@ import ActiveFilterChips from './ActiveFilterChips';
 import { deviceOnlineStatusField, getDeviceOnlineFilterValue, parseDeviceOnlineFilterValue } from '../lib/deviceStatus';
 
 const onlineStatusFilter = `${deviceOnlineStatusField}@eq`;
+const tagFilter = 'device tag@any';
 
 // Custom filter button component
 const DeviceFilterButton: React.FC<{
@@ -87,6 +88,13 @@ export const convertToListFilters = (filters: DeviceFilterState): Record<string,
     listFilters['os version@ilike'] = filters.osVersion;
   }
 
+  if (filters.tagKey !== '') {
+    listFilters[tagFilter] = {
+      'tag key@eq': filters.tagKey,
+      ...(filters.tagValue !== '' ? { 'value@ilike': filters.tagValue } : {}),
+    };
+  }
+
   return listFilters;
 };
 
@@ -98,7 +106,8 @@ export const hasActiveStructuredFilters = (filters: DeviceFilterState): boolean 
     filters.deviceTypeId !== null ||
     filters.fleetId !== null ||
     releaseIds.length > 0 ||
-    filters.osVersion !== ''
+    filters.osVersion !== '' ||
+    filters.tagKey !== ''
   );
 };
 
@@ -127,6 +136,7 @@ export const deriveStructuredFilters = (filterValues: Record<string, unknown>): 
   }
 
   const osVersion = (filterValues['os version@ilike'] as string) || '';
+  const tag = (filterValues[tagFilter] ?? {}) as Record<string, unknown>;
 
   return {
     onlineStatus: onlineStatus as DeviceFilterState['onlineStatus'],
@@ -134,6 +144,8 @@ export const deriveStructuredFilters = (filterValues: Record<string, unknown>): 
     fleetId,
     releaseIds,
     osVersion,
+    tagKey: (tag['tag key@eq'] as string) || '',
+    tagValue: (tag['value@ilike'] as string) || '',
   };
 };
 
@@ -148,6 +160,7 @@ const STRUCTURED_FILTER_KEYS = [
   'belongs to-application@eq',
   'is running-release@in',
   'os version@ilike',
+  tagFilter,
 ] as const;
 
 const DeviceStructuredFilter: React.FC<DeviceStructuredFilterProps> = ({
@@ -199,6 +212,10 @@ const DeviceStructuredFilter: React.FC<DeviceStructuredFilterProps> = ({
           break;
         case 'osVersion':
           updatedFilters.osVersion = '';
+          break;
+        case 'tagKey':
+          updatedFilters.tagKey = '';
+          updatedFilters.tagValue = '';
           break;
       }
 

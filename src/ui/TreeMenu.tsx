@@ -50,8 +50,12 @@ const StyledMenu = styled('div')(({ theme }) => {
       'paddingBottom': '12px',
 
       '&.RaMenuItemLink-active': {
+        color: primaryText,
+      },
+
+      // A parent that links to its first child matches the same route; only the child is highlighted.
+      '&.RaMenuItemLink-active:not(.menu-parent)': {
         'fontWeight': 'bold',
-        'color': primaryText,
         'background': `${activeColor} !important`,
 
         '.MuiListItemIcon-root': {
@@ -179,7 +183,7 @@ const TreeMenu: React.FC<TreeMenuProps> = (props) => {
   const MenuItem = (resource) => (
     <MenuItemLink
       key={resource.name}
-      to={`/${encodeURIComponent(resource.name)}`}
+      to={`/${resource.name}`}
       primaryText={getPrimaryTextForResource(resource)}
       leftIcon={resource.icon ? <resource.icon /> : <DefaultIcon />}
       onClick={onMenuClick}

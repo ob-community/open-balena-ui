@@ -10,6 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -24,9 +25,11 @@ import VarNameInput from '../ui/VarNameInput';
 
 const uniqueIssueMessage = 'This ConfigVar is already present for this Fleet';
 
+const searchFilters = [<SearchInput key='search' source='#name,value,application/app name@ilike' alwaysOn />];
+
 export const FleetConfigVarList: React.FC = () => {
   return (
-    <List title='Fleet Config Vars'>
+    <List filters={searchFilters} title='Fleet Config Vars'>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Fleet' source='application' reference='application'>
           <TextField source='app name' />

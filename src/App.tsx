@@ -209,7 +209,11 @@ const OpenBalenaAdmin: React.FC = () => {
         {...deviceTag}
       />
 
-      <Resource name='menu-image' icon={ImageIcon} options={{ label: 'Images', isMenuParent: true }} />
+      <Resource
+        name='menu-image'
+        icon={ImageIcon}
+        options={{ label: 'Images', isMenuParent: true, menuRoute: 'image' }}
+      />
       <Resource name='image' icon={ImageIcon} options={{ label: 'Images', menuParent: 'menu-image' }} {...image} />
       <Resource
         name='image environment variable'
@@ -224,7 +228,11 @@ const OpenBalenaAdmin: React.FC = () => {
         {...imageLabel}
       />
 
-      <Resource name='menu-release' icon={Inventory2Icon} options={{ label: 'Releases', isMenuParent: true }} />
+      <Resource
+        name='menu-release'
+        icon={Inventory2Icon}
+        options={{ label: 'Releases', isMenuParent: true, menuRoute: 'release' }}
+      />
       <Resource
         name='release'
         icon={Inventory2Icon}
@@ -241,7 +249,7 @@ const OpenBalenaAdmin: React.FC = () => {
       <Resource
         name='menu-service'
         icon={MiscellaneousServicesIcon}
-        options={{ label: 'Services', isMenuParent: true }}
+        options={{ label: 'Services', isMenuParent: true, menuRoute: 'service' }}
       />
       <Resource
         name='service'

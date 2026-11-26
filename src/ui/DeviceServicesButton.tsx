@@ -17,7 +17,7 @@ export const DeviceServicesButton: React.FC<ButtonProps & { label?: string; devi
     <>
       <Tooltip title='Device Services'>
         <Button aria-label='services' onClick={() => setOpen(true)} {...props}>
-          <ListIcon />
+          <ListIcon fontSize='small' />
           {label ? <span style={{ paddingLeft: '4px' }}>{label}</span> : ''}
         </Button>
       </Tooltip>

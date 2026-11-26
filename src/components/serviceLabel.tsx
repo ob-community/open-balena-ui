@@ -10,6 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -20,9 +21,11 @@ import {
 import CopyChip from '../ui/CopyChip';
 import Row from '../ui/Row';
 
+const searchFilters = [<SearchInput key='search' source='#label name,value,service/service name@ilike' alwaysOn />];
+
 export const ServiceLabelList: React.FC = () => {
   return (
-    <List title='Service Labels'>
+    <List filters={searchFilters} title='Service Labels'>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Service' source='service' reference='service'>
           <ChipField source='service name' />

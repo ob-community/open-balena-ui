@@ -41,6 +41,14 @@ test('buildODataFilter accepts numeric multi-field equality filters', () => {
   );
 });
 
+test('buildODataFilter translates any filters into relation lambdas', () => {
+  assert.equal(buildODataFilter({ 'device tag@any': { 'tag key@eq': 'site' } }), "device_tag/any(x:x/tag_key eq 'site')");
+  assert.equal(
+    buildODataFilter({ 'device tag@any': { 'tag key@eq': 'site', 'value@ilike': 'Ber' } }),
+    "device_tag/any(x:(x/tag_key eq 'site' and contains(tolower(x/value),'ber')))",
+  );
+});
+
 test('extractCollection supports modern and legacy OData response envelopes', () => {
   assert.deepEqual(extractCollection({ 'value': [{ id: 1 }], '@odata.count': 12 }), {
     items: [{ id: 1 }],
@@ -359,4 +367,15 @@ test('bulk deletion still surfaces non-not-found failures', async () => {
   });
 
   await assert.rejects(provider.deleteMany('device', { ids: [7] }), /Forbidden/);
+});
+
+test('buildODataFilter searches related records through any lambdas', () => {
+  assert.equal(
+    buildODataFilter({ '#name,device/device name@ilike': 'Abc' }),
+    "(contains(tolower(name),'abc') or device/any(x0:contains(tolower(x0/device_name),'abc')))",
+  );
+  assert.equal(
+    buildODataFilter({ '#service install/device/device name@ilike': 'abc' }),
+    "service_install/any(x0:x0/device/any(x1:contains(tolower(x1/device_name),'abc')))",
+  );
 });

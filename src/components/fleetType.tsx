@@ -8,6 +8,7 @@ import {
   EditButton,
   FunctionField,
   List,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -32,13 +33,15 @@ const BooleanBinaryField: React.FC<BooleanBinaryFieldProps> = ({ source = 'enabl
   />
 );
 
+const searchFilters = [<SearchInput key='search' source='#slug,name,description@ilike' alwaysOn />];
+
 export const FleetTypeList: React.FC = () => {
   const { context, isPending } = useAdminAccessContext();
   if (isPending || !context) return null;
   const canManage = !context.enforcementEnabled || context.globalAdmin;
 
   return (
-    <List actions={canManage ? undefined : false}>
+    <List filters={searchFilters} actions={canManage ? undefined : false}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={canManage ? undefined : false}>
         <TextField label='Slug' source='slug' />
         <TextField label='Name' source='name' />

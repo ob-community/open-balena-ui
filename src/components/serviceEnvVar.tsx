@@ -11,6 +11,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -23,9 +24,11 @@ import JsonValueInput from '../ui/JsonValueInput';
 import Row from '../ui/Row';
 import VarNameInput from '../ui/VarNameInput';
 
+const searchFilters = [<SearchInput key='search' source='#name,value,service/service name@ilike' alwaysOn />];
+
 export const ServiceEnvVarList: React.FC = () => {
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Fleet' source='service' reference='service'>
           <ReferenceField source='application' reference='application'>

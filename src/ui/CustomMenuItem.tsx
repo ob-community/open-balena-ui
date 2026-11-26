@@ -70,6 +70,7 @@ const CustomMenuItem: React.FC<{
   const header = to ? (
     <MenuItemLink
       key={name}
+      className='menu-parent'
       to={`/${encodeURIComponent(to)}`}
       primaryText={translate(name)}
       leftIcon={icon}

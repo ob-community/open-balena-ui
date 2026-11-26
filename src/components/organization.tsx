@@ -7,6 +7,7 @@ import {
   EditButton,
   List,
   ReferenceManyField,
+  SearchInput,
   SimpleForm,
   SingleFieldList,
   TextField,
@@ -16,6 +17,8 @@ import {
 } from 'react-admin';
 import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
+const searchFilters = [<SearchInput key='search' source='name@ilike' alwaysOn />];
+
 export const OrganizationList: React.FC = () => {
   const { context, isPending } = useAdminAccessContext();
   if (isPending || !context) return null;
@@ -23,7 +26,7 @@ export const OrganizationList: React.FC = () => {
   const canCreate = !context.enforcementEnabled || context.globalAdmin;
 
   return (
-    <List actions={canCreate ? undefined : false}>
+    <List filters={searchFilters} actions={canCreate ? undefined : false}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={canEdit ? undefined : false}>
         <TextField source='name' />
         <TextField source='handle' />

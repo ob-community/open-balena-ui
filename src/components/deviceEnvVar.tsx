@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  AutocompleteInput,
   Create,
   Datagrid,
   DeleteButton,
@@ -9,7 +10,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
-  SelectInput,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -19,7 +20,10 @@ import {
 } from 'react-admin';
 import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
+import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
 import VarNameInput from '../ui/VarNameInput';
+
+const searchFilters = [<SearchInput key='search' source='#name,value,device/device name@ilike' alwaysOn />];
 
 export const DeviceEnvVarList: React.FC = () => {
   let listProps: Record<string, unknown> = {
@@ -31,11 +35,12 @@ export const DeviceEnvVarList: React.FC = () => {
     listProps = {
       resource: 'device environment variable',
       filter: { device: showContext.record.id },
+      actions: <ReturnListActions record={{ device: showContext.record.id }} />,
     };
   } catch (e) {}
 
   return (
-    <List {...listProps}>
+    <List filters={searchFilters} actions={<ReturnListActions />} {...listProps}>
       <Datagrid size='medium' rowClick={false}>
         <ReferenceField label='Device' source='device' reference='device'>
           <TextField source='device name' />
@@ -54,8 +59,8 @@ export const DeviceEnvVarList: React.FC = () => {
         />
 
         <Toolbar>
-          <EditButton label='' size='small' variant='outlined' />
-          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+          <EditButton label='' size='small' variant='outlined' state={useReturnState()} />
+          <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' redirect={false} />
         </Toolbar>
       </Datagrid>
     </List>
@@ -63,7 +68,7 @@ export const DeviceEnvVarList: React.FC = () => {
 };
 
 export const DeviceEnvVarCreate: React.FC = () => (
-  <Create title='Create Device Environment Var' redirect='list'>
+  <Create title='Create Device Environment Var' redirect={useReturnTo()}>
     <SimpleForm>
       <ReferenceInput
         source='device'
@@ -72,7 +77,13 @@ export const DeviceEnvVarCreate: React.FC = () => (
         perPage={1000}
         sort={{ field: 'device name', order: 'ASC' }}
       >
-        <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
+        <AutocompleteInput
+          optionText='device name'
+          optionValue='id'
+          validate={required()}
+          fullWidth={true}
+          filterToQuery={(searchText) => ({ 'device name@ilike': searchText })}
+        />
       </ReferenceInput>
       <VarNameInput resource='device environment variable' validate={required()} />
       <JsonValueInput label='Value' source='value' validate={required()} />
@@ -81,7 +92,7 @@ export const DeviceEnvVarCreate: React.FC = () => (
 );
 
 export const DeviceEnvVarEdit: React.FC = () => (
-  <Edit title='Edit Device Environment Var'>
+  <Edit redirect={useReturnTo()} title='Edit Device Environment Var'>
     <SimpleForm>
       <ReferenceInput
         source='device'
@@ -90,7 +101,13 @@ export const DeviceEnvVarEdit: React.FC = () => (
         perPage={1000}
         sort={{ field: 'device name', order: 'ASC' }}
       >
-        <SelectInput optionText='device name' optionValue='id' validate={required()} fullWidth={true} />
+        <AutocompleteInput
+          optionText='device name'
+          optionValue='id'
+          validate={required()}
+          fullWidth={true}
+          filterToQuery={(searchText) => ({ 'device name@ilike': searchText })}
+        />
       </ReferenceInput>
 
       <VarNameInput resource='device environment variable' validate={required()} />

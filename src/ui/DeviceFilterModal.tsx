@@ -38,6 +38,9 @@ export interface DeviceFilterState {
   // explicitly chose "Select None" for releases.
   releaseIds: Array<number | null>;
   osVersion: string;
+  // Empty tagKey = no tag filter; empty tagValue = any value of that tag
+  tagKey: string;
+  tagValue: string;
 }
 
 export const defaultFilterState: DeviceFilterState = {
@@ -46,6 +49,8 @@ export const defaultFilterState: DeviceFilterState = {
   fleetId: null,
   releaseIds: [],
   osVersion: '',
+  tagKey: '',
+  tagValue: '',
 };
 
 interface DeviceType {
@@ -148,6 +153,51 @@ export const DeviceFilterModal: React.FC<DeviceFilterModalProps> = ({
     });
     return Array.from(uniqueOsVersions).sort();
   }, [devicesData]);
+
+  // Fetch all device tags to derive the distinct tag names
+  const { data: tagKeysData } = useGetList(
+    'device tag',
+    {
+      pagination: { page: 1, perPage: 10000 },
+      sort: { field: 'tag key', order: 'ASC' },
+      filter: { 'select@': 'id,tag key' },
+    },
+    { enabled: open }
+  );
+
+  const tagKeyOptions = useMemo<string[]>(
+    () => Array.from(new Set((tagKeysData ?? []).map((tag) => tag['tag key'] as string))),
+    [tagKeysData]
+  );
+
+  // Debounce the tag value search input
+  const [debouncedTagValueSearch, setDebouncedTagValueSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedTagValueSearch(localFilters.tagValue);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [localFilters.tagValue]);
+
+  // Fetch existing values of the selected tag as suggestions
+  const { data: tagValuesData, isLoading: tagValuesLoading } = useGetList(
+    'device tag',
+    {
+      pagination: { page: 1, perPage: 100 },
+      sort: { field: 'value', order: 'ASC' },
+      filter: {
+        'tag key': localFilters.tagKey,
+        ...(debouncedTagValueSearch ? { 'value@ilike': debouncedTagValueSearch } : {}),
+        'select@': 'id,value',
+      },
+    },
+    { enabled: open && localFilters.tagKey !== '' }
+  );
+
+  const tagValueOptions = useMemo<string[]>(
+    () => Array.from(new Set((tagValuesData ?? []).map((tag) => tag.value as string).filter(Boolean))),
+    [tagValuesData]
+  );
 
   // Fetch fleets based on selected device type (cached by react-query)
   const fleetsFilter = useMemo(() => {
@@ -493,7 +543,7 @@ export const DeviceFilterModal: React.FC<DeviceFilterModalProps> = ({
             <CircularProgress />
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
             {/* Online Status */}
             <FormControl fullWidth size='small'>
               <InputLabel shrink sx={{ position: 'relative', transform: 'none', mb: 0.5 }}>
@@ -510,45 +560,46 @@ export const DeviceFilterModal: React.FC<DeviceFilterModalProps> = ({
               </RadioGroup>
             </FormControl>
 
-            {/* Device Type */}
-            <FormControl fullWidth size='small'>
-              <InputLabel id='device-type-label'>Device Type</InputLabel>
-              <Select
-                labelId='device-type-label'
-                value={localFilters.deviceTypeId ?? ''}
-                label='Device Type'
-                onChange={handleDeviceTypeChange}
-              >
-                <MenuItem value=''>
-                  <em>All Device Types</em>
-                </MenuItem>
-                {deviceTypes.map((dt) => (
-                  <MenuItem key={dt.id} value={dt.id}>
-                    {dt.slug}
+            {/* Device Type & Fleet */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl fullWidth size='small'>
+                <InputLabel id='device-type-label'>Device Type</InputLabel>
+                <Select
+                  labelId='device-type-label'
+                  value={localFilters.deviceTypeId ?? ''}
+                  label='Device Type'
+                  onChange={handleDeviceTypeChange}
+                >
+                  <MenuItem value=''>
+                    <em>All Device Types</em>
                   </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                  {deviceTypes.map((dt) => (
+                    <MenuItem key={dt.id} value={dt.id}>
+                      {dt.slug}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-            {/* Fleet */}
-            <FormControl fullWidth size='small'>
-              <InputLabel id='fleet-label'>Fleet</InputLabel>
-              <Select
-                labelId='fleet-label'
-                value={localFilters.fleetId ?? ''}
-                label='Fleet'
-                onChange={handleFleetChange}
-              >
-                <MenuItem value=''>
-                  <em>All Fleets</em>
-                </MenuItem>
-                {fleets.map((fleet) => (
-                  <MenuItem key={fleet.id} value={fleet.id}>
-                    {fleet['app name']}
+              <FormControl fullWidth size='small'>
+                <InputLabel id='fleet-label'>Fleet</InputLabel>
+                <Select
+                  labelId='fleet-label'
+                  value={localFilters.fleetId ?? ''}
+                  label='Fleet'
+                  onChange={handleFleetChange}
+                >
+                  <MenuItem value=''>
+                    <em>All Fleets</em>
                   </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                  {fleets.map((fleet) => (
+                    <MenuItem key={fleet.id} value={fleet.id}>
+                      {fleet['app name']}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
 
             {/* Current Release */}
             <FormControl fullWidth size='small'>
@@ -656,6 +707,49 @@ export const DeviceFilterModal: React.FC<DeviceFilterModalProps> = ({
                 />
               )}
             />
+
+            {/* Tag */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl fullWidth size='small'>
+                <InputLabel id='tag-name-label'>Tag Name</InputLabel>
+                <Select
+                  labelId='tag-name-label'
+                  value={localFilters.tagKey}
+                  label='Tag Name'
+                  onChange={(event: SelectChangeEvent<string>) =>
+                    // Reset the value when the tag name changes
+                    setLocalFilters((prev) => ({ ...prev, tagKey: event.target.value, tagValue: '' }))
+                  }
+                >
+                  <MenuItem value=''>
+                    <em>Any Tag</em>
+                  </MenuItem>
+                  {tagKeyOptions.map((tagKey) => (
+                    <MenuItem key={tagKey} value={tagKey}>
+                      {tagKey}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Autocomplete
+                freeSolo
+                fullWidth
+                size='medium'
+                disabled={localFilters.tagKey === ''}
+                options={tagValueOptions}
+                inputValue={localFilters.tagValue}
+                onInputChange={(_event, value) => setLocalFilters((prev) => ({ ...prev, tagValue: value }))}
+                loading={tagValuesLoading}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label='Tag Value'
+                    placeholder='Any value'
+                    InputLabelProps={{ sx: { overflow: 'visible' } }}
+                  />
+                )}
+              />
+            </Box>
           </Box>
         )}
       </DialogContent>

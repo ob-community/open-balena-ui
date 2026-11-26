@@ -10,6 +10,7 @@ import {
   FunctionField,
   List,
   ReferenceField,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -21,9 +22,12 @@ import { useCreateDeviceServiceVar, useModifyDeviceServiceVar } from '../lib/dev
 import CopyChip from '../ui/CopyChip';
 import JsonValueInput from '../ui/JsonValueInput';
 import Row from '../ui/Row';
+import { ReturnListActions, useReturnState, useReturnTo } from '../ui/returnTo';
 import VarNameInput from '../ui/VarNameInput';
 import SelectDevice from '../ui/SelectDevice';
 import SelectDeviceService from '../ui/SelectDeviceService';
+
+const searchFilters = [<SearchInput key='search' source='#name,value,service install/device/device name,service install/installs-service/service name@ilike' alwaysOn />];
 
 const DeviceServiceVarDatagrid: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => (
   <Datagrid
@@ -35,7 +39,7 @@ const DeviceServiceVarDatagrid: React.FC<{ embedded?: boolean }> = ({ embedded =
       '& .MuiTableCell-root': { px: embedded ? 1 : 2 },
       '& .column-name': { overflowWrap: 'anywhere' },
       '& .column-value': { width: embedded ? '34%' : '30%' },
-      '& .MuiTableCell-root:last-child': { width: 92 },
+      '& .MuiTableCell-root:last-child': { width: embedded ? 116 : 132 },
     }}
   >
     {!embedded && (
@@ -75,14 +79,14 @@ const DeviceServiceVarDatagrid: React.FC<{ embedded?: boolean }> = ({ embedded =
     />
 
     <Toolbar sx={{ background: 'none', p: 0, whiteSpace: 'nowrap' }}>
-      <EditButton label='' size='small' variant='outlined' />
-      <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' />
+      <EditButton label='' size='small' variant='outlined' state={useReturnState()} />
+      <DeleteButton mutationMode='optimistic' label='' size='small' variant='outlined' redirect={false} />
     </Toolbar>
   </Datagrid>
 );
 
 export const DeviceServiceVarList: React.FC = () => (
-  <List title='Device Service Vars'>
+  <List title='Device Service Vars' filters={searchFilters} actions={<ReturnListActions />}>
     <DeviceServiceVarDatagrid />
   </List>
 );
@@ -106,8 +110,10 @@ export const DeviceServiceVarListForDevice: React.FC<{ deviceId: string | number
     <List
       resource='device service environment variable'
       title='Device Service Vars'
+      filters={searchFilters}
       filter={{ 'service install@in': serviceInstallIds }}
       sx={{ width: '100%', minWidth: 0 }}
+      actions={<ReturnListActions record={{ device: deviceId }} />}
     >
       <DeviceServiceVarDatagrid embedded />
     </List>
@@ -118,7 +124,7 @@ export const DeviceServiceVarCreate: React.FC = (props) => {
   const createDeviceServiceVar = useCreateDeviceServiceVar();
 
   return (
-    <Create title='Create Device Service Var' redirect='list' transform={createDeviceServiceVar} {...props}>
+    <Create title='Create Device Service Var' redirect={useReturnTo()} transform={createDeviceServiceVar} {...props}>
       <SimpleForm>
         <Row>
           <SelectDevice label='Device' source='device' validate={required()} />
@@ -149,7 +155,7 @@ export const DeviceServiceVarEdit: React.FC = () => {
   const modifyDeviceServiceVar = useModifyDeviceServiceVar();
 
   return (
-    <Edit transform={modifyDeviceServiceVar} title='Edit Device Service Var'>
+    <Edit redirect={useReturnTo()} transform={modifyDeviceServiceVar} title='Edit Device Service Var'>
       <SimpleForm>
         <Row>
           <SelectDevice label='Device' source='device' validate={required()} />

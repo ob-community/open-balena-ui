@@ -65,11 +65,14 @@ const toODataValue = (value: unknown): string => {
 const group = (clauses: string[], operator: 'and' | 'or'): string =>
   clauses.length === 1 ? clauses[0] : `(${clauses.join(` ${operator} `)})`;
 
+const unescapeODataSyntax = (value: string): string =>
+  value.replace(/%2C/gi, ',').replace(/%2F/gi, '/').replace(/%3A/gi, ':');
+
 const serializeODataQuery = (query: Record<string, string | number>): string =>
   Object.entries(query)
     .map(
       ([key, value]) =>
-        `${key.startsWith('$') ? key : encodeURIComponent(key)}=${encodeURIComponent(String(value)).replace(/%2C/gi, ',')}`,
+        `${key.startsWith('$') ? key : encodeURIComponent(key)}=${unescapeODataSyntax(encodeURIComponent(String(value)))}`,
     )
     .join('&');
 
@@ -128,6 +131,16 @@ const legacyArrayValue = (value: unknown): unknown[] | undefined => {
     });
 };
 
+// A search field may point into a related record: 'device/device name' => device/any(x0:contains(tolower(x0/device_name),...))
+const searchComparison = (field: string, operator: string, value: unknown, prefix = '', depth = 0): string => {
+  const [head, ...rest] = field.split('/');
+  if (!rest.length) {
+    return comparison(prefix + head, operator, value);
+  }
+  const alias = `x${depth}`;
+  return `${toApiField(prefix + head)}/any(${alias}:${searchComparison(rest.join('/'), operator, value, `${alias}/`, depth + 1)})`;
+};
+
 const fullTextFilter = (key: string, value: unknown): string | undefined => {
   if (!key.startsWith('#')) {
     return undefined;
@@ -152,7 +165,7 @@ const fullTextFilter = (key: string, value: unknown): string | undefined => {
   return group(
     words.map((word) =>
       group(
-        fields.map((field) => comparison(field, operator, word)),
+        fields.map((field) => searchComparison(field, operator, word)),
         'or',
       ),
     ),
@@ -179,7 +192,15 @@ export const buildODataFilter = (filter: Record<string, unknown>): string => {
       : ['in', 'nin', 'not.in'].includes(keyOperator)
         ? legacyArrayValue(rawValue)
         : undefined;
-    if (normalizedArray) {
+    if (keyOperator === 'any' && rawValue !== null && typeof rawValue === 'object' && !Array.isArray(rawValue)) {
+      const inner = Object.entries(rawValue).map(([innerKey, value]) => {
+        const [innerField, innerOperator = 'eq'] = innerKey.split('@');
+        return comparison(`x/${innerField}`, innerOperator, value);
+      });
+      if (inner.length) {
+        clauses.push(`${toApiField(field)}/any(x:${group(inner, 'and')})`);
+      }
+    } else if (normalizedArray) {
       clauses.push(arrayComparison(field, keyOperator === 'eq' ? 'in' : keyOperator, normalizedArray));
     } else if (rawValue !== null && typeof rawValue === 'object' && !(rawValue instanceof Date)) {
       for (const [operator, value] of Object.entries(rawValue)) {

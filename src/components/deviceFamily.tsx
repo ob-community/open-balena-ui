@@ -8,6 +8,7 @@ import {
   List,
   ReferenceField,
   ReferenceInput,
+  SearchInput,
   SelectInput,
   SimpleForm,
   TextField,
@@ -18,13 +19,15 @@ import {
 import Row from '../ui/Row';
 import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
+const searchFilters = [<SearchInput key='search' source='#slug,name@ilike' alwaysOn />];
+
 export const DeviceFamilyList: React.FC = () => {
   const { context, isPending } = useAdminAccessContext();
   if (isPending || !context) return null;
   const canManage = !context.enforcementEnabled || context.globalAdmin;
 
   return (
-    <List title='Device Families' actions={canManage ? undefined : false}>
+    <List filters={searchFilters} title='Device Families' actions={canManage ? undefined : false}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={canManage ? undefined : false}>
         <TextField label='Slug' source='slug' />
         <TextField label='Name' source='name' />

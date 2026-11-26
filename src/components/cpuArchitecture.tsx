@@ -6,6 +6,7 @@ import {
   Edit,
   EditButton,
   List,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -14,13 +15,15 @@ import {
 import Row from '../ui/Row';
 import { useAdminAccessContext } from '../hooks/useAdminAccessContext';
 
+const searchFilters = [<SearchInput key='search' source='slug@ilike' alwaysOn />];
+
 export const CpuArchitectureList: React.FC = () => {
   const { context, isPending } = useAdminAccessContext();
   if (isPending || !context) return null;
   const canManage = !context.enforcementEnabled || context.globalAdmin;
 
   return (
-    <List actions={canManage ? undefined : false}>
+    <List filters={searchFilters} actions={canManage ? undefined : false}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={canManage ? undefined : false}>
         <TextField label='Slug' source='slug' />
 

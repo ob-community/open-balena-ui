@@ -8,6 +8,7 @@ import {
   FunctionField,
   List,
   ReferenceField,
+  SearchInput,
   SimpleForm,
   TextField,
   TextInput,
@@ -19,9 +20,11 @@ import ReleaseImageInput from '../ui/ReleaseImageInput';
 import Row from '../ui/Row';
 import SemVerChip from '../ui/SemVerChip';
 
+const searchFilters = [<SearchInput key='search' source='#name,value@ilike' alwaysOn />];
+
 export const ImageEnvVarList: React.FC = () => {
   return (
-    <List title='Image Environment Vars'>
+    <List filters={searchFilters} title='Image Environment Vars'>
       <Datagrid size='medium' rowClick={false}>
         <TextField label='Release Image' source='release image' />
 

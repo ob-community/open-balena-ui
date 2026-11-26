@@ -6,14 +6,17 @@ import {
   List,
   ReferenceField,
   ReferenceManyField,
+  SearchInput,
   SingleFieldList,
   TextField,
 } from 'react-admin';
 import SemVerChip from '../ui/SemVerChip';
 
+const searchFilters = [<SearchInput key='search' source='status@ilike' alwaysOn />];
+
 export const ImageList: React.FC = () => {
   return (
-    <List>
+    <List filters={searchFilters}>
       <Datagrid bulkActionButtons={false} rowClick={false} size='medium'>
         <TextField label='ID' source='id' />
 

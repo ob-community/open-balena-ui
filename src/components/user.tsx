@@ -4,6 +4,7 @@ import {
   Datagrid,
   Edit,
   EditButton,
+  SearchInput,
   email,
   EmailField,
   List,
@@ -40,6 +41,8 @@ const CustomBulkActionButtons: React.FC<DeleteUserButtonProps> = (props) => (
   </React.Fragment>
 );
 
+const searchFilters = [<SearchInput key='search' source='username@ilike' alwaysOn />];
+
 export const UserList: React.FC = () => {
   const { context, isPending } = useAdminAccessContext();
   if (isPending || !context) return null;
@@ -49,7 +52,7 @@ export const UserList: React.FC = () => {
   const canAccessGlobalResources = canCreate;
 
   return (
-    <List actions={canCreate ? undefined : false}>
+    <List filters={searchFilters} actions={canCreate ? undefined : false}>
       <Datagrid size='medium' rowClick={false} bulkActionButtons={canDelete ? <CustomBulkActionButtons /> : false}>
         <TextField source='username' />
         <EmailField source='email' />

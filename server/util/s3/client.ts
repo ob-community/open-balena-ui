@@ -1,5 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import dotenv from 'dotenv';
+import { addContentMd5ToDeleteObjects } from './contentMd5';
 
 dotenv.config();
 
@@ -27,5 +28,8 @@ const s3Client = new S3Client({
   },
   forcePathStyle: true,
 });
+
+// Older MinIO (pre-2025) rejects bulk deletes without Content-MD5; see contentMd5.ts.
+addContentMd5ToDeleteObjects(s3Client);
 
 export default s3Client;

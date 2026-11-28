@@ -1,8 +1,18 @@
 import DeleteIcon from '@mui/icons-material/Delete';
 import { Button, ButtonProps } from '@mui/material';
 import React, { useEffect, useState } from 'react';
-import { DataProvider, Identifier, useNotify, useRecordContext, useRedirect } from 'react-admin';
+import {
+  DataProvider,
+  Identifier,
+  useNotify,
+  useRecordContext,
+  useRedirect,
+  useRefresh,
+  useResourceContext,
+  useUnselectAll,
+} from 'react-admin';
 import { useDeleteRelease, useDeleteReleaseBulk } from '../lib/release';
+import { runReleaseDelete } from '../lib/releaseDeleteFlow';
 import versions from '../versions';
 import environment from '../lib/reactAppEnv';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -12,7 +22,8 @@ const isPinnedOnRelease = versions.resource('isPinnedOnRelease', environment.REA
 interface DeleteReleaseButtonProps {
   selectedIds?: Identifier[];
   context: DataProvider;
-  redirect?: string;
+  /** Where to go after a successful delete ('list' by default); false stays on the current page. */
+  redirect?: string | false;
   variant?: ButtonProps['variant'];
   size?: ButtonProps['size'];
   sx?: ButtonProps['sx'];
@@ -32,24 +43,28 @@ export const DeleteReleaseButton: React.FC<DeleteReleaseButtonProps> = ({
   const [open, setOpen] = useState(false);
   const notify = useNotify();
   const redirect = useRedirect();
+  const refresh = useRefresh();
+  // react-admin's redirect() needs the resource name for 'list'/'show'/... targets; without it, it
+  // throws "Cannot create a link without a resource" after an otherwise successful delete.
+  const resource = useResourceContext() ?? 'release';
+  const unselectAll = useUnselectAll(resource);
   const deleteRelease = useDeleteRelease();
   const deleteReleaseBulk = useDeleteReleaseBulk();
   const [disabled, setDisabled] = useState(true);
   const record = useRecordContext<Record<string, unknown>>();
 
   const handleSubmit = async () => {
-    try {
-      if (selectedIds?.length) {
-        await deleteReleaseBulk(selectedIds);
-      } else {
-        await deleteRelease(record);
-      }
-      notify('Release(s) successfully deleted', { type: 'success' });
-      redirect(redirectTo);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      notify(`Failed to delete release(s): ${message}`, { type: 'error' });
-    }
+    const isBulk = Boolean(selectedIds?.length);
+    await runReleaseDelete({
+      performDelete: () => (isBulk ? deleteReleaseBulk(selectedIds!) : deleteRelease(record)),
+      notifySuccess: () => notify('Release(s) successfully deleted', { type: 'success' }),
+      notifyFailure: (message) => notify(`Failed to delete release(s): ${message}`, { type: 'error' }),
+      afterSuccess: [
+        ...(isBulk ? [() => unselectAll()] : []),
+        () => refresh(),
+        ...(redirectTo ? [() => redirect(redirectTo, resource)] : []),
+      ],
+    });
     setOpen(false);
   };
 

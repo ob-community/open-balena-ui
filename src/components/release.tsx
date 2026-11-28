@@ -14,6 +14,7 @@ import {
   TextField,
   Toolbar,
   useDataProvider,
+  useListContext,
 } from 'react-admin';
 import type { FunctionFieldProps, RaRecord } from 'react-admin';
 import DeleteReleaseButton from '../ui/DeleteReleaseButton';
@@ -47,18 +48,21 @@ const TagChipField: React.FC = (props) => {
   );
 };
 
-export const ReleaseList: React.FC = (props) => {
+// Bulk action buttons do not receive the selection as a prop in react-admin 5; read it from the
+// list context (as the device list does), otherwise the bulk Delete button never enables.
+const ReleaseBulkActionButtons: React.FC = () => {
+  const { selectedIds } = useListContext();
+  return (
+    <DeleteReleaseButton size='small' context={useDataProvider()} selectedIds={selectedIds} redirect={false}>
+      Delete
+    </DeleteReleaseButton>
+  );
+};
+
+export const ReleaseList: React.FC = () => {
   return (
     <List filters={releaseFilters} sort={{ field: 'version', order: 'DESC' }}>
-      <Datagrid
-        size='medium'
-        rowClick={false}
-        bulkActionButtons={
-          <DeleteReleaseButton size='small' context={useDataProvider()} {...props}>
-            Delete
-          </DeleteReleaseButton>
-        }
-      >
+      <Datagrid size='medium' rowClick={false} bulkActionButtons={<ReleaseBulkActionButtons />}>
         <ReferenceField label='Fleet' source='belongs to-application' reference='application' sortable={false}>
           <TextField source='app name' />
         </ReferenceField>
@@ -91,7 +95,7 @@ export const ReleaseList: React.FC = (props) => {
         </ReferenceManyField>
 
         <Toolbar>
-          <DeleteReleaseButton variant='outlined' size='small' context={useDataProvider()} />
+          <DeleteReleaseButton variant='outlined' size='small' context={useDataProvider()} redirect={false} />
         </Toolbar>
       </Datagrid>
     </List>
